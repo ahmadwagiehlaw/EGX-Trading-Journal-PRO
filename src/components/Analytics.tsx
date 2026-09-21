@@ -79,9 +79,6 @@ export default function Analytics() {
   return (
     <div className="w-full space-y-6" dir="rtl">
       
-      {/* Handwriting label */}
-      <p className="font-handwriting text-lg text-slate-500 px-1">📊 ملخص الأداء التداولي ↓</p>
-
       {/* Top Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statCards.map((card) => (

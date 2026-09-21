@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { type PlanUpdate } from '../components/PlanUpdatesFeed';
 
 export interface Trade {
@@ -58,99 +60,96 @@ const defaultCapital = { investment: 1000000, speculation: 100000 };
 const TradeContext = createContext<TradeContextType | undefined>(undefined);
 
 export function TradeProvider({ children }: { children: ReactNode }) {
-  const [trades, setTrades] = useState<Trade[]>(() => {
-    const saved = localStorage.getItem('egx_trades');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [capitalInvestment, setCapitalInvestment] = useState<number>(defaultCapital.investment);
+  const [capitalSpeculation, setCapitalSpeculation] = useState<number>(defaultCapital.speculation);
+  const [loading, setLoading] = useState(true);
 
+  // Real-time sync with Firestore
   useEffect(() => {
-    localStorage.setItem('egx_trades', JSON.stringify(trades));
-  }, [trades]);
-
-  const addTrade = (tradeData: Omit<Trade, 'id' | 'entryDate'>) => {
-    const newTrade: Trade = {
-      ...tradeData,
-      id: Math.random().toString(36).substring(2, 9),
-      entryDate: Date.now(),
+    const handleError = (err: any) => {
+      console.error("Firestore sync error:", err);
+      setLoading(false); // don't block the UI forever
     };
-    setTrades(prev => [newTrade, ...prev]);
-  };
 
-  const updateTrade = (id: string, data: Partial<Trade>) => {
-    setTrades(prev => prev.map(t => t.id === id ? { ...t, ...data } : t));
-  };
+    const unsubTrades = onSnapshot(collection(db, 'trades'), (snapshot) => {
+      const data = snapshot.docs.map(doc => doc.data() as Trade);
+      setTrades(data.sort((a, b) => b.entryDate - a.entryDate));
+      setLoading(false);
+    }, handleError);
 
-  const deleteTrade = (id: string) => {
-    setTrades(prev => prev.filter(t => t.id !== id));
-  };
+    const unsubPlans = onSnapshot(collection(db, 'plans'), (snapshot) => {
+      const data = snapshot.docs.map(doc => doc.data() as Plan);
+      setPlans(data);
+    }, handleError);
 
-  const closeTrade = (id: string, exitPrice: number, emotion?: any, lessonLearned?: string, mistake?: string) => {
-    setTrades(prev => prev.map(t => {
-      if (t.id === id) {
-        const pnl = (exitPrice - t.entryPrice) * t.shares;
-        let status: Trade['status'] = 'breakeven';
-        if (pnl > 0) status = 'won';
-        if (pnl < 0) status = 'lost';
-        
-        return { ...t, exitPrice, exitDate: Date.now(), pnl, status, emotion, lessonLearned, mistake };
+    const unsubCapital = onSnapshot(doc(db, 'settings', 'capital'), (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        setCapitalInvestment(data.investment || defaultCapital.investment);
+        setCapitalSpeculation(data.speculation || defaultCapital.speculation);
       }
-      return t;
-    }));
+    }, handleError);
+
+    return () => {
+      unsubTrades();
+      unsubPlans();
+      unsubCapital();
+    };
+  }, []);
+
+  const addTrade = async (tradeData: Omit<Trade, 'id' | 'entryDate'>) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    const newTrade: Trade = { ...tradeData, id, entryDate: Date.now() };
+    await setDoc(doc(db, 'trades', id), newTrade);
   };
 
-  const updateTrailingStop = (id: string, highestPrice: number, newStopLoss: number) => {
-    setTrades(prev => prev.map(t => {
-      if (t.id === id) {
-        return { ...t, highestPrice, currentStopLoss: newStopLoss };
-      }
-      return t;
-    }));
+  const updateTrade = async (id: string, data: Partial<Trade>) => {
+    await updateDoc(doc(db, 'trades', id), data);
   };
 
-  const [capitalInvestment, setCapitalInvestment] = useState<number>(() => {
-    const saved = localStorage.getItem('egx_capital_investment');
-    return saved ? parseFloat(saved) : defaultCapital.investment;
-  });
-
-  const [capitalSpeculation, setCapitalSpeculation] = useState<number>(() => {
-    const saved = localStorage.getItem('egx_capital_speculation');
-    return saved ? parseFloat(saved) : defaultCapital.speculation;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('egx_capital_investment', capitalInvestment.toString());
-    localStorage.setItem('egx_capital_speculation', capitalSpeculation.toString());
-  }, [capitalInvestment, capitalSpeculation]);
-
-  const updateCapital = (inv: number, spec: number) => {
-    setCapitalInvestment(inv);
-    setCapitalSpeculation(spec);
+  const deleteTrade = async (id: string) => {
+    await deleteDoc(doc(db, 'trades', id));
   };
 
-  const [plans, setPlans] = useState<Plan[]>(() => {
-    const saved = localStorage.getItem('egx_plans');
-    if (saved) return JSON.parse(saved);
-    return [
-      { id: '1', symbol: 'COMI', strategy: 'اختراق مقاومة', entry: 75.00, target: 82.00, stop: 72.00, status: 'ready', updates: [{ id: 'u1', text: 'انتظار إغلاق شمعة ساعة فوق 75 للتأكيد...', image: '' }] },
-      { id: '2', symbol: 'FAIT', strategy: 'ارتداد من دعم', entry: 1.50, target: 1.80, stop: 1.40, status: 'waiting', updates: [{ id: 'u2', text: 'السهم عند منطقة طلب قوية جداً على اليومي.', image: '' }] }
-    ];
-  });
-
-  useEffect(() => {
-    localStorage.setItem('egx_plans', JSON.stringify(plans));
-  }, [plans]);
-
-  const addPlan = (plan: Plan) => {
-    setPlans(prev => [plan, ...prev]);
+  const closeTrade = async (id: string, exitPrice: number, emotion?: any, lessonLearned?: string, mistake?: string) => {
+    const trade = trades.find(t => t.id === id);
+    if (!trade) return;
+    
+    const pnl = (exitPrice - trade.entryPrice) * trade.shares;
+    let status: Trade['status'] = 'breakeven';
+    if (pnl > 0) status = 'won';
+    if (pnl < 0) status = 'lost';
+    
+    await updateDoc(doc(db, 'trades', id), {
+      exitPrice, exitDate: Date.now(), pnl, status, emotion, lessonLearned, mistake
+    });
   };
 
-  const updatePlan = (id: string, planData: Partial<Plan>) => {
-    setPlans(prev => prev.map(p => p.id === id ? { ...p, ...planData } : p));
+  const updateTrailingStop = async (id: string, highestPrice: number, newStopLoss: number) => {
+    await updateDoc(doc(db, 'trades', id), { highestPrice, currentStopLoss: newStopLoss });
   };
 
-  const deletePlan = (id: string) => {
-    setPlans(prev => prev.filter(p => p.id !== id));
+  const updateCapital = async (investment: number, speculation: number) => {
+    await setDoc(doc(db, 'settings', 'capital'), { investment, speculation }, { merge: true });
   };
+
+  const addPlan = async (plan: Plan) => {
+    await setDoc(doc(db, 'plans', plan.id), plan);
+  };
+
+  const updatePlan = async (id: string, planData: Partial<Plan>) => {
+    await updateDoc(doc(db, 'plans', id), planData);
+  };
+
+  const deletePlan = async (id: string) => {
+    await deleteDoc(doc(db, 'plans', id));
+  };
+
+  if (loading) {
+    return <div className="h-screen w-full flex items-center justify-center bg-white text-blue-600 font-bold text-xl">جاري تحميل البيانات من السحابة...</div>;
+  }
 
   return (
     <TradeContext.Provider value={{

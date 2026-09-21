@@ -60,9 +60,6 @@ export default function TradesJournal({ draftTrade, isNewTradeOpen, setIsNewTrad
   return (
     <div className="w-full space-y-5" dir="rtl">
       
-      {/* Handwriting header note */}
-      <p className="font-handwriting text-lg text-slate-500 px-1">📋 سجل جميع صفقاتك هنا ↓</p>
-
       {/* Header Actions */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-3 p-4 rounded-3xl border border-slate-200 shadow-sm"
         style={{ background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(10px)' }}

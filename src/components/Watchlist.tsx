@@ -43,15 +43,7 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
     <div className="w-full space-y-6" dir="rtl">
       {/* Header & Controls */}
       <div className="bg-white/60 backdrop-blur-md border border-white/60 p-6 rounded-3xl shadow-sm space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-              <LayoutGrid className="w-6 h-6 text-blue-600" />
-              مختبر الصفقات (Trading Lab)
-            </h2>
-            <p className="font-handwriting text-slate-500 text-lg mt-1">📌 خطط لصفقتك بهدوء كالمحترف، ونفذها كالقناص...</p>
-          </div>
-          
+        <div className="flex justify-end items-center">
           <button 
             onClick={() => {
               setSelectedPlan({ id: Date.now().toString(), symbol: '', strategy: '', entry: 0, target: 0, stop: 0, status: 'waiting', updates: [] });
