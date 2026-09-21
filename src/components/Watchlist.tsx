@@ -76,38 +76,52 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-4">
               {plans.filter(item => item.status === col.id).map(item => {
                 const rrr = calculateRRR(item.entry, item.target, item.stop);
                 return (
                   <div 
                     key={item.id} 
                     onClick={() => { setSelectedPlan(item); setIsModalOpen(true); }}
-                    className="bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-2xl p-4 shadow-sm hover:shadow-xl hover:border-blue-300 transition-all cursor-pointer group flex flex-col h-[180px]"
+                    className="bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-xl hover:border-blue-400 transition-all cursor-pointer group flex flex-col relative"
                   >
-                    <div className="flex justify-between items-start mb-3">
-                      <span className="bg-slate-900 text-white font-black px-2.5 py-1 rounded-lg text-sm shadow-sm" dir="ltr">{item.symbol}</span>
-                      <span className="text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md text-xs font-bold border border-emerald-100">
+                    {/* Symbol and Strategy */}
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xl font-black text-slate-800" dir="ltr">{item.symbol}</span>
+                        <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md w-fit">
+                          {item.strategy || 'بدون استراتيجية'}
+                        </span>
+                      </div>
+                      <span className="text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg text-sm font-black border border-emerald-100">
                         RR {rrr}
                       </span>
                     </div>
-                    
-                    <div className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-100 mb-auto line-clamp-1">
-                      {item.strategy || 'بدون استراتيجية'}
+
+                    {/* Pricing */}
+                    <div className="grid grid-cols-3 gap-2 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100 text-center">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-400 mb-1">دخول</span>
+                        <span className="text-sm font-black text-blue-600" dir="ltr">{item.entry}</span>
+                      </div>
+                      <div className="flex flex-col border-r border-l border-slate-200">
+                        <span className="text-[10px] font-bold text-slate-400 mb-1">هدف</span>
+                        <span className="text-sm font-black text-emerald-600" dir="ltr">{item.target}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-400 mb-1">وقف</span>
+                        <span className="text-sm font-black text-red-600" dir="ltr">{item.stop}</span>
+                      </div>
                     </div>
 
-                    <div className="mt-3 flex justify-between text-[11px] font-black text-slate-500 bg-slate-50 p-2 rounded-xl">
-                      <div className="flex flex-col"><span className="text-slate-400 mb-0.5">دخول</span><span className="text-blue-600">{item.entry}</span></div>
-                      <div className="flex flex-col"><span className="text-slate-400 mb-0.5">هدف</span><span className="text-emerald-600">{item.target}</span></div>
-                      <div className="flex flex-col"><span className="text-slate-400 mb-0.5">وقف</span><span className="text-red-600">{item.stop}</span></div>
-                    </div>
-
+                    {/* Action Button */}
                     {col.id === 'ready' && (
                       <button 
                         onClick={(e) => { e.stopPropagation(); onMoveToJournal(item); }}
-                        className="w-full mt-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-xl shadow-md flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white text-sm font-black rounded-xl shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95"
                       >
-                        تنفيذ <ArrowRight className="w-3 h-3" />
+                        تحويل لصفقة وتفعيل 
+                        <ArrowRight className="w-4 h-4" />
                       </button>
                     )}
                   </div>
@@ -146,7 +160,7 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
               </div>
 
               {/* Right Column: Parameters */}
-              <div className="w-full md:w-[320px] space-y-5 bg-slate-50 p-5 rounded-3xl border border-slate-100">
+              <div className="w-full md:w-[320px] space-y-5 bg-slate-50 p-5 rounded-3xl border border-slate-100 flex flex-col">
                 <div>
                   <label className="text-xs font-bold text-slate-400 block mb-1.5">الرمز (Symbol)</label>
                   <input type="text" value={selectedPlan.symbol} onChange={(e) => setSelectedPlan({...selectedPlan, symbol: e.target.value.toUpperCase()})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 font-black text-slate-800 focus:border-blue-500 outline-none" dir="ltr" />
@@ -156,39 +170,36 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
                   <input type="text" value={selectedPlan.strategy} onChange={(e) => setSelectedPlan({...selectedPlan, strategy: e.target.value})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 font-bold text-slate-700 focus:border-blue-500 outline-none" placeholder="مثال: تبادل أدوار..." />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <div>
-                    <label className="text-xs font-bold text-slate-400 block mb-1.5">الدخول المستهدف</label>
-                    <input type="number" value={selectedPlan.entry || ''} onChange={(e) => setSelectedPlan({...selectedPlan, entry: parseFloat(e.target.value)})} className="w-full bg-white border border-blue-200 rounded-xl px-3 py-2 font-black text-blue-700 outline-none" dir="ltr" />
+                <div className="grid grid-cols-1 gap-4 pt-2">
+                  <div className="flex justify-between items-center bg-white p-3 rounded-xl border border-blue-100">
+                    <label className="text-sm font-bold text-slate-500">سعر الدخول</label>
+                    <input type="number" value={selectedPlan.entry || ''} onChange={(e) => setSelectedPlan({...selectedPlan, entry: parseFloat(e.target.value)})} className="w-24 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5 font-black text-blue-700 outline-none text-center" dir="ltr" />
                   </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-400 block mb-1.5">الهدف (Target)</label>
-                    <input type="number" value={selectedPlan.target || ''} onChange={(e) => setSelectedPlan({...selectedPlan, target: parseFloat(e.target.value)})} className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 font-black text-emerald-700 outline-none" dir="ltr" />
+                  <div className="flex justify-between items-center bg-white p-3 rounded-xl border border-emerald-100">
+                    <label className="text-sm font-bold text-slate-500">الهدف (Target)</label>
+                    <input type="number" value={selectedPlan.target || ''} onChange={(e) => setSelectedPlan({...selectedPlan, target: parseFloat(e.target.value)})} className="w-24 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1.5 font-black text-emerald-700 outline-none text-center" dir="ltr" />
                   </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-400 block mb-1.5">الوقف (Stop)</label>
-                    <input type="number" value={selectedPlan.stop || ''} onChange={(e) => setSelectedPlan({...selectedPlan, stop: parseFloat(e.target.value)})} className="w-full bg-white border border-red-200 rounded-xl px-3 py-2 font-black text-red-700 outline-none" dir="ltr" />
+                  <div className="flex justify-between items-center bg-white p-3 rounded-xl border border-red-100">
+                    <label className="text-sm font-bold text-slate-500">الوقف (Stop)</label>
+                    <input type="number" value={selectedPlan.stop || ''} onChange={(e) => setSelectedPlan({...selectedPlan, stop: parseFloat(e.target.value)})} className="w-24 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5 font-black text-red-700 outline-none text-center" dir="ltr" />
                   </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-400 block mb-1.5">نسبة RR</label>
-                    <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 font-black text-slate-500 flex items-center h-[42px]" dir="ltr">
-                      {calculateRRR(selectedPlan.entry, selectedPlan.target, selectedPlan.stop)}
-                    </div>
+                  <div className="flex justify-between items-center bg-slate-100 p-3 rounded-xl border border-slate-200 mt-2">
+                    <label className="text-sm font-black text-slate-600">نسبة المخاطرة للعائد (RRR)</label>
+                    <span className="font-black text-lg text-slate-800" dir="ltr">{calculateRRR(selectedPlan.entry, selectedPlan.target, selectedPlan.stop)}</span>
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-slate-200">
+                <div className="pt-4 mt-auto border-t border-slate-200">
                   <label className="text-xs font-bold text-slate-400 block mb-2">حالة الخطة</label>
                   <select 
                     value={selectedPlan.status} 
                     onChange={(e) => setSelectedPlan({...selectedPlan, status: e.target.value as any})}
                     className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 font-bold text-slate-700 outline-none"
                   >
-                    <option value="waiting">⏳ قيد المتابعة (لم تكتمل الشروط)</option>
-                    <option value="ready">🎯 جاهزة للتنفيذ (اكتملت الشروط)</option>
+                    <option value="waiting">⏳ قيد المتابعة (Setup)</option>
+                    <option value="ready">🎯 جاهزة للتنفيذ (Trigger)</option>
                   </select>
                 </div>
-
               </div>
             </div>
 
