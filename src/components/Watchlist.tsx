@@ -57,9 +57,10 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
                     </div>
                   </div>
                   
-                  <p className="font-bold text-slate-600 text-sm mb-3 px-6 leading-relaxed">
-                    {item.plan}
-                  </p>
+                  <div 
+                    className="prose prose-sm prose-slate max-w-none text-slate-600 mb-3 px-6 leading-relaxed font-bold"
+                    dangerouslySetInnerHTML={{ __html: item.plan }}
+                  />
                   
                   <div className="flex items-center justify-between mt-4 px-2 border-t border-slate-100 pt-3">
                     <div className="flex gap-3 text-xs font-bold">

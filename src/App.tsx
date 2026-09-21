@@ -7,11 +7,13 @@ import Analytics from './components/Analytics';
 import TradesJournal from './components/TradesJournal';
 import Settings from './components/Settings';
 import Watchlist from './components/Watchlist';
+import CommandPalette from './components/CommandPalette';
 
 function App() {
   const [activeTab, setActiveTab] = useState('لوحة القيادة');
   const [draftTrade, setDraftTrade] = useState<any>(null);
   const [isNewTradeModalOpen, setIsNewTradeModalOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
   const handleStartTrade = (tradeData: any) => {
     setDraftTrade(tradeData);
@@ -40,6 +42,13 @@ function App() {
       <div className={activeTab === 'الإعدادات' ? 'block' : 'hidden'}>
         <Settings />
       </div>
+      
+      <CommandPalette 
+        open={isCommandPaletteOpen} 
+        setOpen={setIsCommandPaletteOpen} 
+        setActiveTab={setActiveTab} 
+        onStartTrade={() => handleStartTrade(null)} 
+      />
     </Layout>
   );
 }
