@@ -18,7 +18,7 @@ export default function PlanEditor({ content, onChange }: { content: string, onC
     },
     editorProps: {
       attributes: {
-        className: 'prose prose-sm prose-slate max-w-none min-h-[120px] focus:outline-none p-3',
+        className: 'prose prose-sm prose-slate max-w-none min-h-full focus:outline-none p-4',
         dir: 'rtl',
       },
       handlePaste: (view, event) => {
@@ -49,7 +49,7 @@ export default function PlanEditor({ content, onChange }: { content: string, onC
   if (!editor) return null;
 
   return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white/50 focus-within:bg-white focus-within:border-blue-400 transition-colors">
+    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white/50 focus-within:bg-white focus-within:border-blue-400 transition-colors flex flex-col h-full min-h-[300px]">
       <div className="flex flex-wrap items-center gap-1 p-2 border-b border-slate-100 bg-slate-50/50">
         <button
           onClick={() => editor.chain().focus().toggleBold().run()}
@@ -89,7 +89,7 @@ export default function PlanEditor({ content, onChange }: { content: string, onC
         </button>
       </div>
       
-      <div className="bg-transparent" dir="rtl">
+      <div className="bg-transparent flex-1 overflow-y-auto" dir="rtl">
         <EditorContent editor={editor} />
       </div>
     </div>

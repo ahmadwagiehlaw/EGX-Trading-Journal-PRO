@@ -226,20 +226,24 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-6">
-              {/* Left Column: Rich Text Editor */}
-              <div className="flex-1 space-y-3">
-                <label className="text-sm font-bold text-slate-500 block">ملاحظات وشارتات الخطة (اسحب أو الصق الصور هنا)</label>
-                <PlanEditor 
-                  content={selectedPlan.notes} 
-                  onChange={(val) => setSelectedPlan({...selectedPlan, notes: val})} 
-                />
-              </div>
-
-              {/* Right Column: Parameters */}
-              <div className="w-full md:w-[320px] space-y-5 bg-slate-50 p-5 rounded-3xl border border-slate-100 flex flex-col">
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col lg:flex-row gap-6 items-stretch">
+              {/* Right Column (in RTL): Parameters */}
+              <div className="w-full lg:w-[340px] space-y-5 bg-slate-50 p-5 rounded-3xl border border-slate-100 flex flex-col shrink-0">
                 <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-1.5">الرمز (Symbol)</label>
+                  <div className="flex justify-between items-end mb-1.5">
+                    <label className="text-xs font-bold text-slate-400 block">الرمز (Symbol)</label>
+                    {selectedPlan.symbol && (
+                      <a 
+                        href={`https://www.tradingview.com/chart/?symbol=EGX:${selectedPlan.symbol}`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-[11px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-md flex items-center gap-1 transition-colors"
+                      >
+                        <LineChart className="w-3 h-3" />
+                        فتح الشارت
+                      </a>
+                    )}
+                  </div>
                   <input type="text" value={selectedPlan.symbol} onChange={(e) => setSelectedPlan({...selectedPlan, symbol: e.target.value.toUpperCase()})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 font-black text-slate-800 focus:border-blue-500 outline-none" dir="ltr" />
                 </div>
                 <div>
@@ -276,6 +280,17 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
                     <option value="waiting">⏳ قيد المتابعة (Setup)</option>
                     <option value="ready">🎯 جاهزة للتنفيذ (Trigger)</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Left Column (in RTL): Rich Text Editor */}
+              <div className="flex-1 flex flex-col space-y-3 min-h-[400px]">
+                <label className="text-sm font-bold text-slate-500 block">ملاحظات وشارتات الخطة (اسحب أو الصق الصور هنا)</label>
+                <div className="flex-1">
+                  <PlanEditor 
+                    content={selectedPlan.notes} 
+                    onChange={(val) => setSelectedPlan({...selectedPlan, notes: val})} 
+                  />
                 </div>
               </div>
             </div>
