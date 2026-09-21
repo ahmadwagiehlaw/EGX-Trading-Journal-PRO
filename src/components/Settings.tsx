@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings as SettingsIcon, Save, Download, Upload, Trash2, Wallet, ShieldCheck, Database, Info, CheckCircle } from 'lucide-react';
+import { Save, Download, Upload, Trash2, Wallet, ShieldCheck, Database, Info, CheckCircle } from 'lucide-react';
 import { useTrades } from '../context/TradeContext';
 
 export default function Settings() {
@@ -41,29 +41,16 @@ export default function Settings() {
  return (
  <div className="w-full max-w-5xl mx-auto space-y-6" dir="rtl">
  
- {/* Handwriting label */}
- <p className="font-handwriting text-lg text-slate-500 px-1">⚙️ تخصيص التطبيق وإدارة البيانات ↓</p>
-
- {/* Header */}
- <div className="flex items-center justify-between">
- <div className="flex items-center gap-4">
- <div className="p-4 bg-slate-900 text-white rounded-2xl shadow-lg">
- <SettingsIcon className="w-6 h-6" />
- </div>
- <div>
- <h2 className="text-3xl font-black text-slate-900 ">إعدادات النظام</h2>
- <p className="text-slate-500 font-bold mt-1">تخصيص المحفظة، المخاطر، وإدارة البيانات المحفوظة</p>
- </div>
- </div>
-
- <button 
- onClick={handleSave}
- className="bg-blue-600 hover:bg-blue-700 text-white font-black px-8 py-3 rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center gap-2"
- >
- <Save className="w-5 h-5" />
- حفظ الإعدادات
- </button>
- </div>
+  {/* Save Button Row */}
+  <div className="flex justify-end mb-2">
+    <button 
+      onClick={handleSave}
+      className="bg-blue-600 hover:bg-blue-700 text-white font-black px-8 py-3 rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center gap-2"
+    >
+      <Save className="w-5 h-5" />
+      حفظ الإعدادات
+    </button>
+  </div>
 
  {savedMessage && (
  <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-6 py-4 rounded-xl font-bold flex items-center gap-2">

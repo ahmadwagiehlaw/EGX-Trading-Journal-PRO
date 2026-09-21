@@ -1,4 +1,4 @@
-import { Wallet, TrendingUp, ShieldAlert, Activity, BookOpen, Target, LayoutGrid, Clock } from 'lucide-react';
+import { Wallet, TrendingUp, ShieldAlert, Activity, BookOpen, Target, Clock } from 'lucide-react';
 import { useTrades } from '../context/TradeContext';
 
 export default function Dashboard({ 
