@@ -7,9 +7,16 @@ export default function NewTradeForm({ initialData, onClose }: { initialData?: a
   const [symbol, setSymbol] = useState(initialData?.symbol || '');
   const [makerPlan, setMakerPlan] = useState(initialData?.makerPlan || '');
   const [images, setImages] = useState<string[]>(initialData?.images || []);
+  const [entryPrice, setEntryPrice] = useState<string>(initialData?.entryPrice?.toString() || '');
+  const [targetPrice, setTargetPrice] = useState<string>(initialData?.targetPrice?.toString() || '');
+  const [stopLoss, setStopLoss] = useState<string>(initialData?.initialStopLoss?.toString() || '');
   
   useEffect(() => {
     if (initialData?.symbol) setSymbol(initialData.symbol);
+    if (initialData?.entryPrice) setEntryPrice(initialData.entryPrice.toString());
+    if (initialData?.targetPrice) setTargetPrice(initialData.targetPrice.toString());
+    if (initialData?.initialStopLoss) setStopLoss(initialData.initialStopLoss.toString());
+    if (initialData?.makerPlan) setMakerPlan(initialData.makerPlan);
   }, [initialData]);
   
   const [checklist, setChecklist] = useState({
@@ -43,16 +50,17 @@ export default function NewTradeForm({ initialData, onClose }: { initialData?: a
 
   const handleSave = () => {
     if (!symbol) return;
-    const entryPrice = initialData?.entryPrice || 0;
-    const slPrice = initialData?.initialStopLoss || 0;
+    const entry = parseFloat(entryPrice) || 0;
+    const target = parseFloat(targetPrice) || 0;
+    const sl = parseFloat(stopLoss) || 0;
     const atr15 = initialData?.atr15 || initialData?.atrAtEntry || 0;
     
     const tradeData = {
       symbol, portfolioType: initialData?.portfolioType || 'investment',
-      status: initialData?.status || 'open', entryPrice, atrAtEntry: atr15,
-      initialStopLoss: slPrice, currentStopLoss: initialData?.currentStopLoss || slPrice,
-      highestPrice: initialData?.highestPrice || entryPrice,
-      targetPrice: initialData?.targetPrice || 0,
+      status: initialData?.status || 'open', entryPrice: entry, atrAtEntry: atr15,
+      initialStopLoss: sl, currentStopLoss: initialData?.currentStopLoss || sl,
+      highestPrice: initialData?.highestPrice || entry,
+      targetPrice: target,
       shares: initialData?.sharesCount || initialData?.shares || 0,
       makerPlan, checklist, images, isRuleBreaker: !allChecked,
     };
@@ -93,6 +101,40 @@ export default function NewTradeForm({ initialData, onClose }: { initialData?: a
             onChange={(e) => setMakerPlan(e.target.value)}
             className="w-full text-base font-bold text-slate-700 py-3 px-4 border-b-2 border-slate-300 bg-transparent focus:border-blue-500 focus:outline-none transition-colors"
             placeholder="ما هي نية صانع السوق؟"
+          />
+        </div>
+      </div>
+
+      {/* Financial Parameters */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="space-y-1.5">
+          <label className="text-xs font-black text-slate-500 uppercase tracking-wider block text-center">سعر الدخول</label>
+          <input 
+            type="number" 
+            value={entryPrice}
+            onChange={(e) => setEntryPrice(e.target.value)}
+            className="w-full text-lg font-black text-blue-700 py-2.5 px-3 border border-blue-200 bg-blue-50 rounded-xl focus:border-blue-500 focus:outline-none text-center"
+            dir="ltr"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-black text-slate-500 uppercase tracking-wider block text-center">الهدف (Target)</label>
+          <input 
+            type="number" 
+            value={targetPrice}
+            onChange={(e) => setTargetPrice(e.target.value)}
+            className="w-full text-lg font-black text-emerald-700 py-2.5 px-3 border border-emerald-200 bg-emerald-50 rounded-xl focus:border-emerald-500 focus:outline-none text-center"
+            dir="ltr"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-black text-slate-500 uppercase tracking-wider block text-center">الوقف (Stop)</label>
+          <input 
+            type="number" 
+            value={stopLoss}
+            onChange={(e) => setStopLoss(e.target.value)}
+            className="w-full text-lg font-black text-red-700 py-2.5 px-3 border border-red-200 bg-red-50 rounded-xl focus:border-red-500 focus:outline-none text-center"
+            dir="ltr"
           />
         </div>
       </div>
