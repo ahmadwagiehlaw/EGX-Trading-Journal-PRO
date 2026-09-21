@@ -59,16 +59,19 @@ export default function CommandPalette({ open, setOpen, setActiveTab, onStartTra
                 { name: 'سجل الصفقات', icon: BookOpen, color: 'emerald' },
                 { name: 'التحليلات', icon: BarChart2, color: 'purple' },
                 { name: 'الإعدادات', icon: SettingsIcon, color: 'slate' }
-              ].map((tab) => (
-                <Command.Item 
-                  key={tab.name}
-                  onSelect={() => { setActiveTab(tab.name); setOpen(false); }}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer aria-selected:bg-slate-50 aria-selected:text-slate-900 text-slate-700 font-bold transition-colors"
-                >
-                  <div className={`bg-${tab.color}-50 p-1.5 rounded-lg`}><tab.icon className={`w-4 h-4 text-${tab.color}-600`} /></div>
-                  الذهاب إلى {tab.name}
-                </Command.Item>
-              ))}
+              ].map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <Command.Item 
+                    key={tab.name}
+                    onSelect={() => { setActiveTab(tab.name); setOpen(false); }}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer aria-selected:bg-slate-50 aria-selected:text-slate-900 text-slate-700 font-bold transition-colors"
+                  >
+                    <div className={`bg-${tab.color}-50 p-1.5 rounded-lg`}><Icon className={`w-4 h-4 text-${tab.color}-600`} /></div>
+                    الذهاب إلى {tab.name}
+                  </Command.Item>
+                );
+              })}
             </Command.Group>
           </Command.List>
         </Command>

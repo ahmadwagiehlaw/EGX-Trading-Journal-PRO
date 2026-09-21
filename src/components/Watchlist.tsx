@@ -1,23 +1,10 @@
 import { useState } from 'react';
 import { Plus, Target, Clock, ArrowRight, LayoutGrid, CheckSquare, X, Save, Search, LineChart, FileText } from 'lucide-react';
-import PlanUpdatesFeed, { PlanUpdate } from './PlanUpdatesFeed';
-
-interface Plan {
-  id: string;
-  symbol: string;
-  strategy: string;
-  entry: number;
-  target: number;
-  stop: number;
-  status: 'waiting' | 'ready';
-  updates: PlanUpdate[];
-}
+import PlanUpdatesFeed, { type PlanUpdate } from './PlanUpdatesFeed';
+import { useTrades, type Plan } from '../context/TradeContext';
 
 export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item: any) => void }) {
-  const [plans, setPlans] = useState<Plan[]>([
-    { id: '1', symbol: 'COMI', strategy: 'اختراق مقاومة', entry: 75.00, target: 82.00, stop: 72.00, status: 'ready', updates: [{ id: 'u1', text: 'انتظار إغلاق شمعة ساعة فوق 75 للتأكيد...' }] },
-    { id: '2', symbol: 'FAIT', strategy: 'ارتداد من دعم', entry: 1.50, target: 1.80, stop: 1.40, status: 'waiting', updates: [{ id: 'u2', text: 'السهم عند منطقة طلب قوية جداً على اليومي.' }] }
-  ]);
+  const { plans, addPlan, updatePlan, deletePlan } = useTrades();
 
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -32,16 +19,17 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
   };
 
   const handleSavePlan = (updatedPlan: Plan) => {
-    setPlans(prev => {
-      const exists = prev.find(p => p.id === updatedPlan.id);
-      if (exists) return prev.map(p => p.id === updatedPlan.id ? updatedPlan : p);
-      return [updatedPlan, ...prev];
-    });
+    const exists = plans.find(p => p.id === updatedPlan.id);
+    if (exists) {
+      updatePlan(updatedPlan.id, updatedPlan);
+    } else {
+      addPlan(updatedPlan);
+    }
     setIsModalOpen(false);
   };
 
   const handleDelete = (id: string) => {
-    setPlans(prev => prev.filter(p => p.id !== id));
+    deletePlan(id);
   };
 
   const filteredPlans = plans.filter(p => {

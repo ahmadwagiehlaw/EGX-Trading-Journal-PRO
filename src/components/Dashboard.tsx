@@ -1,192 +1,169 @@
-import { useState } from 'react';
-import { Calculator, Wallet, TrendingUp, ShieldAlert, Activity, ArrowDownToLine, ArrowUpRight, CheckCircle } from 'lucide-react';
-import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
+import { Wallet, TrendingUp, ShieldAlert, Activity, ArrowUpRight, ArrowDownRight, BellRing, BookOpen, Target, LayoutGrid, CheckCircle, Clock } from 'lucide-react';
+import { useTrades } from '../context/TradeContext';
 
-const PORTFOLIOS = {
-  investment: { name: 'الاستثمار', capital: 1000000 },
-  speculation: { name: 'المضاربة', capital: 100000 },
-};
-
-export default function Dashboard({ onStartTrade }: { onStartTrade: (data: any) => void }) {
-  const [portfolioKey, setPortfolioKey] = useState<keyof typeof PORTFOLIOS>('investment');
-  const [symbol, setSymbol] = useState('COMI');
-  const [priceStr, setPriceStr] = useState('');
-  const [atrStr, setAtrStr] = useState('');
-
-  const capital = PORTFOLIOS[portfolioKey].capital;
-  const price = parseFloat(priceStr) || 0;
-  const atr = parseFloat(atrStr) || 0;
-
-  // Calculations for the widget
-  const slDistance = atr > 0 ? 2 * atr : 0;
-  const slPrice = price > 0 && slDistance > 0 ? price - slDistance : 0;
-  const minTarget = price > 0 && slDistance > 0 ? price + 2 * slDistance : 0;
-  const maxRiskAmount = capital * 0.01;
-  const sharesByRisk = slDistance > 0 ? Math.floor(maxRiskAmount / slDistance) : 0;
-  const maxAllocationAmount = capital * 0.25;
-  const sharesByAllocation = price > 0 ? Math.floor(maxAllocationAmount / price) : 0;
-  const finalShares = Math.min(sharesByRisk, sharesByAllocation);
+export default function Dashboard({ 
+  onOpenTradingDesk,
+  onNavigate 
+}: { 
+  onOpenTradingDesk?: (symbol?: string) => void;
+  onNavigate?: (tab: string) => void;
+}) {
+  const { capitalInvestment, trades, plans } = useTrades();
+  
+  // Stats
+  const openTradesCount = trades.filter(t => t.status === 'open').length;
+  const wonTradesCount = trades.filter(t => t.status === 'won').length;
+  
+  // Latest 4 plans
+  const recentPlans = [...plans].slice(0, 4);
+  // Latest 4 trades
+  const recentTrades = [...trades].slice(0, 4);
 
   return (
-    <div className="w-full h-full flex flex-col space-y-6" dir="rtl">
+    <div className="w-full h-full flex flex-col space-y-8" dir="rtl">
       
-      {/* Top Global Stats (Portfolio Level) */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white/60 backdrop-blur-md rounded-2xl p-5 border border-white/60 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-slate-500 font-bold text-sm">القوة الشرائية (Cash)</p>
-            <h3 className="text-2xl font-black text-slate-900" dir="ltr">{(capital * 0.4).toLocaleString()}</h3>
-          </div>
-          <div className="p-3 bg-blue-100 text-blue-600 rounded-xl"><Wallet className="w-6 h-6" /></div>
-        </div>
-        <div className="bg-white/60 backdrop-blur-md rounded-2xl p-5 border border-white/60 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-slate-500 font-bold text-sm">إجمالي السيولة بالسوق</p>
-            <h3 className="text-2xl font-black text-slate-900" dir="ltr">{(capital * 0.6).toLocaleString()}</h3>
-          </div>
-          <div className="p-3 bg-emerald-100 text-emerald-600 rounded-xl"><TrendingUp className="w-6 h-6" /></div>
-        </div>
-        <div className="bg-white/60 backdrop-blur-md rounded-2xl p-5 border border-white/60 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-slate-500 font-bold text-sm">مخاطرة المحفظة المفتوحة</p>
-            <h3 className="text-2xl font-black text-slate-900" dir="ltr">2.4%</h3>
-          </div>
-          <div className="p-3 bg-red-100 text-red-600 rounded-xl"><ShieldAlert className="w-6 h-6" /></div>
-        </div>
-        <div className="bg-white/60 backdrop-blur-md rounded-2xl p-5 border border-white/60 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-slate-500 font-bold text-sm">أداء اليوم</p>
-            <h3 className="text-2xl font-black text-emerald-600" dir="ltr">+0.8%</h3>
-          </div>
-          <div className="p-3 bg-slate-100 text-slate-600 rounded-xl"><Activity className="w-6 h-6" /></div>
+      {/* Welcome & Context */}
+      <div className="flex justify-between items-end">
+        <div>
+          <h1 className="text-3xl font-black text-slate-800 mb-2 flex items-center gap-3">
+            <LayoutGrid className="w-8 h-8 text-blue-600" />
+            لوحة القيادة (موجز المحفظة)
+          </h1>
+          <p className="font-handwriting text-slate-500 font-bold text-lg">نظرة عامة على محفظتك، خططك الحالية، وصفقاتك النشطة.</p>
         </div>
       </div>
 
-      {/* Main Terminal Area */}
-      <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-[600px]">
+      {/* Top Global Stats (Portfolio Level) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white/40 backdrop-blur-md rounded-2xl p-6 border border-white/60 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-1 h-full bg-blue-400 group-hover:w-2 transition-all"></div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-slate-500 font-bold text-sm">القوة الشرائية</p>
+            <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100"><Wallet className="w-5 h-5" /></div>
+          </div>
+          <h3 className="text-3xl font-black text-slate-900" dir="ltr">{(capitalInvestment * 0.4).toLocaleString()}</h3>
+        </div>
         
-        {/* TradingView Chart (Center/Right) */}
-        <div className="flex-1 bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[600px] z-10 relative">
-          <AdvancedRealTimeChart 
-            symbol={`EGX:${symbol || 'COMI'}`}
-            interval="D"
-            theme="light"
-            locale="ar_AE"
-            autosize
-            allow_symbol_change={true}
-            hide_side_toolbar={false}
-            details={true}
-            save_image={true}
-            timezone="Africa/Cairo"
-            studies={["MACD@tv-basicstudies"]}
-          />
+        <div className="bg-white/40 backdrop-blur-md rounded-2xl p-6 border border-white/60 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-1 h-full bg-emerald-400 group-hover:w-2 transition-all"></div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-slate-500 font-bold text-sm">إجمالي السيولة</p>
+            <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100"><TrendingUp className="w-5 h-5" /></div>
+          </div>
+          <h3 className="text-3xl font-black text-slate-900" dir="ltr">{(capitalInvestment).toLocaleString()}</h3>
+        </div>
+        
+        <div className="bg-white/40 backdrop-blur-md rounded-2xl p-6 border border-white/60 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-1 h-full bg-amber-400 group-hover:w-2 transition-all"></div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-slate-500 font-bold text-sm">الصفقات المفتوحة</p>
+            <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl border border-amber-100"><Activity className="w-5 h-5" /></div>
+          </div>
+          <h3 className="text-3xl font-black text-slate-900" dir="ltr">{openTradesCount}</h3>
+        </div>
+        
+        <div className="bg-white/40 backdrop-blur-md rounded-2xl p-6 border border-white/60 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-1 h-full bg-purple-400 group-hover:w-2 transition-all"></div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-slate-500 font-bold text-sm">الصفقات الرابحة</p>
+            <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl border border-purple-100"><ShieldAlert className="w-5 h-5" /></div>
+          </div>
+          <h3 className="text-3xl font-black text-slate-900" dir="ltr">{wonTradesCount}</h3>
+        </div>
+      </div>
+
+      {/* Main Dashboard Areas */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 flex-1">
+        
+        {/* Watchlist Plans */}
+        <div className="bg-white/40 backdrop-blur-md rounded-[2rem] p-6 lg:p-8 border border-white/60 shadow-sm">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+              <Target className="w-5 h-5 text-orange-500" />
+              أحدث خطط التداول (Watchlist)
+            </h2>
+            <button onClick={() => onNavigate?.('قائمة المراقبة')} className="text-sm font-bold text-blue-600 hover:underline">عرض الكل</button>
+          </div>
+          
+          <div className="space-y-4">
+            {recentPlans.length === 0 ? (
+              <div className="p-8 text-center border-2 border-dashed border-slate-300/50 rounded-2xl bg-white/20">
+                <Target className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <p className="text-slate-400 font-bold">لا توجد خطط تداول حالياً.</p>
+              </div>
+            ) : (
+              recentPlans.map(plan => (
+                <div 
+                  key={plan.id}
+                  onClick={() => onOpenTradingDesk?.(plan.symbol)}
+                  className="flex items-center justify-between p-4 bg-white/60 rounded-2xl border border-white shadow-sm hover:shadow-md hover:border-orange-200 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-1.5 h-10 rounded-full bg-orange-400"></div>
+                    <div>
+                      <h4 className="font-black text-lg text-slate-800 group-hover:text-orange-600 transition-colors" dir="ltr">{plan.symbol}</h4>
+                      <p className="font-handwriting text-slate-500 font-medium text-sm mt-0.5">{plan.strategy}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className={`px-2.5 py-1 rounded-lg text-xs font-black inline-flex items-center gap-1 border ${plan.status === 'ready' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                      {plan.status === 'ready' ? <Target className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                      {plan.status === 'ready' ? 'جاهز للتنفيذ' : 'قيد المتابعة'}
+                    </span>
+                    <p className="text-xs font-bold text-slate-400 mt-1" dir="ltr">Entry: {plan.entry}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
-        {/* Professional Risk Calculator Sidebar (Left) */}
-        <div className="w-full lg:w-[400px] flex flex-col gap-4">
-          
-          <div className="bg-slate-900 rounded-3xl p-6 shadow-xl text-white flex-1 border border-slate-800">
-            <div className="flex items-center justify-between mb-6 border-b border-slate-700 pb-4">
-              <h2 className="text-xl font-black flex items-center gap-2">
-                <Calculator className="w-5 h-5 text-blue-400" />
-                حاسبة المخاطر السريعة
-              </h2>
-            </div>
-
-            <div className="space-y-5">
-              {/* Setup Inputs */}
-              <div>
-                <label className="text-sm font-bold text-slate-400 mb-1.5 block">المحفظة</label>
-                <div className="flex bg-slate-800 p-1 rounded-xl">
-                  {(Object.keys(PORTFOLIOS) as Array<keyof typeof PORTFOLIOS>).map((key) => (
-                    <button
-                      key={key}
-                      onClick={() => setPortfolioKey(key)}
-                      className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
-                        portfolioKey === key ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      {PORTFOLIOS[key].name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="text-sm font-bold text-slate-400 mb-1.5 block">السهم</label>
-                  <input 
-                    type="text" 
-                    value={symbol}
-                    onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl py-3 px-4 text-white font-black focus:outline-none focus:border-blue-500 transition-colors"
-                    placeholder="COMI"
-                    dir="ltr"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="text-sm font-bold text-slate-400 mb-1.5 block">السعر (EGP)</label>
-                  <input 
-                    type="number" 
-                    value={priceStr}
-                    onChange={(e) => setPriceStr(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl py-3 px-4 text-white font-black focus:outline-none focus:border-blue-500 transition-colors"
-                    placeholder="0.00"
-                    dir="ltr"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-bold text-slate-400 mb-1.5 block">مؤشر ATR</label>
-                <input 
-                  type="number" 
-                  value={atrStr}
-                  onChange={(e) => setAtrStr(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl py-3 px-4 text-white font-black focus:outline-none focus:border-blue-500 transition-colors"
-                  placeholder="0.00"
-                  dir="ltr"
-                />
-              </div>
-
-              {/* Outputs (Only show if calculated) */}
-              <div className="mt-6 space-y-3 pt-6 border-t border-slate-800">
-                <div className="flex justify-between items-center bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                  <div className="flex items-center gap-2 text-slate-300 font-bold text-sm">
-                    <ArrowDownToLine className="w-4 h-4 text-red-400" />
-                    الوقف الحتمي
-                  </div>
-                  <span className="font-black text-xl text-white" dir="ltr">{slPrice > 0 ? slPrice.toFixed(2) : '--'}</span>
-                </div>
-                <div className="flex justify-between items-center bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                  <div className="flex items-center gap-2 text-slate-300 font-bold text-sm">
-                    <ArrowUpRight className="w-4 h-4 text-emerald-400" />
-                    الهدف (2:1)
-                  </div>
-                  <span className="font-black text-xl text-white" dir="ltr">{minTarget > 0 ? minTarget.toFixed(2) : '--'}</span>
-                </div>
-                <div className="flex justify-between items-center bg-blue-600/20 p-4 rounded-xl border border-blue-500/30">
-                  <div className="flex items-center gap-2 text-blue-200 font-bold text-sm">
-                    الكمية الآمنة (أسهم)
-                  </div>
-                  <span className="font-black text-2xl text-blue-400" dir="ltr">{finalShares > 0 ? finalShares.toLocaleString() : '--'}</span>
-                </div>
-              </div>
-
-              {/* Start Trade Button */}
-              {finalShares > 0 && price > 0 && slDistance > 0 && (
-                <button 
-                  onClick={() => onStartTrade({ symbol, entryPrice: price, atr15: atr, initialStopLoss: slPrice, currentStopLoss: slPrice, highestPriceSinceEntry: price, targetPrice: minTarget, sharesCount: finalShares })}
-                  className="w-full mt-6 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-black py-4 rounded-xl shadow-[0_0_20px_rgba(37,99,235,0.4)] flex items-center justify-center gap-2 transition-all hover:-translate-y-1"
-                >
-                  <CheckCircle className="w-5 h-5" />
-                  تسجيل هذه الصفقة بالجورنال
-                </button>
-              )}
-
-            </div>
+        {/* Recent Trades */}
+        <div className="bg-white/40 backdrop-blur-md rounded-[2rem] p-6 lg:p-8 border border-white/60 shadow-sm">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-emerald-500" />
+              أحدث الصفقات (Journal)
+            </h2>
+            <button onClick={() => onNavigate?.('سجل الصفقات')} className="text-sm font-bold text-blue-600 hover:underline">عرض الكل</button>
           </div>
-
+          
+          <div className="space-y-4">
+            {recentTrades.length === 0 ? (
+              <div className="p-8 text-center border-2 border-dashed border-slate-300/50 rounded-2xl bg-white/20">
+                <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <p className="text-slate-400 font-bold">لم تقم بتسجيل أي صفقات بعد.</p>
+              </div>
+            ) : (
+              recentTrades.map(trade => (
+                <div 
+                  key={trade.id}
+                  onClick={() => onNavigate?.('سجل الصفقات')}
+                  className="flex items-center justify-between p-4 bg-white/60 rounded-2xl border border-white shadow-sm hover:shadow-md hover:border-emerald-200 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-1.5 h-10 rounded-full ${trade.status === 'open' ? 'bg-blue-400' : trade.status === 'won' ? 'bg-emerald-400' : trade.status === 'lost' ? 'bg-red-400' : 'bg-slate-400'}`}></div>
+                    <div>
+                      <h4 className="font-black text-lg text-slate-800 group-hover:text-emerald-600 transition-colors" dir="ltr">{trade.symbol}</h4>
+                      <p className="text-slate-500 font-bold text-xs mt-0.5">
+                        {new Date(trade.entryDate).toLocaleDateString('ar-EG')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className={`px-2.5 py-1 rounded-lg text-xs font-black inline-flex items-center gap-1 border ${trade.status === 'open' ? 'bg-blue-50 text-blue-600 border-blue-100' : trade.status === 'won' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : trade.status === 'lost' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+                      {trade.status === 'open' ? 'مفتوحة' : trade.status === 'won' ? 'ربح' : trade.status === 'lost' ? 'خسارة' : 'تعادل'}
+                    </span>
+                    {trade.pnl !== undefined && (
+                      <p className={`text-xs font-black mt-1 ${trade.pnl > 0 ? 'text-emerald-500' : trade.pnl < 0 ? 'text-red-500' : 'text-slate-500'}`} dir="ltr">
+                        {trade.pnl > 0 ? '+' : ''}{trade.pnl.toFixed(0)} EGP
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
       </div>

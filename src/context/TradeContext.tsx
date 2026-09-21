@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { type PlanUpdate } from '../components/PlanUpdatesFeed';
 
 export interface Trade {
   id: string;
@@ -25,6 +26,17 @@ export interface Trade {
   mistake?: string;
 }
 
+export interface Plan {
+  id: string;
+  symbol: string;
+  strategy: string;
+  entry: number;
+  target: number;
+  stop: number;
+  status: 'waiting' | 'ready';
+  updates: PlanUpdate[];
+}
+
 interface TradeContextType {
   trades: Trade[];
   addTrade: (trade: Omit<Trade, 'id' | 'entryDate'>) => void;
@@ -35,6 +47,10 @@ interface TradeContextType {
   capitalInvestment: number;
   capitalSpeculation: number;
   updateCapital: (inv: number, spec: number) => void;
+  plans: Plan[];
+  addPlan: (plan: Plan) => void;
+  updatePlan: (id: string, plan: Partial<Plan>) => void;
+  deletePlan: (id: string) => void;
 }
 
 const defaultCapital = { investment: 1000000, speculation: 100000 };
@@ -111,6 +127,31 @@ export function TradeProvider({ children }: { children: ReactNode }) {
     setCapitalSpeculation(spec);
   };
 
+  const [plans, setPlans] = useState<Plan[]>(() => {
+    const saved = localStorage.getItem('egx_plans');
+    if (saved) return JSON.parse(saved);
+    return [
+      { id: '1', symbol: 'COMI', strategy: 'اختراق مقاومة', entry: 75.00, target: 82.00, stop: 72.00, status: 'ready', updates: [{ id: 'u1', text: 'انتظار إغلاق شمعة ساعة فوق 75 للتأكيد...', image: '' }] },
+      { id: '2', symbol: 'FAIT', strategy: 'ارتداد من دعم', entry: 1.50, target: 1.80, stop: 1.40, status: 'waiting', updates: [{ id: 'u2', text: 'السهم عند منطقة طلب قوية جداً على اليومي.', image: '' }] }
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('egx_plans', JSON.stringify(plans));
+  }, [plans]);
+
+  const addPlan = (plan: Plan) => {
+    setPlans(prev => [plan, ...prev]);
+  };
+
+  const updatePlan = (id: string, planData: Partial<Plan>) => {
+    setPlans(prev => prev.map(p => p.id === id ? { ...p, ...planData } : p));
+  };
+
+  const deletePlan = (id: string) => {
+    setPlans(prev => prev.filter(p => p.id !== id));
+  };
+
   return (
     <TradeContext.Provider value={{
       trades,
@@ -122,6 +163,10 @@ export function TradeProvider({ children }: { children: ReactNode }) {
       capitalInvestment,
       capitalSpeculation,
       updateCapital,
+      plans,
+      addPlan,
+      updatePlan,
+      deletePlan,
     }}>
       {children}
     </TradeContext.Provider>
