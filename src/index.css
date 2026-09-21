@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Cairo:wght@400;600;700;900&display=swap');
+@import "tailwindcss";
+
+@layer base {
+  html, body {
+    font-family: 'Cairo', sans-serif;
+    background-color: #ffffff;
+  }
+}
+
+/* ===== NOTEBOOK PAPER THEME ===== */
+
+.font-handwriting {
+  font-family: 'Caveat', cursive;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
