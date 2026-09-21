@@ -1,4 +1,4 @@
-import { Wallet, TrendingUp, ShieldAlert, Activity, ArrowUpRight, ArrowDownRight, BellRing, BookOpen, Target, LayoutGrid, CheckCircle, Clock } from 'lucide-react';
+import { Wallet, TrendingUp, ShieldAlert, Activity, BookOpen, Target, LayoutGrid, Clock } from 'lucide-react';
 import { useTrades } from '../context/TradeContext';
 
 export default function Dashboard({ 
@@ -22,17 +22,6 @@ export default function Dashboard({
   return (
     <div className="w-full h-full flex flex-col space-y-8" dir="rtl">
       
-      {/* Welcome & Context */}
-      <div className="flex justify-between items-end">
-        <div>
-          <h1 className="text-3xl font-black text-slate-800 mb-2 flex items-center gap-3">
-            <LayoutGrid className="w-8 h-8 text-blue-600" />
-            لوحة القيادة (موجز المحفظة)
-          </h1>
-          <p className="font-handwriting text-slate-500 font-bold text-lg">نظرة عامة على محفظتك، خططك الحالية، وصفقاتك النشطة.</p>
-        </div>
-      </div>
-
       {/* Top Global Stats (Portfolio Level) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white/40 backdrop-blur-md rounded-2xl p-6 border border-white/60 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden group">

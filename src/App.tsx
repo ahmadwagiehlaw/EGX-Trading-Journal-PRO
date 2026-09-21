@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
-import ActiveTrades from './components/ActiveTrades';
-import NewTradeForm from './components/NewTradeForm';
 import Analytics from './components/Analytics';
 import TradesJournal from './components/TradesJournal';
 import Settings from './components/Settings';

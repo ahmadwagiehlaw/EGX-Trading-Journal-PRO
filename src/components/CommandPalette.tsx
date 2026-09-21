@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Command } from 'cmdk';
 import { Search, PenTool, LayoutDashboard, Target, BookOpen, BarChart2, Settings as SettingsIcon } from 'lucide-react';
 
 interface CommandPaletteProps {
   open: boolean;
-  setOpen: (open: boolean) => void;
+  setOpen: (open: boolean | ((open: boolean) => boolean)) => void;
   setActiveTab: (tab: string) => void;
   onStartTrade: () => void;
 }
@@ -14,7 +14,7 @@ export default function CommandPalette({ open, setOpen, setActiveTab, onStartTra
     const down = (e: KeyboardEvent) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        setOpen((open) => !open);
+        setOpen((prev: boolean) => !prev);
       }
     };
     document.addEventListener('keydown', down);

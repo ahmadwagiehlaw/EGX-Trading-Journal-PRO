@@ -73,7 +73,7 @@ export default function BeforeAfterSlider({ beforeImage, afterImage }: BeforeAft
         className="absolute top-0 bottom-0 z-20 w-1 bg-white cursor-ew-resize flex items-center justify-center transition-shadow hover:shadow-[0_0_10px_rgba(255,255,255,0.8)]"
         style={{ left: `calc(${sliderPosition}% - 2px)` }}
         onMouseDown={(e) => { e.preventDefault(); setIsDragging(true); }}
-        onTouchStart={(e) => { setIsDragging(true); }}
+        onTouchStart={() => { setIsDragging(true); }}
       >
         <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white -ml-[14px]">
           <ArrowLeftRight className="w-4 h-4 text-white" />

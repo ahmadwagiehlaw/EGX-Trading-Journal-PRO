@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Plus, Target, Clock, ArrowRight, LayoutGrid, CheckSquare, X, Save, Search, LineChart, FileText } from 'lucide-react';
-import PlanUpdatesFeed, { type PlanUpdate } from './PlanUpdatesFeed';
+import { Plus, Target, Clock, ArrowRight, CheckSquare, X, Save, Search, LineChart, FileText } from 'lucide-react';
+import PlanUpdatesFeed from './PlanUpdatesFeed';
 import { useTrades, type Plan } from '../context/TradeContext';
 
 export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item: any) => void }) {
@@ -42,22 +42,10 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
   return (
     <div className="w-full space-y-6" dir="rtl">
       {/* Header & Controls */}
-      <div className="bg-white/60 backdrop-blur-md border border-white/60 p-6 rounded-3xl shadow-sm space-y-6">
-        <div className="flex justify-end items-center">
-          <button 
-            onClick={() => {
-              setSelectedPlan({ id: Date.now().toString(), symbol: '', strategy: '', entry: 0, target: 0, stop: 0, status: 'waiting', updates: [] });
-              setIsModalOpen(true);
-            }}
-            className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-6 py-3 rounded-2xl shadow-lg flex items-center gap-2 transition-transform hover:-translate-y-1 w-full md:w-auto justify-center"
-          >
-            <Plus className="w-5 h-5" />
-            إضافة خطة جديدة
-          </button>
-        </div>
-
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white/60 backdrop-blur-md border border-white/60 p-4 rounded-3xl shadow-sm">
+        
         {/* Filters and Search */}
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4 pt-4 border-t border-slate-200/50">
+        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
           
           {/* Subtabs */}
           <div className="flex p-1.5 bg-slate-200/50 rounded-2xl w-full md:w-auto">
@@ -93,6 +81,17 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
             />
           </div>
         </div>
+        
+        <button 
+          onClick={() => {
+            setSelectedPlan({ id: Date.now().toString(), symbol: '', strategy: '', entry: 0, target: 0, stop: 0, status: 'waiting', updates: [] });
+            setIsModalOpen(true);
+          }}
+          className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-6 py-2.5 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-transform hover:-translate-y-1 w-full md:w-auto shrink-0"
+        >
+          <Plus className="w-5 h-5" />
+          إضافة خطة جديدة
+        </button>
       </div>
 
       {/* Grid of Cards */}

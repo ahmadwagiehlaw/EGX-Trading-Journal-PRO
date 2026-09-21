@@ -127,7 +127,7 @@ export default function TradesJournal({ draftTrade, isNewTradeOpen, setIsNewTrad
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="font-black text-slate-800" dir="ltr">{trade.symbol}</span>
-                          {trade.isRuleBreaker && <ShieldAlert className="w-3.5 h-3.5 text-amber-500" title="صفقة استثنائية" />}
+                          {trade.isRuleBreaker && <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />}
                         </div>
                         <span className="font-handwriting text-xs text-slate-400">صفقة #{idx + 1}</span>
                       </div>
@@ -153,14 +153,12 @@ export default function TradesJournal({ draftTrade, isNewTradeOpen, setIsNewTrad
                       <button 
                         onClick={(e) => { e.stopPropagation(); setSelectedTradeId(trade.id); }}
                         className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                        title="فتح الشارت وتفاصيل الصفقة"
                       >
                         <LineChart className="w-4 h-4" />
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); setEditingTrade(trade); setIsNewTradeOpen(true); }}
                         className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="تعديل"
                       >
                         <PenTool className="w-4 h-4" />
                       </button>

@@ -128,7 +128,7 @@ export default function Analytics() {
               <YAxis domain={['auto','auto']} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }} dx={-8} tickFormatter={v => `${(v/1000).toFixed(0)}k`}/>
               <Tooltip 
                 contentStyle={{ borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', fontWeight: 'bold', backgroundColor: '#fff' }}
-                formatter={(value: number) => [`${value.toLocaleString()} EGP`, 'رأس المال']}
+                formatter={(value: any) => [`${value.toLocaleString()} EGP`, 'رأس المال']}
                 labelStyle={{ color: '#64748b' }}
               />
               <Area type="monotone" dataKey="equity" stroke="#2563eb" strokeWidth={2.5} fillOpacity={1} fill="url(#colorEquity)"

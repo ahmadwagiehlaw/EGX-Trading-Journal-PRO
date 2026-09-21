@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calculator, Info, ShieldAlert, Target, TrendingUp, AlertTriangle, Wallet, ArrowDownToLine, ArrowUpRight } from 'lucide-react';
+import { Calculator, Info, ShieldAlert, TrendingUp, AlertTriangle, Wallet, ArrowDownToLine, ArrowUpRight } from 'lucide-react';
 
 const PORTFOLIOS = {
   investment: { name: 'محفظة الاستثمار', capital: 1000000 },
