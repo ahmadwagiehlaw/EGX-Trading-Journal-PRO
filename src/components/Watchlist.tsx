@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Plus, Target, Clock, ArrowRight, LayoutGrid, CheckSquare, X, Save, Search, LineChart, FileText } from 'lucide-react';
-import PlanNotesAndImages from './PlanNotesAndImages';
+import PlanUpdatesFeed, { PlanUpdate } from './PlanUpdatesFeed';
 
 interface Plan {
   id: string;
@@ -10,14 +10,13 @@ interface Plan {
   target: number;
   stop: number;
   status: 'waiting' | 'ready';
-  notes: string;
-  images: string[];
+  updates: PlanUpdate[];
 }
 
 export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item: any) => void }) {
   const [plans, setPlans] = useState<Plan[]>([
-    { id: '1', symbol: 'COMI', strategy: 'اختراق مقاومة', entry: 75.00, target: 82.00, stop: 72.00, status: 'ready', notes: '<p>انتظار إغلاق شمعة ساعة فوق 75 للتأكيد...</p>', images: [] },
-    { id: '2', symbol: 'FAIT', strategy: 'ارتداد من دعم', entry: 1.50, target: 1.80, stop: 1.40, status: 'waiting', notes: '<p>السهم عند منطقة طلب قوية جداً على اليومي.</p>', images: [] }
+    { id: '1', symbol: 'COMI', strategy: 'اختراق مقاومة', entry: 75.00, target: 82.00, stop: 72.00, status: 'ready', updates: [{ id: 'u1', text: 'انتظار إغلاق شمعة ساعة فوق 75 للتأكيد...' }] },
+    { id: '2', symbol: 'FAIT', strategy: 'ارتداد من دعم', entry: 1.50, target: 1.80, stop: 1.40, status: 'waiting', updates: [{ id: 'u2', text: 'السهم عند منطقة طلب قوية جداً على اليومي.' }] }
   ]);
 
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
@@ -67,7 +66,7 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
           
           <button 
             onClick={() => {
-              setSelectedPlan({ id: Date.now().toString(), symbol: '', strategy: '', entry: 0, target: 0, stop: 0, status: 'waiting', notes: '', images: [] });
+              setSelectedPlan({ id: Date.now().toString(), symbol: '', strategy: '', entry: 0, target: 0, stop: 0, status: 'waiting', updates: [] });
               setIsModalOpen(true);
             }}
             className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-6 py-3 rounded-2xl shadow-lg flex items-center gap-2 transition-transform hover:-translate-y-1 w-full md:w-auto justify-center"
@@ -284,13 +283,11 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
                 </div>
               </div>
 
-              {/* Left Column (in RTL): Rich Text Editor & Images */}
+              {/* Left Column (in RTL): Updates Feed */}
               <div className="flex-1 flex flex-col min-h-[400px]">
-                <PlanNotesAndImages 
-                  notes={selectedPlan.notes} 
-                  images={selectedPlan.images}
-                  onChangeNotes={(val) => setSelectedPlan({...selectedPlan, notes: val})} 
-                  onChangeImages={(imgs) => setSelectedPlan({...selectedPlan, images: imgs})}
+                <PlanUpdatesFeed 
+                  updates={selectedPlan.updates} 
+                  onChange={(updates) => setSelectedPlan({...selectedPlan, updates})}
                 />
               </div>
             </div>
