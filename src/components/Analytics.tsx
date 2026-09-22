@@ -1,34 +1,33 @@
 import { useState, useMemo } from 'react';
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer
-} from 'recharts';
+// Recharts removed from Analytics
 import { 
   Target, 
   TrendingUp, 
   TrendingDown, 
   Percent, 
   BrainCircuit, 
-  Award, 
+  Wallet,
+  Activity,
+  ShieldAlert,
+  Award,
   AlertOctagon,
   Sparkles,
   Calendar,
   Layers
 } from 'lucide-react';
 import { useTrades } from '../context/TradeContext';
-import { useTheme } from '../context/ThemeContext';
 import { computePositionMetrics, formatEGP } from '../utils/calculations';
 import PnLCalendar from './PnLCalendar';
 
 export default function Analytics() {
-  const { positions, capitalInvestment } = useTrades();
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
+  const { 
+    positions, 
+    capitalInvestment,
+    totalOpenCapital,
+    totalOpenRisk,
+    openPositionsCount
+  } = useTrades();
+  const availableLiquidity = capitalInvestment - totalOpenCapital;
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'calendar' | 'psychology'>('overview');
 
   // Closed positions metrics
@@ -59,32 +58,6 @@ export default function Analytics() {
 
   const ruleBreakerCount = closedPositions.filter(p => p.journal?.isRuleBreaker).length;
   const disciplineScore = closedPositions.length > 0 ? Math.max(0, 100 - (ruleBreakerCount * 12)) : 100;
-
-  // Equity Curve Timeline Data
-  const equityData = useMemo(() => {
-    let currentEquity = capitalInvestment;
-    const sorted = [...closedPositions].sort((a, b) => {
-      const dateA = a.journal?.closedDate || a.journal?.openedDate || 0;
-      const dateB = b.journal?.closedDate || b.journal?.openedDate || 0;
-      return dateA - dateB;
-    });
-
-    const data = sorted.map((p, idx) => {
-      const pnl = computePositionMetrics(p).netRealizedPnL;
-      currentEquity += pnl;
-      return {
-        trade: p.symbol || `#${idx + 1}`,
-        equity: currentEquity,
-        pnl,
-      };
-    });
-
-    if (data.length === 0) {
-      data.push({ trade: 'بداية', equity: capitalInvestment, pnl: 0 });
-    }
-
-    return data;
-  }, [closedPositions, capitalInvestment]);
 
   // Emotion Performance Analysis
   const emotionStats = useMemo(() => {
@@ -233,70 +206,50 @@ export default function Analytics() {
 
           </div>
 
-          {/* Equity Curve */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-4">
-              <div>
-                <h2 className="text-lg font-black text-slate-900 dark:text-white">منحنى نمو رأس المال (Equity Curve)</h2>
-                <p className="text-xs text-slate-400 font-bold mt-0.5">تطور السيولة التراكمية مع كل إغلاق لصفقة</p>
+          {/* Active Portfolio Health (Moved from Dashboard) */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4 mt-6">
+            <h2 className="text-lg font-black text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-4">السيولة والمخاطرة الحالية</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-200 dark:border-slate-700/80 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-slate-600 dark:text-slate-400 font-bold text-xs">السيولة المتاحة</span>
+                  <div className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 rounded-lg">
+                    <Wallet className="w-4 h-4" />
+                  </div>
+                </div>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white font-mono-num" dir="ltr">
+                  {formatEGP(availableLiquidity)}
+                </h3>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-1">جاهزة للتداول</span>
               </div>
-              <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 self-start sm:self-auto font-mono-num">
-                رأس المال المبدئي: {formatEGP(capitalInvestment)}
-              </div>
-            </div>
 
-            <div className="h-[340px] w-full" dir="ltr">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={equityData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid 
-                    strokeDasharray="3 3" 
-                    vertical={false} 
-                    stroke={isDark ? '#334155' : '#e2e8f0'} 
-                    opacity={0.6} 
-                  />
-                  <XAxis 
-                    dataKey="trade" 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 11, fontWeight: 700 }} 
-                    dy={8} 
-                  />
-                  <YAxis 
-                    domain={['auto', 'auto']} 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 11, fontWeight: 700 }} 
-                    dx={-8} 
-                    tickFormatter={v => `${(v / 1000).toFixed(0)}k`} 
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      borderRadius: '16px', 
-                      border: isDark ? '1px solid #334155' : '1px solid #e2e8f0', 
-                      boxShadow: '0 10px 25px rgba(0,0,0,0.15)', 
-                      fontWeight: 'bold', 
-                      backgroundColor: isDark ? '#1e293b' : '#0f172a', 
-                      color: '#ffffff' 
-                    }}
-                    formatter={(val: any) => [`${Number(val).toLocaleString()} EGP`, 'السيولة الكلية']}
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="equity" 
-                    stroke="#2563eb" 
-                    strokeWidth={3} 
-                    fillOpacity={1} 
-                    fill="url(#equityGrad)" 
-                    activeDot={{ r: 6, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} 
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-200 dark:border-slate-700/80 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-slate-600 dark:text-slate-400 font-bold text-xs">السيولة المقيدة</span>
+                  <div className="p-1.5 bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 rounded-lg">
+                    <Activity className="w-4 h-4" />
+                  </div>
+                </div>
+                <h3 className="text-xl font-black text-purple-700 dark:text-purple-400 font-mono-num" dir="ltr">
+                  {formatEGP(totalOpenCapital)}
+                </h3>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-1">{openPositionsCount} مراكز مفتوحة</span>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-200 dark:border-slate-700/80 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-slate-600 dark:text-slate-400 font-bold text-xs">المخاطرة المفتوحة</span>
+                  <div className="p-1.5 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 rounded-lg">
+                    <ShieldAlert className="w-4 h-4" />
+                  </div>
+                </div>
+                <h3 className="text-xl font-black text-red-600 dark:text-red-400 font-mono-num" dir="ltr">
+                  {formatEGP(totalOpenRisk)}
+                </h3>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-1">عند نقاط الوقف الحالية</span>
+              </div>
+
             </div>
           </div>
         </div>

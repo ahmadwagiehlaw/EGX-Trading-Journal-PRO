@@ -477,7 +477,7 @@ export default function TradesJournal({
                 <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-3 gap-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30">
                   
                   {/* TILE 1: RISK & STOP (Bold Crimson/Red Theme) */}
-                  <div className="bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/90 dark:border-rose-900/50 rounded-2xl p-3.5 flex flex-col justify-between space-y-2.5 relative overflow-hidden">
+                  <div className="bg-rose-100/60 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-900/50 rounded-2xl p-3.5 flex flex-col justify-between space-y-2.5 relative overflow-hidden">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
                         <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400" />
@@ -514,7 +514,7 @@ export default function TradesJournal({
                   </div>
 
                   {/* TILE 2: POSITION & ENTRY CAPITAL (Neutral / Blue Theme) */}
-                  <div className="bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between space-y-2.5 shadow-xs">
+                  <div className="bg-blue-50/50 dark:bg-slate-850 border border-blue-200/60 dark:border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between space-y-2.5 shadow-xs">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                         <Wallet className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -549,7 +549,7 @@ export default function TradesJournal({
                   </div>
 
                   {/* TILE 3: TARGET & PROFIT POTENTIAL (Bold Emerald/Green Theme) */}
-                  <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/90 dark:border-emerald-900/50 rounded-2xl p-3.5 flex flex-col justify-between space-y-2.5">
+                  <div className="bg-emerald-100/60 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-900/50 rounded-2xl p-3.5 flex flex-col justify-between space-y-2.5">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
                         <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />

@@ -15,17 +15,14 @@ import { useTrades } from '../context/TradeContext';
 import { exportPositionsToCsv, exportPlansToCsv } from '../utils/exportCsv';
 
 export default function Settings() {
-  const { capitalInvestment, capitalSpeculation, updateCapital, positions, plans } = useTrades();
-  
-  const [investment, setInvestment] = useState(capitalInvestment.toString());
-  const [speculation, setSpeculation] = useState(capitalSpeculation.toString());
+  const { capitalInvestment, capitalSpeculation, positions, plans } = useTrades();
   const [defaultRisk, setDefaultRisk] = useState('1');
   const [commission, setCommission] = useState('0.003');
 
   const [savedMessage, setSavedMessage] = useState(false);
 
   const handleSave = () => {
-    updateCapital(parseFloat(investment) || 0, parseFloat(speculation) || 0);
+    // Only risk & commission to be saved later if added to context
     setSavedMessage(true);
     setTimeout(() => setSavedMessage(false), 3000);
   };
@@ -34,7 +31,7 @@ export default function Settings() {
     const backupData = {
       version: '2.0',
       exportDate: new Date().toISOString(),
-      capital: { investment: parseFloat(investment), speculation: parseFloat(speculation) },
+      capital: { investment: capitalInvestment, speculation: capitalSpeculation },
       positions,
       plans,
     };
@@ -86,35 +83,19 @@ export default function Settings() {
             <Wallet className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             <h3 className="text-lg font-black text-slate-900 dark:text-white">إعدادات المحفظة (رأس المال)</h3>
           </div>
-
           <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5">رأس مال محفظة الاستثمار (EGP)</label>
-              <input 
-                type="number" 
-                value={investment}
-                onChange={(e) => setInvestment(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-4 text-slate-900 dark:text-white font-black text-sm focus:border-blue-500 outline-none"
-                dir="ltr"
-              />
+            <div className="bg-blue-50 dark:bg-blue-950/40 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/60 flex items-start gap-3">
+              <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-sm font-black text-blue-900 dark:text-blue-300">تم ترقية نظام إدارة رأس المال! 🚀</p>
+                <p className="text-xs font-bold text-blue-800/80 dark:text-blue-300/80 leading-relaxed">
+                  لم يعد رأس المال مجرد رقم ثابت يتم تعديله هنا. الآن أصبح لديك <span className="text-blue-700 dark:text-blue-400 font-black">"سجل خزينة"</span> متكامل يسجل كل حركات الإيداع والسحب الخاصة بك.
+                </p>
+                <p className="text-xs font-bold text-blue-800/80 dark:text-blue-300/80 leading-relaxed mt-2">
+                  👉 لإضافة أو تعديل رأس مالك، توجه إلى شاشة <span className="font-black bg-blue-100 dark:bg-blue-900 px-1 rounded text-blue-700 dark:text-blue-400">الداشبورد</span> واضغط على زر سجل السحب والإيداع.
+                </p>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5">رأس مال محفظة المضاربة (EGP)</label>
-              <input 
-                type="number" 
-                value={speculation}
-                onChange={(e) => setSpeculation(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-4 text-slate-900 dark:text-white font-black text-sm focus:border-blue-500 outline-none"
-                dir="ltr"
-              />
-            </div>
-          </div>
-          
-          <div className="bg-blue-50 dark:bg-blue-950/40 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/60 flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-            <p className="text-xs font-bold text-blue-800 dark:text-blue-300 leading-relaxed">
-              يُستخدم رأس المال لحساب نسبة المخاطرة (1%) وسقف السيولة (25%) في كل عملية تداول وغرفة العمليات.
-            </p>
           </div>
         </div>
 

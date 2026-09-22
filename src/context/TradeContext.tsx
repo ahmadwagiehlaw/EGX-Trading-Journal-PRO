@@ -31,6 +31,15 @@ export interface Plan {
   createdAt?: number;
 }
 
+export interface LedgerEntry {
+  id: string;
+  type: 'deposit' | 'withdrawal';
+  amount: number;
+  portfolioType: 'investment' | 'speculation';
+  date: number;
+  note?: string;
+}
+
 // Backward-compatible Trade interface for legacy calls
 export interface Trade extends Omit<TickerPosition, 'status'> {
   status: 'open' | 'won' | 'lost' | 'breakeven' | 'active' | 'closed';
@@ -76,7 +85,7 @@ interface TradeContextType {
   updateTrailingStop: (id: string, highestPrice: number, newStopLoss: number) => Promise<void>;
 
   // Legacy aliases for seamless migration
-  addTrade: (trade: any) => Promise<void>;
+  addTrade: (trade: any) => Promise<any>;
   updateTrade: (id: string, trade: any) => Promise<void>;
   deleteTrade: (id: string) => Promise<void>;
   closeTrade: (id: string, exitPrice: number, emotion?: any, lessonLearned?: string, mistake?: string) => Promise<void>;
@@ -88,10 +97,17 @@ interface TradeContextType {
   deletePlan: (id: string) => Promise<void>;
   convertPlanToPosition: (plan: Plan, initialPrice?: number, initialShares?: number) => Promise<string>;
 
-  // Capital & Settings
-  capitalInvestment: number;
-  capitalSpeculation: number;
-  updateCapital: (inv: number, spec: number) => Promise<void>;
+  // Capital & Ledger
+  ledger: LedgerEntry[];
+  addLedgerEntry: (entry: Omit<LedgerEntry, 'id'>) => Promise<void>;
+  deleteLedgerEntry: (id: string) => Promise<void>;
+  capitalInvestment: number; // Computed from Ledger + PnL
+  capitalSpeculation: number; // Computed from Ledger + PnL
+  depositedInvestment: number; // Pure deposits
+  depositedSpeculation: number; // Pure deposits
+  fixedIncome: number;
+  updateFixedIncome: (amount: number) => Promise<void>;
+  updateCapital: (inv: number, spec: number) => Promise<void>; // Legacy override if needed
 
   // Computed Aggregated Analytics
   totalRealizedPnL: number;
@@ -262,8 +278,10 @@ function positionToLegacyTrade(pos: TickerPosition): Trade {
 export function TradeProvider({ children }: { children: ReactNode }) {
   const [positions, setPositions] = useState<TickerPosition[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
-  const [capitalInvestment, setCapitalInvestment] = useState<number>(defaultCapital.investment);
-  const [capitalSpeculation, setCapitalSpeculation] = useState<number>(defaultCapital.speculation);
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [legacyInvestmentCap, setLegacyInvestmentCap] = useState<number>(defaultCapital.investment);
+  const [legacySpeculationCap, setLegacySpeculationCap] = useState<number>(defaultCapital.speculation);
+  const [fixedIncome, setFixedIncomeState] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   // Real-time sync with Firestore
@@ -301,19 +319,31 @@ export function TradeProvider({ children }: { children: ReactNode }) {
       setPlans(rawPlans);
     }, handleError);
 
-    // 3. Listen to capital settings
+    // 3. Listen to capital settings (Legacy fallback)
     const unsubCapital = onSnapshot(doc(db, 'settings', 'capital'), (d) => {
       if (d.exists()) {
         const data = d.data();
-        setCapitalInvestment(data.investment || defaultCapital.investment);
-        setCapitalSpeculation(data.speculation || defaultCapital.speculation);
+        setLegacyInvestmentCap(data.investment || defaultCapital.investment);
+        setLegacySpeculationCap(data.speculation || defaultCapital.speculation);
+        setFixedIncomeState(data.fixedIncome || 0);
       }
+    }, handleError);
+
+    // 4. Listen to Ledger entries
+    const unsubLedger = onSnapshot(collection(db, 'ledger'), (snapshot) => {
+      const entries = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      } as LedgerEntry));
+      entries.sort((a, b) => b.date - a.date);
+      setLedger(entries);
     }, handleError);
 
     return () => {
       unsubTrades();
       unsubPlans();
       unsubCapital();
+      unsubLedger();
     };
   }, []);
 
@@ -374,6 +404,45 @@ export function TradeProvider({ children }: { children: ReactNode }) {
       disciplineScore: score,
     };
   }, [positions]);
+
+  // Compute Capital (Deposits vs Equity)
+  const { depositedInvestment, depositedSpeculation, capitalInvestment, capitalSpeculation } = useMemo(() => {
+    // 1. Calculate pure deposited capital from ledger
+    let depInv = 0;
+    let depSpec = 0;
+    
+    if (ledger.length > 0) {
+      ledger.forEach(entry => {
+        if (entry.portfolioType === 'investment') {
+          depInv += entry.type === 'deposit' ? entry.amount : -entry.amount;
+        } else {
+          depSpec += entry.type === 'deposit' ? entry.amount : -entry.amount;
+        }
+      });
+    } else {
+      // Fallback to legacy if ledger is empty
+      depInv = legacyInvestmentCap;
+      depSpec = legacySpeculationCap;
+    }
+
+    // 2. Calculate PnL per portfolio
+    let pnlInv = 0;
+    let pnlSpec = 0;
+    positions.forEach(pos => {
+      if (pos.status === 'closed' || computePositionMetrics(pos).isFullyClosed) {
+        if (pos.portfolioType === 'investment') pnlInv += computeRealizedPnL(pos.transactions || []);
+        else pnlSpec += computeRealizedPnL(pos.transactions || []);
+      }
+    });
+
+    // 3. Total Equity = Deposited + PnL
+    return {
+      depositedInvestment: depInv,
+      depositedSpeculation: depSpec,
+      capitalInvestment: depInv + pnlInv,
+      capitalSpeculation: depSpec + pnlSpec,
+    };
+  }, [ledger, positions, legacyInvestmentCap, legacySpeculationCap]);
 
   // CRUD for Positions
   const addPosition = async (posData: Omit<TickerPosition, 'id'>): Promise<string> => {
@@ -540,67 +609,7 @@ export function TradeProvider({ children }: { children: ReactNode }) {
     return posId;
   };
 
-  // Legacy wrappers for existing callers
-  const addTrade = async (tradeData: any) => {
-    const entry = Number(tradeData.entryPrice) || 0;
-    const shares = Number(tradeData.shares) || 0;
-    const sl = Number(tradeData.initialStopLoss) || 0;
-    const target = Number(tradeData.targetPrice) || 0;
-    const atr = Number(tradeData.atrAtEntry) || 0;
-
-    const initialTx: Transaction = {
-      id: 'tx_init_' + Math.random().toString(36).substring(2, 8),
-      type: 'buy',
-      date: Date.now(),
-      price: entry,
-      shares: shares,
-      amount: entry * shares,
-      note: 'شراء أولي',
-    };
-
-    await addPosition({
-      symbol: tradeData.symbol,
-      portfolioType: tradeData.portfolioType || 'investment',
-      status: 'active',
-      plan: {
-        strategy: tradeData.makerPlan || '',
-        entryZone: { min: entry, max: entry },
-        target,
-        stop: sl,
-        atr,
-        checklist: tradeData.checklist,
-        images: tradeData.images || [],
-        makerPlan: tradeData.makerPlan || '',
-      },
-      transactions: [initialTx],
-      trailingStop: {
-        initial: sl,
-        current: tradeData.currentStopLoss || sl,
-        highestReached: tradeData.highestPrice || entry,
-        atrAtEntry: atr,
-      },
-      journal: {
-        openedDate: Date.now(),
-        emotion: tradeData.emotion || 'neutral',
-        lessonLearned: tradeData.lessonLearned || '',
-        mistake: tradeData.mistake || '',
-        tags: tradeData.tags || [],
-        isRuleBreaker: tradeData.isRuleBreaker || false,
-      }
-    });
-  };
-
-  const updateTrade = async (id: string, data: any) => {
-    await updateDoc(doc(db, 'trades', id), data);
-  };
-
-  const deleteTrade = async (id: string) => {
-    await deletePosition(id);
-  };
-
-  const closeTrade = async (id: string, exitPrice: number, emotion?: any, lessonLearned?: string, mistake?: string) => {
-    await closePosition(id, exitPrice, emotion, lessonLearned, mistake);
-  };
+  // Legacy aliases omitted here as they are provided in context value directly
 
   // Plan CRUD
   const addPlan = async (plan: Plan) => {
@@ -625,6 +634,20 @@ export function TradeProvider({ children }: { children: ReactNode }) {
     await setDoc(doc(db, 'settings', 'capital'), { investment, speculation }, { merge: true });
   };
 
+  // Ledger CRUD
+  const addLedgerEntry = async (entry: Omit<LedgerEntry, 'id'>) => {
+    const id = 'ldg_' + Math.random().toString(36).substring(2, 9);
+    await setDoc(doc(db, 'ledger', id), { ...entry, id });
+  };
+
+  const deleteLedgerEntry = async (id: string) => {
+    await deleteDoc(doc(db, 'ledger', id));
+  };
+
+  const updateFixedIncome = async (amount: number) => {
+    await setDoc(doc(db, 'settings', 'capital'), { fixedIncome: amount }, { merge: true });
+  };
+
   if (loading) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 text-slate-800 gap-4" dir="rtl">
@@ -645,18 +668,32 @@ export function TradeProvider({ children }: { children: ReactNode }) {
       addTransaction,
       deleteTransaction,
       updateTrailingStop,
-      addTrade,
-      updateTrade,
-      deleteTrade,
-      closeTrade,
+      
+      // Ledger
+      ledger,
+      addLedgerEntry,
+      deleteLedgerEntry,
+      depositedInvestment,
+      depositedSpeculation,
+      
+      // Legacy Aliases
+      addTrade: addPosition,
+      updateTrade: updatePosition,
+      deleteTrade: deletePosition,
+      closeTrade: closePosition,
+      
       plans,
       addPlan,
       updatePlan,
       deletePlan,
       convertPlanToPosition,
+      
       capitalInvestment,
       capitalSpeculation,
+      fixedIncome,
+      updateFixedIncome,
       updateCapital,
+      
       totalRealizedPnL,
       winRate,
       openPositionsCount,
@@ -665,7 +702,7 @@ export function TradeProvider({ children }: { children: ReactNode }) {
       totalOpenCapital,
       totalOpenRisk,
       disciplineScore,
-      loading,
+      loading
     }}>
       {children}
     </TradeContext.Provider>

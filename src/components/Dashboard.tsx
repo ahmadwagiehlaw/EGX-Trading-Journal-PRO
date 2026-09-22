@@ -2,20 +2,29 @@ import { useState } from 'react';
 import { 
   Wallet, 
   TrendingUp, 
-  TrendingDown, 
-  ShieldAlert, 
-  Activity, 
-  BookOpen, 
-  Target, 
+  Activity,
+  BookOpen,
+  Target,
   Flame, 
-  Plus, 
-  ArrowUpRight,
-  ShieldCheck,
-  Percent
+  Layers,
+  Edit2,
+  Plus,
+  ArrowUpRight
 } from 'lucide-react';
+import { 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip as RechartsTooltip, 
+  ResponsiveContainer 
+} from 'recharts';
 import { useTrades, type TickerPosition } from '../context/TradeContext';
 import { computePositionMetrics, formatEGP } from '../utils/calculations';
 import TransactionFormModal from './TransactionFormModal';
+import LedgerModal from './LedgerModal';
+import FixedIncomeModal from './FixedIncomeModal';
 
 export default function Dashboard({ 
   onOpenTradingDesk,
@@ -28,21 +37,47 @@ export default function Dashboard({
     capitalInvestment, 
     positions, 
     plans,
-    totalRealizedPnL,
-    winRate,
-    openPositionsCount,
     totalOpenCapital,
     totalOpenRisk,
-    disciplineScore,
+    depositedInvestment,
+    fixedIncome,
   } = useTrades();
 
   const [selectedPosForTx, setSelectedPosForTx] = useState<{ pos: TickerPosition; type: 'buy' | 'sell' } | null>(null);
+  const [isLedgerOpen, setIsLedgerOpen] = useState(false);
+  const [isFixedIncomeModalOpen, setIsFixedIncomeModalOpen] = useState(false);
 
   // Active positions
   const activePositions = positions.filter(p => {
     const metrics = computePositionMetrics(p);
     return p.status === 'active' && metrics.openShares > 0;
   });
+
+  // Closed positions for Equity Curve
+  const closedPositions = positions.filter(p => {
+    const metrics = computePositionMetrics(p);
+    return p.status === 'closed' || metrics.isFullyClosed;
+  });
+
+  // Equity Curve Timeline Data
+  const equityData = closedPositions.sort((a, b) => {
+    const dateA = a.journal?.closedDate || a.journal?.openedDate || 0;
+    const dateB = b.journal?.closedDate || b.journal?.openedDate || 0;
+    return dateA - dateB;
+  }).reduce((acc, p, idx) => {
+    const pnl = computePositionMetrics(p).netRealizedPnL;
+    const currentEquity = idx === 0 ? depositedInvestment + pnl : acc[idx - 1].equity + pnl;
+    acc.push({
+      trade: p.symbol || `#${idx + 1}`,
+      equity: currentEquity,
+      pnl,
+    });
+    return acc;
+  }, [] as { trade: string; equity: number; pnl: number }[]);
+
+  if (equityData.length === 0) {
+    equityData.push({ trade: 'بداية', equity: depositedInvestment, pnl: 0 });
+  }
 
   // Ready plans
   const readyPlans = plans.filter(p => p.status === 'ready');
@@ -77,93 +112,137 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* Top 6 Global Computed KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* Capital & Ledger Banner */}
+      <div className="bg-slate-900 rounded-2xl p-4 md:p-5 shadow-sm text-white flex flex-col md:flex-row items-center justify-between gap-4 border border-slate-800">
+        <div className="flex items-center gap-4 flex-1">
+          <div className="p-3 bg-blue-600 rounded-xl">
+            <Wallet className="w-6 h-6 text-white" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-slate-400 text-xs font-bold mb-0.5">القيمة السوقية للمحفظة الاستثمارية (Equity)</span>
+            <span className="text-xl md:text-2xl font-black font-mono-num tracking-tight">
+              {formatEGP(capitalInvestment)}
+            </span>
+            <span className="text-emerald-400 text-[10px] font-bold mt-1 bg-emerald-400/10 px-2 py-0.5 rounded-md inline-block w-fit">
+              منها {formatEGP(depositedInvestment, 0)} رأس مال مودع
+            </span>
+          </div>
+        </div>
+        <button 
+          onClick={() => setIsLedgerOpen(true)}
+          className="w-full md:w-auto bg-slate-800 hover:bg-slate-700 text-white px-5 py-3 rounded-xl font-black text-xs transition-colors flex items-center justify-center gap-2 border border-slate-700"
+        >
+          <Activity className="w-4 h-4" />
+          سجل السحب والإيداع
+        </button>
+      </div>
+
+      {/* Visual Portfolio Health (Replaces old hollow numbers) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* 1. Available Liquidity */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-slate-600 dark:text-slate-400 font-bold text-xs">السيولة المتاحة</span>
-            <div className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 rounded-lg">
-              <Wallet className="w-4 h-4" />
+        {/* Allocation Bar */}
+        <div className="lg:col-span-1 bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <Layers className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <h3 className="font-black text-slate-800 dark:text-white">توزيع المحفظة</h3>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1.5">
+                  <span className="text-emerald-600">السيولة المتاحة للتداول (كاش)</span>
+                  <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(Math.max(0, availableLiquidity))}</span>
+                </div>
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                  <div className="bg-emerald-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (Math.max(0, availableLiquidity) / (capitalInvestment || 1)) * 100)}%` }}></div>
+                </div>
+              </div>
+              
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1.5 items-center">
+                  <span className="text-amber-600 flex items-center gap-1">
+                    صناديق دخل ثابت / مجنب
+                    <button 
+                      onClick={() => setIsFixedIncomeModalOpen(true)}
+                      className="text-slate-400 hover:text-amber-600 transition-colors bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 p-1 rounded"
+                      title="تعديل قيمة الدخل الثابت"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                    </button>
+                  </span>
+                  <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(fixedIncome)}</span>
+                </div>
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                  <div className="bg-amber-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (fixedIncome / (capitalInvestment || 1)) * 100)}%` }}></div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1.5">
+                  <span className="text-purple-600">السيولة المقيدة (أسهم)</span>
+                  <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(totalOpenCapital)}</span>
+                </div>
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                  <div className="bg-purple-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (totalOpenCapital / (capitalInvestment || 1)) * 100)}%` }}></div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1.5">
+                  <span className="text-rose-600">المخاطرة المفتوحة (At Risk)</span>
+                  <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(totalOpenRisk)}</span>
+                </div>
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                  <div className="bg-rose-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (totalOpenRisk / (capitalInvestment || 1)) * 100)}%` }}></div>
+                </div>
+              </div>
             </div>
           </div>
-          <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white font-mono-num" dir="ltr">
-            {formatEGP(availableLiquidity)}
-          </h3>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-1">من إجمالي {formatEGP(capitalInvestment)}</span>
         </div>
 
-        {/* 2. Open Invested Capital */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-slate-600 dark:text-slate-400 font-bold text-xs">السيولة المقيدة</span>
-            <div className="p-1.5 bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 rounded-lg">
-              <Activity className="w-4 h-4" />
+        {/* Equity Curve */}
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-[280px]">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              <h3 className="font-black text-slate-800 dark:text-white">منحنى نمو رأس المال (Equity)</h3>
             </div>
           </div>
-          <h3 className="text-lg md:text-xl font-black text-purple-700 dark:text-purple-400 font-mono-num" dir="ltr">
-            {formatEGP(totalOpenCapital)}
-          </h3>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-1">{openPositionsCount} مراكز مفتوحة</span>
-        </div>
-
-        {/* 3. Open Risk at Stop Loss */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-slate-600 dark:text-slate-400 font-bold text-xs">المخاطرة المفتوحة</span>
-            <div className="p-1.5 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 rounded-lg">
-              <ShieldAlert className="w-4 h-4" />
-            </div>
+          
+          <div className="flex-1 w-full min-h-0" dir="ltr">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={equityData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorEquityDashboard" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
+                <XAxis dataKey="trade" hide />
+                <YAxis 
+                  domain={['dataMin', 'dataMax']} 
+                  hide 
+                />
+                <RechartsTooltip 
+                  contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '12px' }}
+                  itemStyle={{ color: '#fff', fontWeight: 'bold' }}
+                  formatter={(value: any) => [formatEGP(Number(value) || 0, 0), 'القيمة السوقية']}
+                  labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="equity" 
+                  stroke="#3b82f6" 
+                  strokeWidth={3}
+                  fillOpacity={1} 
+                  fill="url(#colorEquityDashboard)" 
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
-          <h3 className="text-lg md:text-xl font-black text-red-600 dark:text-red-400 font-mono-num" dir="ltr">
-            {formatEGP(totalOpenRisk)}
-          </h3>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-1">عند نقاط الوقف</span>
         </div>
-
-        {/* 4. Realized P&L */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-slate-600 dark:text-slate-400 font-bold text-xs">الأرباح المحققة</span>
-            <div className={`p-1.5 rounded-lg ${totalRealizedPnL >= 0 ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400'}`}>
-              {totalRealizedPnL >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-            </div>
-          </div>
-          <h3 className={`text-lg md:text-xl font-black font-mono-num ${totalRealizedPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`} dir="ltr">
-            {totalRealizedPnL > 0 ? '+' : ''}{formatEGP(totalRealizedPnL)}
-          </h3>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-1">من الصفقات المغلقة</span>
-        </div>
-
-        {/* 5. Win Rate */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-slate-600 dark:text-slate-400 font-bold text-xs">نسبة النجاح</span>
-            <div className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 rounded-lg">
-              <Percent className="w-4 h-4" />
-            </div>
-          </div>
-          <h3 className="text-lg md:text-xl font-black text-blue-700 dark:text-blue-400 font-mono-num" dir="ltr">
-            {winRate.toFixed(1)}%
-          </h3>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-1">معدل الفوز</span>
-        </div>
-
-        {/* 6. Discipline Score */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-slate-600 dark:text-slate-400 font-bold text-xs">مؤشر الانضباط</span>
-            <div className="p-1.5 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-lg">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-          </div>
-          <h3 className={`text-lg md:text-xl font-black font-mono-num ${disciplineScore >= 80 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`} dir="ltr">
-            {disciplineScore}/100
-          </h3>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-1">الالتزام بالقواعد</span>
-        </div>
-
       </div>
 
       {/* Main Grid: Active Positions & Watchlist Plans */}
@@ -372,13 +451,22 @@ export default function Dashboard({
       </div>
 
       {/* Transaction Modal (for quick partial buys/sells) */}
-      <TransactionFormModal
+      <TransactionFormModal 
         isOpen={!!selectedPosForTx}
         onClose={() => setSelectedPosForTx(null)}
         position={selectedPosForTx?.pos || null}
         defaultType={selectedPosForTx?.type || 'buy'}
       />
 
+      <LedgerModal 
+        isOpen={isLedgerOpen}
+        onClose={() => setIsLedgerOpen(false)}
+      />
+
+      <FixedIncomeModal 
+        isOpen={isFixedIncomeModalOpen} 
+        onClose={() => setIsFixedIncomeModalOpen(false)} 
+      />
     </div>
   );
 }

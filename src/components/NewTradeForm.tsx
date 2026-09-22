@@ -1,7 +1,8 @@
-import { Image as ImageIcon, CheckCircle2, Save, X } from 'lucide-react';
+import { Image as ImageIcon, CheckCircle2, Save, X, Loader2, Copy } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useTrades } from '../context/TradeContext';
 import StockAutocomplete from './StockAutocomplete';
+import { processAndCompressImage } from '../utils/imageStorage';
 
 export default function NewTradeForm({ 
   initialData, 
@@ -10,11 +11,12 @@ export default function NewTradeForm({
   initialData?: any; 
   onClose?: () => void;
 }) {
-  const { addPosition, updatePosition } = useTrades();
+  const { addPosition, updatePosition, capitalInvestment, capitalSpeculation } = useTrades();
 
   const [symbol, setSymbol] = useState(initialData?.symbol || '');
   const [makerPlan, setMakerPlan] = useState(initialData?.makerPlan || initialData?.plan?.strategy || '');
   const [images, setImages] = useState<string[]>(initialData?.images || initialData?.plan?.images || []);
+  const [isProcessingImages, setIsProcessingImages] = useState(false);
   const [entryPrice, setEntryPrice] = useState<string>(
     initialData?.entryPrice?.toString() || 
     initialData?.plan?.entryZone?.min?.toString() || 
@@ -33,8 +35,10 @@ export default function NewTradeForm({
   const [sharesCount, setSharesCount] = useState<string>(
     initialData?.shares?.toString() || 
     initialData?.sharesCount?.toString() || 
-    '100'
+    ''
   );
+  const [portfolioKey, setPortfolioKey] = useState<'investment' | 'speculation'>(initialData?.portfolioType || 'investment');
+  const [atrStr, setAtrStr] = useState<string>(initialData?.atr15?.toString() || initialData?.plan?.atr?.toString() || '');
   const [tags, setTags] = useState<string[]>(initialData?.tags || initialData?.journal?.tags || []);
   const [tagInput, setTagInput] = useState('');
   
@@ -52,23 +56,94 @@ export default function NewTradeForm({
     if (initialData?.makerPlan) setMakerPlan(initialData.makerPlan);
   }, [initialData]);
 
+  const [calcResults, setCalcResults] = useState<{sl: string, target: string, shares: string} | null>(null);
+
+  // Risk Auto-Calculation (Preview Only)
+  useEffect(() => {
+    const atr = parseFloat(atrStr);
+    const entry = parseFloat(entryPrice);
+    if (!isNaN(atr) && atr > 0 && !isNaN(entry) && entry > 0) {
+      const slDistance = 2 * atr;
+      const calculatedSl = entry - slDistance;
+      const calculatedTarget = entry + (2 * slDistance); // Minimum 2:1 Target
+      
+      const capital = portfolioKey === 'investment' ? capitalInvestment : capitalSpeculation;
+      const maxRiskAmount = capital * 0.01; // 1% default risk
+      const sharesByRisk = Math.floor(maxRiskAmount / slDistance);
+      const maxAllocationAmount = capital * 0.25; // max 25% allocation
+      const sharesByAllocation = Math.floor(maxAllocationAmount / entry);
+      const finalShares = Math.min(sharesByRisk, sharesByAllocation);
+
+      setCalcResults({
+        sl: calculatedSl.toFixed(2),
+        target: calculatedTarget.toFixed(2),
+        shares: finalShares.toString()
+      });
+    } else {
+      setCalcResults(null);
+    }
+  }, [atrStr, entryPrice, portfolioKey, capitalInvestment, capitalSpeculation]);
+
+  const applyCalculations = () => {
+    if (calcResults) {
+      setStopLoss(calcResults.sl);
+      if (!targetPrice || targetPrice === '0' || targetPrice === '') {
+        setTargetPrice(calcResults.target);
+      }
+      setSharesCount(calcResults.shares);
+    }
+  };
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handlePaste = (e: React.ClipboardEvent) => {
+  const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
     if (!items) return;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') !== -1) {
-        const blob = items[i].getAsFile();
-        if (blob) setImages(prev => [...prev, URL.createObjectURL(blob)]);
+    setIsProcessingImages(true);
+    try {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            const base64 = await processAndCompressImage(blob);
+            setImages(prev => [...prev, base64]);
+          }
+        }
+      }
+    } finally {
+      setIsProcessingImages(false);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.files?.length) {
+      setIsProcessingImages(true);
+      try {
+        for (const file of Array.from(e.dataTransfer.files)) {
+          if (file.type.startsWith('image/')) {
+            const base64 = await processAndCompressImage(file);
+            setImages(prev => [...prev, base64]);
+          }
+        }
+      } finally {
+        setIsProcessingImages(false);
       }
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer.files?.[0]) {
-      setImages(prev => [...prev, URL.createObjectURL(e.dataTransfer.files[0])]);
+  const handleFileSelect = async (files: FileList | null) => {
+    if (!files) return;
+    setIsProcessingImages(true);
+    try {
+      for (const file of Array.from(files)) {
+        if (file.type.startsWith('image/')) {
+          const base64 = await processAndCompressImage(file);
+          setImages(prev => [...prev, base64]);
+        }
+      }
+    } finally {
+      setIsProcessingImages(false);
     }
   };
 
@@ -82,13 +157,14 @@ export default function NewTradeForm({
     const target = parseFloat(targetPrice) || 0;
     const sl = parseFloat(stopLoss) || 0;
     const shares = parseInt(sharesCount, 10) || 100;
-    const atr15 = initialData?.atr15 || initialData?.atrAtEntry || 0;
+    const atr15 = parseFloat(atrStr) || initialData?.atr15 || initialData?.atrAtEntry || 0;
     const isRuleBreaker = !allChecked;
 
     if (initialData?.id) {
       // Editing existing position
       await updatePosition(initialData.id, {
         symbol: symbol.toUpperCase(),
+        portfolioType: portfolioKey,
         plan: {
           strategy: makerPlan,
           entryZone: { min: entry, max: entry },
@@ -116,7 +192,7 @@ export default function NewTradeForm({
 
       await addPosition({
         symbol: symbol.toUpperCase(),
-        portfolioType: initialData?.portfolioType || 'investment',
+        portfolioType: portfolioKey,
         status: 'active',
         plan: {
           strategy: makerPlan,
@@ -179,6 +255,71 @@ export default function NewTradeForm({
             className="w-full text-sm font-bold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-4 focus:border-blue-500 outline-none transition-colors"
             placeholder="ما هي نية صانع السوق وسبب الدخول؟"
           />
+        </div>
+      </div>
+
+      {/* Risk Management & Portfolio */}
+      <div className="bg-slate-100 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <div className="flex items-center gap-2 mb-2">
+          <CheckCircle2 className="w-4 h-4 text-blue-500" />
+          <span className="text-sm font-black text-slate-700 dark:text-slate-300">حاسبة المخاطر اللحظية والمحفظة</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">المحفظة النشطة (رأس المال)</label>
+            <div className="flex bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+              {(['investment', 'speculation'] as const).map((key) => {
+                const capital = key === 'investment' ? capitalInvestment : capitalSpeculation;
+                const name = key === 'investment' ? 'استثمار' : 'مضاربة';
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setPortfolioKey(key)}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      portfolioKey === key ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                    }`}
+                  >
+                    {name} ({(capital / 1000).toFixed(0)}k)
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">مؤشر التذبذب ATR (15)</label>
+            <input 
+              type="number" 
+              step="any"
+              value={atrStr}
+              onChange={(e) => setAtrStr(e.target.value)}
+              className="w-full text-sm font-black text-slate-900 dark:text-white bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 focus:border-blue-500 focus:outline-none transition-colors"
+              placeholder="0.00"
+              dir="ltr"
+            />
+            {calcResults ? (
+              <div className="flex flex-col sm:flex-row items-center gap-2 mt-2 bg-white dark:bg-slate-800 p-2 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                <p className="text-[10px] text-slate-600 dark:text-slate-300 font-bold flex-1 text-right leading-tight">
+                  الوقف: <span className="text-rose-500 font-black font-mono-num">{calcResults.sl}</span> | 
+                  الكمية الآمنة: <span className="text-blue-500 font-black font-mono-num">{calcResults.shares}</span>
+                </p>
+                <button 
+                  type="button"
+                  onClick={applyCalculations}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors shrink-0"
+                >
+                  <Copy className="w-3 h-3" />
+                  اعتماد ونقل
+                </button>
+              </div>
+            ) : (
+              atrStr && parseFloat(atrStr) > 0 && (
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold mt-1 text-center">
+                  أدخل سعر الدخول لحساب الوقف والكمية...
+                </p>
+              )
+            )}
+          </div>
         </div>
       </div>
 
@@ -315,14 +456,25 @@ export default function NewTradeForm({
           className="border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white/40 dark:bg-slate-800/40 rounded-2xl p-4 text-center hover:bg-white dark:hover:bg-slate-800 hover:border-blue-400 transition-all cursor-pointer group"
           onClick={() => fileInputRef.current?.click()}
         >
-          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple
-            onChange={(e) => {
-              if (e.target.files)
-                setImages(prev => [...prev, ...Array.from(e.target.files!).map(f => URL.createObjectURL(f))]);
-            }}
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            accept="image/*" 
+            multiple
+            onChange={(e) => handleFileSelect(e.target.files)}
           />
-          <ImageIcon className="w-6 h-6 mx-auto text-slate-300 dark:text-slate-600 group-hover:text-blue-400 transition-colors mb-1" />
-          <p className="text-xs font-bold text-slate-500 dark:text-slate-400">اضغط لاختيار صور الشارت أو الصق بـ Ctrl+V</p>
+          {isProcessingImages ? (
+            <div className="flex flex-col items-center justify-center gap-1.5 py-1 text-blue-500">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <p className="text-xs font-bold">جاري معالجة وحفظ الصور بصرياً...</p>
+            </div>
+          ) : (
+            <>
+              <ImageIcon className="w-6 h-6 mx-auto text-slate-300 dark:text-slate-600 group-hover:text-blue-400 transition-colors mb-1" />
+              <p className="text-xs font-bold text-slate-500 dark:text-slate-400">اضغط لاختيار صور الشارت أو الصق بـ Ctrl+V</p>
+            </>
+          )}
         </div>
 
         {images.length > 0 && (
