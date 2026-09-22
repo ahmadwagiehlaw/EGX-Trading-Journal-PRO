@@ -1,231 +1,451 @@
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Target, TrendingUp, TrendingDown, Percent, BrainCircuit } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer
+} from 'recharts';
+import { 
+  Target, 
+  TrendingUp, 
+  TrendingDown, 
+  Percent, 
+  BrainCircuit, 
+  Award, 
+  AlertOctagon,
+  Sparkles,
+  Calendar,
+  Layers
+} from 'lucide-react';
 import { useTrades } from '../context/TradeContext';
+import { useTheme } from '../context/ThemeContext';
+import { computePositionMetrics, formatEGP } from '../utils/calculations';
+import PnLCalendar from './PnLCalendar';
 
 export default function Analytics() {
-  const { trades } = useTrades();
+  const { positions, capitalInvestment } = useTrades();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'calendar' | 'psychology'>('overview');
 
-  const closedTrades = trades.filter(t => t.status !== 'open');
-  const wonTrades = closedTrades.filter(t => t.status === 'won');
-  
-  const winRate = closedTrades.length > 0 ? ((wonTrades.length / closedTrades.length) * 100).toFixed(1) : '0.0';
-  const totalPnL = closedTrades.reduce((acc, trade) => acc + (trade.pnl || 0), 0);
-  
-  const totalGain = wonTrades.reduce((acc, t) => acc + (t.pnl || 0), 0);
-  const totalLoss = closedTrades.filter(t => t.status === 'lost').reduce((acc, t) => acc + Math.abs(t.pnl || 0), 0);
-  const avgWin = wonTrades.length > 0 ? totalGain / wonTrades.length : 0;
-  const avgLoss = closedTrades.filter(t => t.status === 'lost').length > 0 ? totalLoss / closedTrades.filter(t => t.status === 'lost').length : 0;
+  // Closed positions metrics
+  const closedPositions = useMemo(() => {
+    return positions.filter(pos => {
+      const metrics = computePositionMetrics(pos);
+      return pos.status === 'closed' || metrics.isFullyClosed;
+    });
+  }, [positions]);
+
+  const wonPositions = closedPositions.filter(p => computePositionMetrics(p).realizedPnL > 0);
+  const lostPositions = closedPositions.filter(p => computePositionMetrics(p).realizedPnL < 0);
+
+  const winRate = closedPositions.length > 0 
+    ? ((wonPositions.length / closedPositions.length) * 100).toFixed(1) 
+    : '0.0';
+
+  const totalGrossPnL = closedPositions.reduce((sum, p) => sum + computePositionMetrics(p).realizedPnL, 0);
+  const totalCommissionPaid = closedPositions.reduce((sum, p) => sum + computePositionMetrics(p).totalCommission, 0);
+  const totalNetPnL = closedPositions.reduce((sum, p) => sum + computePositionMetrics(p).netRealizedPnL, 0);
+
+  const totalGain = wonPositions.reduce((sum, p) => sum + computePositionMetrics(p).realizedPnL, 0);
+  const totalLoss = lostPositions.reduce((sum, p) => sum + Math.abs(computePositionMetrics(p).realizedPnL), 0);
+
+  const avgWin = wonPositions.length > 0 ? totalGain / wonPositions.length : 0;
+  const avgLoss = lostPositions.length > 0 ? totalLoss / lostPositions.length : 0;
   const realRR = avgLoss > 0 ? (avgWin / avgLoss).toFixed(2) : (avgWin > 0 ? '∞' : '0.00');
 
-  const ruleBreakerCount = closedTrades.filter(t => t.isRuleBreaker).length;
-  const disciplineScore = closedTrades.length > 0 ? Math.max(0, 100 - (ruleBreakerCount * 10)) : 100;
+  const ruleBreakerCount = closedPositions.filter(p => p.journal?.isRuleBreaker).length;
+  const disciplineScore = closedPositions.length > 0 ? Math.max(0, 100 - (ruleBreakerCount * 12)) : 100;
 
-  let currentEquity = 1000000;
-  const equityData = closedTrades
-    .sort((a, b) => (a.exitDate || 0) - (b.exitDate || 0))
-    .map((t, idx) => {
-      currentEquity += (t.pnl || 0);
-      return { trade: `#${idx + 1}`, equity: currentEquity };
+  // Equity Curve Timeline Data
+  const equityData = useMemo(() => {
+    let currentEquity = capitalInvestment;
+    const sorted = [...closedPositions].sort((a, b) => {
+      const dateA = a.journal?.closedDate || a.journal?.openedDate || 0;
+      const dateB = b.journal?.closedDate || b.journal?.openedDate || 0;
+      return dateA - dateB;
     });
-  if (equityData.length === 0) equityData.push({ trade: 'بداية', equity: currentEquity });
 
-  const statCards = [
-    {
-      icon: Percent,
-      label: 'نسبة النجاح',
-      sublabel: 'Win Rate',
-      value: `${winRate}%`,
-      iconBg: 'bg-blue-100',
-      iconColor: 'text-blue-600',
-      valueCls: 'text-blue-700',
-      borderColor: 'border-blue-200',
-      highlight: 'bg-blue-50',
-    },
-    {
-      icon: Target,
-      label: 'العائد للمخاطرة',
-      sublabel: 'Real R/R',
-      value: `1:${realRR}`,
-      iconBg: 'bg-emerald-100',
-      iconColor: 'text-emerald-600',
-      valueCls: 'text-emerald-700',
-      borderColor: 'border-emerald-200',
-      highlight: 'bg-emerald-50',
-    },
-    {
-      icon: BrainCircuit,
-      label: 'مؤشر الانضباط',
-      sublabel: 'Discipline',
-      value: `${disciplineScore}/100`,
-      iconBg: 'bg-purple-100',
-      iconColor: 'text-purple-600',
-      valueCls: disciplineScore >= 80 ? 'text-emerald-600' : disciplineScore >= 50 ? 'text-amber-600' : 'text-red-600',
-      borderColor: 'border-purple-200',
-      highlight: 'bg-purple-50',
-    },
-    {
-      icon: totalPnL >= 0 ? TrendingUp : TrendingDown,
-      label: 'صافي الأرباح',
-      sublabel: 'Realized P&L',
-      value: `${totalPnL > 0 ? '+' : ''}${totalPnL.toLocaleString()}`,
-      iconBg: totalPnL >= 0 ? 'bg-emerald-100' : 'bg-red-100',
-      iconColor: totalPnL >= 0 ? 'text-emerald-600' : 'text-red-600',
-      valueCls: totalPnL >= 0 ? 'text-emerald-600' : 'text-red-600',
-      borderColor: totalPnL >= 0 ? 'border-emerald-200' : 'border-red-200',
-      highlight: totalPnL >= 0 ? 'bg-emerald-50' : 'bg-red-50',
-    },
-  ];
+    const data = sorted.map((p, idx) => {
+      const pnl = computePositionMetrics(p).netRealizedPnL;
+      currentEquity += pnl;
+      return {
+        trade: p.symbol || `#${idx + 1}`,
+        equity: currentEquity,
+        pnl,
+      };
+    });
+
+    if (data.length === 0) {
+      data.push({ trade: 'بداية', equity: capitalInvestment, pnl: 0 });
+    }
+
+    return data;
+  }, [closedPositions, capitalInvestment]);
+
+  // Emotion Performance Analysis
+  const emotionStats = useMemo(() => {
+    const stats: Record<string, { count: number; won: number; pnl: number }> = {
+      confident: { count: 0, won: 0, pnl: 0 },
+      neutral: { count: 0, won: 0, pnl: 0 },
+      fomo: { count: 0, won: 0, pnl: 0 },
+      fear: { count: 0, won: 0, pnl: 0 },
+      greed: { count: 0, won: 0, pnl: 0 },
+      revenge: { count: 0, won: 0, pnl: 0 },
+    };
+
+    closedPositions.forEach(p => {
+      const em = p.journal?.emotion || 'neutral';
+      const pnl = computePositionMetrics(p).realizedPnL;
+      if (!stats[em]) stats[em] = { count: 0, won: 0, pnl: 0 };
+      stats[em].count += 1;
+      stats[em].pnl += pnl;
+      if (pnl > 0) stats[em].won += 1;
+    });
+
+    const labels: Record<string, string> = {
+      confident: 'واثق ومنضبط 😎',
+      neutral: 'طبيعي ومحايد 😐',
+      fomo: 'فومو وخوف ضياع الفرصة 😰',
+      fear: 'خوف وتردد 😨',
+      greed: 'طمع وتأخير جني الربح 🤑',
+      revenge: 'انتقام وتداول عاطفي 😡',
+    };
+
+    return Object.keys(stats).map(key => ({
+      key,
+      label: labels[key] || key,
+      count: stats[key].count,
+      pnl: stats[key].pnl,
+      winRate: stats[key].count > 0 ? (stats[key].won / stats[key].count) * 100 : 0,
+    })).filter(s => s.count > 0);
+  }, [closedPositions]);
+
+  // Top Best and Worst Trades
+  const bestTrade = useMemo(() => {
+    if (closedPositions.length === 0) return null;
+    const sorted = [...closedPositions].sort((a, b) => computePositionMetrics(b).realizedPnL - computePositionMetrics(a).realizedPnL);
+    const top = sorted[0];
+    const topPnL = computePositionMetrics(top).realizedPnL;
+    return topPnL > 0 ? { pos: top, pnl: topPnL } : null;
+  }, [closedPositions]);
+
+  const worstTrade = useMemo(() => {
+    if (closedPositions.length === 0) return null;
+    const sorted = [...closedPositions].sort((a, b) => computePositionMetrics(a).realizedPnL - computePositionMetrics(b).realizedPnL);
+    const worst = sorted[0];
+    const worstPnL = computePositionMetrics(worst).realizedPnL;
+    return worstPnL < 0 ? { pos: worst, pnl: worstPnL } : null;
+  }, [closedPositions]);
 
   return (
     <div className="w-full space-y-6" dir="rtl">
       
-      {/* Top Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {statCards.map((card) => (
-          <div key={card.label} className={`${card.highlight} rounded-3xl p-5 border ${card.borderColor} shadow-sm flex flex-col items-center text-center relative overflow-hidden`}
-            style={{ background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(12px)' }}
-          >
-            {/* Subtle ruled line in card */}
-            <div className="absolute inset-0 bg-[repeating-linear-gradient(transparent,transparent_23px,rgba(200,216,232,0.3)_23px,rgba(200,216,232,0.3)_24px)] pointer-events-none"></div>
-            <div className={`w-11 h-11 rounded-2xl ${card.iconBg} ${card.iconColor} flex items-center justify-center mb-3 relative z-10`}>
-              <card.icon className="w-5 h-5" />
-            </div>
-            <p className="text-slate-500 font-bold mb-0.5 text-xs relative z-10">{card.label}</p>
-            <p className="font-handwriting text-xs text-slate-400 mb-2 relative z-10">{card.sublabel}</p>
-            <h3 className={`text-2xl font-black ${card.valueCls} relative z-10`} dir="ltr">{card.value}</h3>
-          </div>
-        ))}
-      </div>
-
-      {/* Equity Curve */}
-      <div className="rounded-[2rem] p-7 border border-slate-200 shadow-sm relative overflow-hidden"
-        style={{ background: 'rgba(255,255,255,0.75)', backdropFilter: 'blur(12px)' }}
-      >
-        {/* Ruled lines inside card */}
-        <div className="absolute inset-0 bg-[repeating-linear-gradient(transparent,transparent_31px,rgba(200,216,232,0.25)_31px,rgba(200,216,232,0.25)_32px)] pointer-events-none rounded-[2rem]"></div>
-        
-        <div className="flex items-center justify-between mb-6 relative z-10">
-          <div>
-            <h2 className="text-xl font-black text-slate-800">منحنى الأداء</h2>
-            <p className="font-handwriting text-sm text-slate-400 mt-0.5">Equity Curve — تطور رأس المال</p>
-          </div>
-          <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 shadow-sm text-sm">
-            محفظة الاستثمار
-          </div>
-        </div>
-
-        <div className="h-[340px] w-full relative z-10" dir="ltr">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={equityData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorEquity" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#2563eb" stopOpacity={0.2}/>
-                  <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-              <XAxis dataKey="trade" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }} dy={8}/>
-              <YAxis domain={['auto','auto']} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }} dx={-8} tickFormatter={v => `${(v/1000).toFixed(0)}k`}/>
-              <Tooltip 
-                contentStyle={{ borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', fontWeight: 'bold', backgroundColor: '#fff' }}
-                formatter={(value: any) => [`${value.toLocaleString()} EGP`, 'رأس المال']}
-                labelStyle={{ color: '#64748b' }}
-              />
-              <Area type="monotone" dataKey="equity" stroke="#2563eb" strokeWidth={2.5} fillOpacity={1} fill="url(#colorEquity)"
-                activeDot={{ r: 6, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {closedTrades.length === 0 && (
-        <div className="rounded-3xl p-12 border border-dashed border-slate-300 text-center"
-          style={{ background: 'rgba(255,255,255,0.5)' }}
+      {/* Sub-Navigation Tabs */}
+      <div className="flex bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm w-full md:w-fit overflow-x-auto">
+        <button
+          onClick={() => setActiveSubTab('overview')}
+          className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+            activeSubTab === 'overview'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
         >
-          <p className="font-handwriting text-2xl text-slate-400">لا توجد صفقات مغلقة بعد...</p>
-          <p className="text-sm font-bold text-slate-400 mt-2">أغلق صفقة من "سجل الصفقات" لرؤية منحنى الأداء</p>
-        </div>
-      )}
+          <Layers className="w-4 h-4" />
+          نظرة عامة ومنحنى الأداء
+        </button>
 
-      {/* Psychological & Weekly Review */}
-      {closedTrades.length > 0 && (
-        <div className="grid md:grid-cols-2 gap-4">
-          
-          {/* Smart Insights (Weekly Review) */}
-          <div className="rounded-[2rem] p-6 border border-slate-200 shadow-sm relative overflow-hidden" style={{ background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(12px)' }}>
-            <div className="absolute inset-0 bg-[repeating-linear-gradient(transparent,transparent_23px,rgba(200,216,232,0.3)_23px,rgba(200,216,232,0.3)_24px)] pointer-events-none"></div>
-            <div className="relative z-10">
-              <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
-                <BrainCircuit className="w-5 h-5 text-purple-500" />
-                المراجعة الذكية والدروس 🧠
+        <button
+          onClick={() => setActiveSubTab('calendar')}
+          className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+            activeSubTab === 'calendar'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Calendar className="w-4 h-4" />
+          تقويم الأرباح الشهري (P&L Heatmap)
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('psychology')}
+          className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+            activeSubTab === 'psychology'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <BrainCircuit className="w-4 h-4" />
+          التحليل النفسي والمذكرات
+        </button>
+      </div>
+
+      {/* TAB 1: OVERVIEW & EQUITY CURVE */}
+      {activeSubTab === 'overview' && (
+        <div className="space-y-6">
+          {/* 4 Core Summary Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
+              <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-2">
+                <Percent className="w-5 h-5" />
+              </div>
+              <p className="text-slate-500 dark:text-slate-400 font-bold text-xs">نسبة النجاح (Win Rate)</p>
+              <h3 className="text-2xl font-black text-blue-700 dark:text-blue-400 font-mono-num mt-1" dir="ltr">{winRate}%</h3>
+              <span className="text-[10px] text-slate-400 font-bold mt-0.5">{wonPositions.length} رابحة من {closedPositions.length}</span>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-2">
+                <Target className="w-5 h-5" />
+              </div>
+              <p className="text-slate-500 dark:text-slate-400 font-bold text-xs">العائد الفعلي للمخاطرة</p>
+              <h3 className="text-2xl font-black text-emerald-700 dark:text-emerald-400 font-mono-num mt-1" dir="ltr">1 : {realRR}</h3>
+              <span className="text-[10px] text-slate-400 font-bold mt-0.5">متوسط الربح / متوسط الخسارة</span>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center mb-2 ${totalNetPnL >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>
+                {totalNetPnL >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
+              </div>
+              <p className="text-slate-500 dark:text-slate-400 font-bold text-xs">صافي الأرباح (بعد العمولات)</p>
+              <h3 className={`text-2xl font-black font-mono-num mt-1 ${totalNetPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`} dir="ltr">
+                {totalNetPnL > 0 ? '+' : ''}{formatEGP(totalNetPnL)}
               </h3>
-              
-              <div className="space-y-4">
-                <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4">
-                  <p className="text-xs font-bold text-emerald-600 mb-1">أفضل صفقة (Best Trade)</p>
-                  <p className="font-black text-emerald-800 text-lg">
-                    {(() => {
-                      const best = [...closedTrades].sort((a,b) => (b.pnl || 0) - (a.pnl || 0))[0];
-                      return best && (best.pnl || 0) > 0 ? `${best.symbol} (+${best.pnl?.toFixed(0)})` : '—';
-                    })()}
-                  </p>
-                </div>
-                
-                <div className="bg-red-50/80 border border-red-200 rounded-2xl p-4">
-                  <p className="text-xs font-bold text-red-600 mb-1">أسوأ صفقة (Worst Trade)</p>
-                  <p className="font-black text-red-800 text-lg">
-                    {(() => {
-                      const worst = [...closedTrades].sort((a,b) => (a.pnl || 0) - (b.pnl || 0))[0];
-                      return worst && (worst.pnl || 0) < 0 ? `${worst.symbol} (${worst.pnl?.toFixed(0)})` : '—';
-                    })()}
-                  </p>
-                </div>
+              <span className="text-[10px] text-slate-400 font-bold mt-0.5">
+                العمولات: {formatEGP(totalCommissionPaid)} | الإجمالي: {formatEGP(totalGrossPnL)}
+              </span>
+            </div>
 
-                <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4">
-                  <p className="text-xs font-bold text-amber-600 mb-1">أكثر خطأ متكرر</p>
-                  <p className="font-bold text-amber-800 text-sm">
-                    {(() => {
-                      const mistakes = closedTrades.map(t => t.mistake).filter(Boolean);
-                      if (!mistakes.length) return '—';
-                      const freq:any = {};
-                      let maxMistake = mistakes[0], maxCount = 1;
-                      mistakes.forEach(m => {
-                        freq[m!] = (freq[m!] || 0) + 1;
-                        if (freq[m!] > maxCount) { maxCount = freq[m!]; maxMistake = m; }
-                      });
-                      return maxMistake;
-                    })()}
-                  </p>
-                </div>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
+              <div className="w-10 h-10 rounded-2xl bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-2">
+                <BrainCircuit className="w-5 h-5" />
+              </div>
+              <p className="text-slate-500 dark:text-slate-400 font-bold text-xs">مؤشر الانضباط النفسي</p>
+              <h3 className={`text-2xl font-black font-mono-num mt-1 ${disciplineScore >= 80 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`} dir="ltr">
+                {disciplineScore} / 100
+              </h3>
+              <span className="text-[10px] text-slate-400 font-bold mt-0.5">{ruleBreakerCount} صفقات استثنائية</span>
+            </div>
+
+          </div>
+
+          {/* Equity Curve */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div>
+                <h2 className="text-lg font-black text-slate-900 dark:text-white">منحنى نمو رأس المال (Equity Curve)</h2>
+                <p className="text-xs text-slate-400 font-bold mt-0.5">تطور السيولة التراكمية مع كل إغلاق لصفقة</p>
+              </div>
+              <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 self-start sm:self-auto font-mono-num">
+                رأس المال المبدئي: {formatEGP(capitalInvestment)}
               </div>
             </div>
-          </div>
 
-          {/* Lessons Learned Notebook */}
-          <div className="rounded-[2rem] p-6 border border-slate-200 shadow-sm relative overflow-hidden" style={{ background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(12px)' }}>
-            <div className="absolute inset-0 bg-[repeating-linear-gradient(transparent,transparent_31px,rgba(200,216,232,0.4)_31px,rgba(200,216,232,0.4)_32px)] pointer-events-none rounded-[2rem]"></div>
-            <div className="absolute top-0 bottom-0 right-[40px] w-0.5 opacity-40 bg-red-400"></div>
-            
-            <div className="relative z-10 pr-[50px]">
-              <h3 className="font-handwriting text-2xl text-blue-800 mb-4 mt-2">مذكرات المتداول (دروس مستفادة) 📝</h3>
-              <ul className="space-y-4">
-                {closedTrades.filter(t => t.lessonLearned).slice(-4).reverse().map((t, idx) => (
-                  <li key={idx} className="relative">
-                    <span className="absolute -right-[40px] font-handwriting text-slate-400 text-sm">{t.symbol}</span>
-                    <p className="font-handwriting text-xl text-slate-700 leading-loose">
-                      "{t.lessonLearned}"
-                    </p>
-                  </li>
-                ))}
-                {closedTrades.filter(t => t.lessonLearned).length === 0 && (
-                  <li className="font-handwriting text-xl text-slate-400 leading-loose">لم تقم بتسجيل أي دروس بعد...</li>
-                )}
-              </ul>
+            <div className="h-[340px] w-full" dir="ltr">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={equityData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid 
+                    strokeDasharray="3 3" 
+                    vertical={false} 
+                    stroke={isDark ? '#334155' : '#e2e8f0'} 
+                    opacity={0.6} 
+                  />
+                  <XAxis 
+                    dataKey="trade" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 11, fontWeight: 700 }} 
+                    dy={8} 
+                  />
+                  <YAxis 
+                    domain={['auto', 'auto']} 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 11, fontWeight: 700 }} 
+                    dx={-8} 
+                    tickFormatter={v => `${(v / 1000).toFixed(0)}k`} 
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      borderRadius: '16px', 
+                      border: isDark ? '1px solid #334155' : '1px solid #e2e8f0', 
+                      boxShadow: '0 10px 25px rgba(0,0,0,0.15)', 
+                      fontWeight: 'bold', 
+                      backgroundColor: isDark ? '#1e293b' : '#0f172a', 
+                      color: '#ffffff' 
+                    }}
+                    formatter={(val: any) => [`${Number(val).toLocaleString()} EGP`, 'السيولة الكلية']}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="equity" 
+                    stroke="#2563eb" 
+                    strokeWidth={3} 
+                    fillOpacity={1} 
+                    fill="url(#equityGrad)" 
+                    activeDot={{ r: 6, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} 
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>
       )}
+
+      {/* TAB 2: PNL CALENDAR */}
+      {activeSubTab === 'calendar' && (
+        <PnLCalendar />
+      )}
+
+      {/* TAB 3: PSYCHOLOGY & LESSONS */}
+      {activeSubTab === 'psychology' && (
+        <div className="space-y-6">
+          <div className="grid md:grid-cols-2 gap-6">
+            
+            {/* Emotion vs Win Rate Breakdown */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+              <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <BrainCircuit className="w-5 h-5 text-purple-600" />
+                تأثير الحالة النفسية على الأداء
+              </h3>
+
+              {emotionStats.length === 0 ? (
+                <p className="text-xs text-slate-400 font-bold py-8 text-center">
+                  لم تسجل حالات نفسية كافية في الصفقات المغلقة بعد.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {emotionStats.map((item) => (
+                    <div key={item.key} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-black text-slate-800 dark:text-white">{item.label}</span>
+                        <span className={`font-mono-num font-black ${item.pnl >= 0 ? 'text-emerald-600' : 'text-red-600'}`} dir="ltr">
+                          {item.pnl > 0 ? '+' : ''}{formatEGP(item.pnl)} ({item.winRate.toFixed(0)}% Win)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all ${item.pnl >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} 
+                          style={{ width: `${Math.max(5, item.winRate)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Best Trade & Worst Trade Cards */}
+            <div className="space-y-4">
+              
+              {/* Best Trade */}
+              <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-3xl p-5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-black text-sm">
+                    <Award className="w-5 h-5 text-emerald-600" />
+                    أفضل صفقة منفذة (Best Winner)
+                  </div>
+                  {bestTrade && (
+                    <span className="font-mono-num font-black text-lg text-emerald-700 dark:text-emerald-400" dir="ltr">
+                      +{formatEGP(bestTrade.pnl)}
+                    </span>
+                  )}
+                </div>
+                {bestTrade ? (
+                  <div>
+                    <span className="text-xl font-black text-emerald-950 dark:text-emerald-200 font-mono-num" dir="ltr">
+                      {bestTrade.pos.symbol}
+                    </span>
+                    <p className="text-xs text-emerald-700 dark:text-emerald-400 font-bold mt-1">
+                      الاستراتيجية: {bestTrade.pos.plan?.strategy || 'تمركز ناجح'}
+                    </p>
+                    {bestTrade.pos.journal?.lessonLearned && (
+                      <p className="font-handwriting text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+                        "{bestTrade.pos.journal.lessonLearned}"
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-emerald-600 font-bold">لا توجد صفقات رابحة مغلقة بعد.</p>
+                )}
+              </div>
+
+              {/* Worst Trade */}
+              <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-3xl p-5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-red-800 dark:text-red-300 font-black text-sm">
+                    <AlertOctagon className="w-5 h-5 text-red-600" />
+                    أكبر خسارة للتعلم منها (Worst Loser)
+                  </div>
+                  {worstTrade && (
+                    <span className="font-mono-num font-black text-lg text-red-700 dark:text-red-400" dir="ltr">
+                      {formatEGP(worstTrade.pnl)}
+                    </span>
+                  )}
+                </div>
+                {worstTrade ? (
+                  <div>
+                    <span className="text-xl font-black text-red-950 dark:text-red-200 font-mono-num" dir="ltr">
+                      {worstTrade.pos.symbol}
+                    </span>
+                    <p className="text-xs text-red-700 dark:text-red-400 font-bold mt-1">
+                      السبب أو الخطأ: {worstTrade.pos.journal?.mistake || 'ضرب وقف الخسارة'}
+                    </p>
+                    {worstTrade.pos.journal?.lessonLearned && (
+                      <p className="font-handwriting text-xs text-red-600 dark:text-red-400 mt-1">
+                        "{worstTrade.pos.journal.lessonLearned}"
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-red-600 font-bold">لا توجد صفقات خاسرة مسجلة.</p>
+                )}
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* Notebook Lessons Learned Section */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm">
+            <h3 className="font-handwriting text-2xl text-blue-800 dark:text-blue-400 mb-4 font-bold flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-amber-500" />
+              مذكرات ودروس التداول التراكمية 📝
+            </h3>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              {closedPositions.filter(p => p.journal?.lessonLearned).slice(-6).reverse().map((p, idx) => (
+                <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-1">
+                  <div className="flex items-center justify-between text-xs text-slate-400 font-bold">
+                    <span className="text-blue-600 dark:text-blue-400 font-black font-mono-num" dir="ltr">{p.symbol}</span>
+                    <span>{p.journal?.openedDate ? new Date(p.journal.openedDate).toLocaleDateString('ar-EG') : ''}</span>
+                  </div>
+                  <p className="font-handwriting text-base text-slate-800 dark:text-slate-200 leading-relaxed font-bold">
+                    "{p.journal?.lessonLearned}"
+                  </p>
+                </div>
+              ))}
+
+              {closedPositions.filter(p => p.journal?.lessonLearned).length === 0 && (
+                <p className="font-handwriting text-lg text-slate-400 col-span-2 text-center py-6">
+                  لم تسجل أي دروس بعد.. عند إغلاق كل صفقة، دوّن ما تعلمته للمستقبل!
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
