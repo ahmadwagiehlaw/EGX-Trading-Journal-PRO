@@ -27,6 +27,7 @@ export interface Trade {
   emotion?: 'confident' | 'fomo' | 'revenge' | 'fear' | 'greed' | 'neutral';
   lessonLearned?: string;
   mistake?: string;
+  tags?: string[];
 }
 
 export interface Plan {

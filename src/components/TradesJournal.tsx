@@ -130,6 +130,13 @@ export default function TradesJournal({ draftTrade, isNewTradeOpen, setIsNewTrad
                           {trade.isRuleBreaker && <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />}
                         </div>
                         <span className="font-handwriting text-xs text-slate-400">صفقة #{idx + 1}</span>
+                        {trade.tags && trade.tags.length > 0 && (
+                          <div className="flex gap-1 mt-1">
+                            {trade.tags.map(tag => (
+                              <span key={tag} className="text-[10px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded border border-purple-100">#{tag}</span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </td>

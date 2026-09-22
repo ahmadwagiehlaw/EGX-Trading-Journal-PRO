@@ -1,4 +1,4 @@
-import { Wallet, TrendingUp, ShieldAlert, Activity, BookOpen, Target, Clock } from 'lucide-react';
+import { Wallet, TrendingUp, ShieldAlert, Activity, BookOpen, Target, Clock, Flame } from 'lucide-react';
 import { useTrades } from '../context/TradeContext';
 
 export default function Dashboard({ 
@@ -21,7 +21,29 @@ export default function Dashboard({
 
   return (
     <div className="w-full h-full flex flex-col space-y-8" dir="rtl">
-      
+      {/* Market Heat Banner */}
+      {plans.filter(p => p.status === 'ready').length > 0 && (
+        <div className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl p-4 shadow-lg text-white flex items-center justify-between animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm animate-pulse">
+              <Flame className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h3 className="font-black text-lg">🔥 حرارة السوق عالية!</h3>
+              <p className="text-orange-50 text-sm font-medium">
+                لديك ({plans.filter(p => p.status === 'ready').length}) خطط جاهزة للتنفيذ. لا تفوت الفرصة!
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={() => onNavigate?.('قائمة المراقبة')}
+            className="bg-white text-orange-600 px-4 py-2 rounded-xl font-black text-sm hover:shadow-md hover:bg-orange-50 transition-all active:scale-95"
+          >
+            استعرض الخطط الآن
+          </button>
+        </div>
+      )}
+
       {/* Top Global Stats (Portfolio Level) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white/40 backdrop-blur-md rounded-2xl p-6 border border-white/60 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden group">

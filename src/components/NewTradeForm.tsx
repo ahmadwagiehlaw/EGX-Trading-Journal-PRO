@@ -10,6 +10,8 @@ export default function NewTradeForm({ initialData, onClose }: { initialData?: a
   const [entryPrice, setEntryPrice] = useState<string>(initialData?.entryPrice?.toString() || '');
   const [targetPrice, setTargetPrice] = useState<string>(initialData?.targetPrice?.toString() || '');
   const [stopLoss, setStopLoss] = useState<string>(initialData?.initialStopLoss?.toString() || '');
+  const [tags, setTags] = useState<string[]>(initialData?.tags || []);
+  const [tagInput, setTagInput] = useState('');
   
   useEffect(() => {
     if (initialData?.symbol) setSymbol(initialData.symbol);
@@ -62,7 +64,7 @@ export default function NewTradeForm({ initialData, onClose }: { initialData?: a
       highestPrice: initialData?.highestPrice || entry,
       targetPrice: target,
       shares: initialData?.sharesCount || initialData?.shares || 0,
-      makerPlan, checklist, images, isRuleBreaker: !allChecked,
+      makerPlan, checklist, images, isRuleBreaker: !allChecked, tags
     };
 
     if (initialData?.id) updateTrade(initialData.id, tradeData);
@@ -171,6 +173,36 @@ export default function NewTradeForm({ initialData, onClose }: { initialData?: a
             </label>
           );
         })}
+      </div>
+
+      {/* Smart Tags */}
+      <div className="space-y-2">
+        <label className="text-xs font-black text-slate-500 uppercase tracking-wider block">التوسيم الذكي (Tags)</label>
+        <div className="flex flex-wrap gap-2 mb-2">
+          {tags.map((tag, idx) => (
+            <span key={idx} className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+              #{tag}
+              <button onClick={() => setTags(tags.filter((_, i) => i !== idx))} className="text-purple-400 hover:text-purple-900"><X className="w-3 h-3" /></button>
+            </span>
+          ))}
+        </div>
+        <input 
+          type="text" 
+          value={tagInput}
+          onChange={(e) => setTagInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ',') {
+              e.preventDefault();
+              const newTag = tagInput.trim().replace(/^#/, '');
+              if (newTag && !tags.includes(newTag)) {
+                setTags([...tags, newTag]);
+                setTagInput('');
+              }
+            }
+          }}
+          className="w-full text-sm font-bold text-slate-700 py-2.5 px-4 border border-slate-300 bg-white/50 rounded-xl focus:border-purple-500 focus:outline-none transition-colors"
+          placeholder="أضف وسم واضغط Enter (مثال: فومو، اختراق_وهمي)"
+        />
       </div>
 
       {/* Images Upload */}
