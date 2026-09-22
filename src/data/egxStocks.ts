@@ -129,7 +129,7 @@ export const EGX_STOCKS: EGXStock[] = [
 ];
 
 export function searchEGXStocks(query: string): EGXStock[] {
-  if (!query || query.trim() === '') return EGX_STOCKS.slice(0, 10);
+  if (!query || query.trim() === '') return EGX_STOCKS;
   const q = query.trim().toLowerCase();
 
   return EGX_STOCKS.filter(stock => 

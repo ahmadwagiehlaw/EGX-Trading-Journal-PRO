@@ -5,7 +5,7 @@ import StockAutocomplete from './StockAutocomplete';
 import { useTrades, type Plan } from '../context/TradeContext';
 
 export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item: any) => void }) {
-  const { plans, addPlan, updatePlan, deletePlan, convertPlanToPosition } = useTrades();
+  const { plans, addPlan, updatePlan, deletePlan, convertPlanToPosition, capitalInvestment } = useTrades();
 
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -29,6 +29,23 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
     const risk = avgEntry - stop;
     const reward = target - avgEntry;
     return (reward / risk).toFixed(1);
+  };
+
+  const getRiskMetrics = (plan: Plan) => {
+    const { min, max } = getEntryRange(plan);
+    const avgEntry = (min + max) / 2 || min;
+    const { stop } = plan;
+
+    // Default to 1% risk for quick calculation in the plan editor
+    const riskAmount = (capitalInvestment || 0) * 0.01; 
+    let maxShares = 0;
+    
+    if (avgEntry > 0 && stop && stop < avgEntry) {
+      const riskPerShare = avgEntry - stop;
+      maxShares = Math.floor(riskAmount / riskPerShare);
+    }
+
+    return { maxShares, riskAmount };
   };
 
   const handleSavePlan = (updatedPlan: Plan) => {
@@ -426,12 +443,24 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
                   </div>
                 </div>
 
-                {/* Live RRR Badge */}
-                <div className="flex justify-between items-center bg-slate-100 dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700">
-                  <label className="text-xs font-black text-slate-600 dark:text-slate-300">نسبة المخاطرة للعائد (RRR)</label>
-                  <span className="font-black text-lg text-slate-900 dark:text-white font-mono-num" dir="ltr">
-                    1 : {calculateRRR(selectedPlan)}
-                  </span>
+                {/* Live RRR & Max Shares Auto-Calculation */}
+                <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-700/50">
+                    <label className="text-xs font-black text-slate-600 dark:text-slate-300">نسبة المخاطرة للعائد (RRR)</label>
+                    <span className="font-black text-base text-slate-900 dark:text-white font-mono-num" dir="ltr">
+                      1 : {calculateRRR(selectedPlan)}
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400">عدد الأسهم القصوى (Max Shares)</label>
+                    <div className="text-left">
+                      <span className="font-black text-sm text-blue-600 dark:text-blue-400 font-mono-num bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-lg border border-blue-100 dark:border-blue-800/50" dir="ltr">
+                        {getRiskMetrics(selectedPlan).maxShares.toLocaleString()} سهم
+                      </span>
+                      <p className="text-[9px] text-slate-400 mt-0.5 font-bold">بمخاطرة 1% من رأس المال</p>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Status Selection */}
