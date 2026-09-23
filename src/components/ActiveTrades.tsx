@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react';
 import { 
   ArrowDownToLine, 
   Lock, 
+  Maximize2,
+  Minimize2,
   ShieldAlert, 
   AlertTriangle, 
   CheckCircle, 
@@ -30,6 +32,7 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
   const [error, setError] = useState<string | null>(null);
   
   const [txModalType, setTxModalType] = useState<'buy' | 'sell' | null>(null);
+  const [isChartExpanded, setIsChartExpanded] = useState(false);
 
   if (!position || !metrics) return null;
 
@@ -61,10 +64,18 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
 
   return (
     <div className="w-full space-y-6" dir="rtl">
-      <div className="grid lg:grid-cols-2 gap-6 items-stretch">
+      <div className={isChartExpanded ? "flex flex-col" : "grid lg:grid-cols-2 gap-6 items-stretch"}>
         
         {/* Right Column: Live TradingView Chart */}
-        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden min-h-[520px] flex flex-col relative z-10">
+        <div className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col relative z-10 transition-all duration-300 ${isChartExpanded ? 'h-[80vh]' : 'min-h-[520px]'}`}>
+          <button 
+            onClick={() => setIsChartExpanded(!isChartExpanded)}
+            className="absolute top-4 right-4 z-50 p-2.5 bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700 backdrop-blur-md rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-all flex items-center gap-2"
+            title={isChartExpanded ? "تصغير الشارت" : "تكبير الشارت"}
+          >
+            {isChartExpanded ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+            <span className="text-xs font-bold hidden sm:inline">{isChartExpanded ? "تصغير" : "تكبير الشاشة"}</span>
+          </button>
           <AdvancedRealTimeChart 
             symbol={`EGX:${position.symbol}`}
             interval="D"
@@ -80,7 +91,7 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
         </div>
 
         {/* Left Column: Trailing Stop Engine & Ledger Control */}
-        <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 flex flex-col justify-between space-y-6 shadow-sm">
+        <div className={`bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 flex-col justify-between space-y-6 shadow-sm ${isChartExpanded ? 'hidden' : 'flex'}`}>
 
           <div>
             {/* Header / Ticker Summary */}
