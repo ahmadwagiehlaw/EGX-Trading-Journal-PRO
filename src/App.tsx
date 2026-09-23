@@ -3,6 +3,7 @@ import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import Watchlist from './components/Watchlist';
 import TradesJournal from './components/TradesJournal';
+import CashLedger from './components/CashLedger';
 import CommandPalette from './components/CommandPalette';
 import ReloadPrompt from './components/ReloadPrompt';
 import { Target } from 'lucide-react';
@@ -60,6 +61,7 @@ function App() {
           <div className="py-20 text-center font-bold text-slate-400">جاري التحميل...</div>
         }>
           {activeTab === 'التحليلات' && <Analytics />}
+          {activeTab === 'الخزينة' && <CashLedger />}
           {activeTab === 'الإعدادات' && <Settings />}
         </Suspense>
         

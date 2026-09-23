@@ -7,6 +7,14 @@ export interface Transaction {
   amount: number;
   note?: string;
   stopAtTime?: number;
+  
+  // Journaling & Psychology per transaction
+  entryReason?: string;
+  exitReason?: string;
+  emotion?: 'confident' | 'fomo' | 'revenge' | 'fear' | 'greed' | 'neutral';
+  mistake?: string;
+  checklist?: { majorSR: boolean; bos: boolean; retest: boolean };
+  isRuleBreaker?: boolean;
 }
 
 export interface TrailingStopState {

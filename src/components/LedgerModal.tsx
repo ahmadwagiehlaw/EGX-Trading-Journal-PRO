@@ -110,14 +110,30 @@ export default function LedgerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-500 block mb-1">المحفظة</label>
-                  <select
-                    value={portfolio}
-                    onChange={(e: any) => setPortfolio(e.target.value)}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="investment">محفظة الاستثمار</option>
-                    <option value="speculation">محفظة المضاربة</option>
-                  </select>
+                  <div className="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setPortfolio('investment')}
+                      className={`py-2 px-3 rounded-lg text-xs font-black transition-all ${
+                        portfolio === 'investment'
+                          ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                      }`}
+                    >
+                      محفظة الاستثمار
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPortfolio('speculation')}
+                      className={`py-2 px-3 rounded-lg text-xs font-black transition-all ${
+                        portfolio === 'speculation'
+                          ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                      }`}
+                    >
+                      محفظة المضاربة
+                    </button>
+                  </div>
                 </div>
               </div>
 

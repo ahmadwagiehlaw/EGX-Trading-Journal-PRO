@@ -33,7 +33,7 @@ export interface Plan {
 
 export interface LedgerEntry {
   id: string;
-  type: 'deposit' | 'withdrawal';
+  type: 'deposit' | 'withdrawal' | 'fixed_income_buy' | 'fixed_income_sell';
   amount: number;
   portfolioType: 'investment' | 'speculation';
   date: number;
@@ -414,9 +414,11 @@ export function TradeProvider({ children }: { children: ReactNode }) {
     if (ledger.length > 0) {
       ledger.forEach(entry => {
         if (entry.portfolioType === 'investment') {
-          depInv += entry.type === 'deposit' ? entry.amount : -entry.amount;
+          if (entry.type === 'deposit') depInv += entry.amount;
+          if (entry.type === 'withdrawal') depInv -= entry.amount;
         } else {
-          depSpec += entry.type === 'deposit' ? entry.amount : -entry.amount;
+          if (entry.type === 'deposit') depSpec += entry.amount;
+          if (entry.type === 'withdrawal') depSpec -= entry.amount;
         }
       });
     } else {

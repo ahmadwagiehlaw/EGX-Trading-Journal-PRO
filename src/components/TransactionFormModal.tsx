@@ -8,22 +8,32 @@ interface TransactionFormModalProps {
   onClose: () => void;
   position: TickerPosition | null;
   defaultType?: 'buy' | 'sell';
+  defaultShares?: string;
 }
 
 export default function TransactionFormModal({
   isOpen,
   onClose,
   position,
-  defaultType = 'buy'
+  defaultType = 'buy',
+  defaultShares = ''
 }: TransactionFormModalProps) {
   const { addTransaction } = useTrades();
 
   const [type, setType] = useState<'buy' | 'sell'>(defaultType);
   const [priceStr, setPriceStr] = useState('');
-  const [sharesStr, setSharesStr] = useState('');
+  const [sharesStr, setSharesStr] = useState(defaultShares);
   const [note, setNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // New Psychology States
+  const [entryReason, setEntryReason] = useState('support');
+  const [exitReason, setExitReason] = useState('target');
+  const [emotion, setEmotion] = useState<'confident' | 'fomo' | 'revenge' | 'fear' | 'greed' | 'neutral'>('neutral');
+  const [mistake, setMistake] = useState('');
+  const [checklist, setChecklist] = useState({ majorSR: false, bos: false, retest: false });
+  const [isRuleBreaker, setIsRuleBreaker] = useState(false);
 
   // Current metrics of position
   const currentMetrics = useMemo(() => {
@@ -99,6 +109,8 @@ export default function TransactionFormModal({
         shares,
         amount: price * shares,
         note: note.trim() || (type === 'buy' ? 'شراء إضافي' : 'بيع جزئي'),
+        ...(type === 'buy' && { entryReason, checklist }),
+        ...(type === 'sell' && { exitReason, emotion, mistake, isRuleBreaker })
       });
       setIsSubmitting(false);
       onClose();
@@ -114,9 +126,9 @@ export default function TransactionFormModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-900/60" onClick={onClose} />
       
-      <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+      <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-800/70">
           <div className="flex items-center gap-3">
@@ -180,10 +192,14 @@ export default function TransactionFormModal({
             <div className="space-y-1.5">
               <label className="text-xs font-black text-slate-500 dark:text-slate-400">سعر التنفيذ (EGP)</label>
               <input
-                type="number"
-                step="any"
+                type="text"
+                inputMode="decimal"
                 value={priceStr}
-                onChange={(e) => setPriceStr(e.target.value)}
+                onChange={(e) => {
+                  // Allow only numbers and dots
+                  const val = e.target.value.replace(/[^0-9.]/g, '');
+                  setPriceStr(val);
+                }}
                 placeholder="0.00"
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-4 font-black text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900 outline-none transition-all text-center text-lg"
                 dir="ltr"
@@ -194,10 +210,14 @@ export default function TransactionFormModal({
             <div className="space-y-1.5">
               <label className="text-xs font-black text-slate-500 dark:text-slate-400">عدد الأسهم</label>
               <input
-                type="number"
-                step="1"
+                type="text"
+                inputMode="numeric"
                 value={sharesStr}
-                onChange={(e) => setSharesStr(e.target.value)}
+                onChange={(e) => {
+                  // Allow only numbers
+                  const val = e.target.value.replace(/[^0-9]/g, '');
+                  setSharesStr(val);
+                }}
                 placeholder="100"
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-4 font-black text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900 outline-none transition-all text-center text-lg"
                 dir="ltr"
@@ -208,14 +228,138 @@ export default function TransactionFormModal({
 
           {/* Note Input */}
           <div className="space-y-1.5">
-            <label className="text-xs font-black text-slate-500 dark:text-slate-400">ملاحظات العملية (السبب الفني)</label>
+            <label className="text-xs font-black text-slate-500 dark:text-slate-400">ملاحظات حرة (اختياري)</label>
             <input
               type="text"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder={type === 'buy' ? 'مثال: اختراق مع فوليوم عالي، تأكيد إعادة الاختبار' : 'مثال: جني 50% من الأرباح عند المقاومة'}
+              placeholder="اكتب أي ملاحظات إضافية هنا..."
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-4 font-bold text-slate-900 dark:text-white text-sm focus:bg-white dark:focus:bg-slate-800 focus:border-blue-500 outline-none transition-all"
             />
+          </div>
+
+          {/* Psychology & Rules Section */}
+          <div className="border-t border-slate-200 dark:border-slate-800 pt-4 space-y-4">
+            {type === 'buy' ? (
+              <>
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-500 dark:text-slate-400 block">سبب الدخول الرئيسي</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { id: 'support', label: 'دعم قوي', desc: 'شراء عند مستوى دعم رئيسي ارتد منه السعر تاريخياً' },
+                      { id: 'breakout', label: 'اختراق', desc: 'شراء بعد اختراق مستوى مقاومة صلب بحجم تداول عالي' },
+                      { id: 'pullback', label: 'إعادة اختبار', desc: 'شراء عند تراجع السعر لاختبار مستوى مقاومة تم اختراقه وتحول لدعم' },
+                      { id: 'indicator', label: 'مؤشرات فنية', desc: 'شراء بناءً على إشارة إيجابية من المؤشرات (RSI, MACD, Moving Averages)' },
+                    ].map(r => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        title={r.desc}
+                        onClick={() => setEntryReason(r.id)}
+                        className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all border cursor-help ${
+                          entryReason === r.id
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                        }`}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-500 dark:text-slate-400 block">قائمة التحقق 3MS</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { key: 'majorSR', label: 'دعم/مقاومة', desc: 'السعر يتواجد عند منطقة دعم رئيسية قوية (Major S/R)' },
+                      { key: 'bos', label: 'كسر هيكل', desc: 'تم كسر هيكل الهبوط وتغير الاتجاه لصاعد (Break of Structure)' },
+                      { key: 'retest', label: 'إعادة اختبار', desc: 'السعر يعيد اختبار مستوى تم اختراقه بنجاح ليؤكد الدخول' },
+                    ].map(item => (
+                      <label key={item.key} title={item.desc} className={`flex items-center justify-center gap-1.5 p-2 rounded-xl cursor-help transition-all border text-xs font-bold ${
+                        checklist[item.key as keyof typeof checklist]
+                          ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
+                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={checklist[item.key as keyof typeof checklist]}
+                          onChange={(e) => setChecklist({...checklist, [item.key]: e.target.checked})}
+                          className="sr-only"
+                        />
+                        {item.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-500 dark:text-slate-400 block">سبب الخروج الرئيسي</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { id: 'target', label: 'تحقيق الهدف', desc: 'تم البيع بعد وصول السعر للهدف المخطط له بنجاح' },
+                      { id: 'stop', label: 'ضرب الوقف', desc: 'تم البيع لحماية رأس المال بعد كسر مستوى وقف الخسارة الرئيسي' },
+                      { id: 'trailing', label: 'وقف متحرك', desc: 'تم البيع بناءً على كسر مستوى الوقف المتحرك لتأمين الأرباح المحققة' },
+                      { id: 'time', label: 'وقف زمني', desc: 'تم البيع بسبب استغراق السهم وقتاً طويلاً دون حركة إيجابية (تكلفة الفرصة البديلة)' },
+                      { id: 'panic', label: 'خروج عشوائي/خوف', desc: 'بيع غير منضبط نتيجة الخوف من هبوط غير مبرر أو ذبذبة لحظية' },
+                    ].map(r => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        title={r.desc}
+                        onClick={() => setExitReason(r.id)}
+                        className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all border cursor-help ${
+                          exitReason === r.id
+                            ? 'bg-emerald-600 border-emerald-500 text-white'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                        }`}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-500 dark:text-slate-400 block">الحالة النفسية</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'confident', label: '😎 واثق' },
+                      { id: 'neutral', label: '😐 محايد' },
+                      { id: 'fomo', label: '😰 فومو' },
+                      { id: 'fear', label: '😨 خوف' },
+                      { id: 'greed', label: '🤑 طمع' },
+                      { id: 'revenge', label: '😡 انتقام' }
+                    ].map(emo => (
+                      <button
+                        key={emo.id}
+                        type="button"
+                        onClick={() => setEmotion(emo.id as any)}
+                        className={`py-1.5 px-2 rounded-xl text-[11px] font-black transition-all border ${
+                          emotion === emo.id
+                            ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        {emo.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 p-2.5 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isRuleBreaker}
+                    onChange={(e) => setIsRuleBreaker(e.target.checked)}
+                    className="w-4 h-4 text-red-600 rounded"
+                  />
+                  <span className="text-xs font-bold text-red-700 dark:text-red-400">مخالفة لقواعد التداول (انعدام انضباط)</span>
+                </label>
+              </>
+            )}
           </div>
 
           {/* Live Preview Calculation Box */}

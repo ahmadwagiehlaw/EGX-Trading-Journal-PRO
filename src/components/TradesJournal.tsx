@@ -14,6 +14,7 @@ import {
   Sparkles,
   LayoutGrid,
   Table as TableIcon,
+  ArrowRight,
   Wallet,
   TrendingUp,
   Building2,
@@ -160,6 +161,39 @@ export default function TradesJournal({
     });
   }, [positions, statusFilter, searchQuery]);
 
+  if (selectedTradeId) {
+    return (
+      <div className="w-full space-y-5 animate-in slide-in-from-right-4 duration-300" dir="rtl">
+        {/* Header with back button */}
+        <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <LineChart className="w-6 h-6 text-blue-500" />
+            تفاصيل الصفقة وإدارة المركز المالي
+          </h2>
+          <button 
+            onClick={() => setSelectedTradeId(null)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold transition-all shadow-sm"
+          >
+            <ArrowRight className="w-4 h-4" />
+            العودة للسجل
+          </button>
+        </div>
+        
+        <ActiveTrades 
+          tradeId={selectedTradeId} 
+          onClose={() => setSelectedTradeId(null)} 
+        />
+        
+        <TransactionFormModal 
+          isOpen={!!txModal}
+          onClose={() => setTxModal(null)}
+          position={txModal?.pos || null}
+          defaultType={txModal?.type}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="w-full space-y-5" dir="rtl">
       
@@ -289,517 +323,114 @@ export default function TradesJournal({
           </p>
         </div>
       ) : viewMode === 'cards' ? (
-        
         /* ========================================================
-           VIEW 1: SMART CARDS VIEW (Fintech Terminal Architecture)
+           VIEW 1: SMART GRID CARDS (Compact Icons)
            ======================================================== */
-        <div className="space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4 xl:gap-5">
           {filteredPositions.map((pos) => {
             const metrics = computePositionMetrics(pos);
-            const isExpanded = expandedPositionId === pos.id;
-            const isRuleBreaker = pos.journal?.isRuleBreaker;
             const stockInfo = getStockBySymbol(pos.symbol);
             const sectorInfo = getSectorInfo(stockInfo?.sector || (pos.plan as any)?.sector);
             const SectorIcon = sectorInfo.Icon;
-
-            const investedCapital = metrics.openShares * metrics.avgEntry;
-            const riskAmount = metrics.openShares > 0 && metrics.currentStop > 0 && metrics.avgEntry > metrics.currentStop 
-              ? (metrics.avgEntry - metrics.currentStop) * metrics.openShares 
-              : 0;
-            const riskPct = investedCapital > 0 && riskAmount > 0 ? (riskAmount / investedCapital) * 100 : 0;
-            
-            // Distances and RR
-            const stopDistPct = metrics.avgEntry > 0 && metrics.currentStop > 0 
-              ? ((metrics.avgEntry - metrics.currentStop) / metrics.avgEntry) * 100 
-              : 0;
-            const targetDistPct = metrics.avgEntry > 0 && pos.plan?.target && pos.plan.target > metrics.avgEntry 
-              ? ((pos.plan.target - metrics.avgEntry) / metrics.avgEntry) * 100 
-              : 0;
-            const rrRatio = stopDistPct > 0 && targetDistPct > 0 ? (targetDistPct / stopDistPct) : null;
+            const isRuleBreaker = pos.journal?.isRuleBreaker;
 
             return (
               <div 
                 key={pos.id}
-                className={`bg-white dark:bg-slate-900 rounded-3xl border transition-all duration-300 shadow-sm hover:shadow-lg overflow-hidden ${
+                onClick={() => setSelectedTradeId(pos.id)}
+                className={`bg-white dark:bg-slate-900 rounded-3xl border transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1 overflow-hidden cursor-pointer flex flex-col relative group ${
                   metrics.isOpen 
-                    ? 'border-blue-200/90 dark:border-blue-900/60 shadow-blue-500/5' 
+                    ? 'border-blue-200/90 dark:border-blue-900/60 hover:border-blue-400 dark:hover:border-blue-500' 
                     : metrics.realizedPnL > 0 
-                      ? 'border-emerald-200/90 dark:border-emerald-900/60 shadow-emerald-500/5' 
+                      ? 'border-emerald-200/90 dark:border-emerald-900/60 hover:border-emerald-400 dark:hover:border-emerald-500' 
                       : metrics.realizedPnL < 0 
-                        ? 'border-red-200/90 dark:border-red-900/60 shadow-red-500/5' 
+                        ? 'border-rose-200/90 dark:border-rose-900/60 hover:border-rose-400 dark:hover:border-rose-500' 
                         : 'border-slate-200 dark:border-slate-800'
                 }`}
               >
-                {/* 1. HERO HEADER: Sector Avatar + Identity + Action Hub */}
-                <div className="p-5 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800">
-                  
-                  {/* Stock Avatar & Info */}
-                  <div className="flex items-center gap-4">
-                    
-                    {/* Expressive Sector Avatar (No letters, pure icon aesthetic) */}
-                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border shadow-sm shrink-0 transition-transform ${
+                {/* Status Indicator Bar at the Top */}
+                <div className={`h-1.5 w-full ${metrics.isOpen ? 'bg-gradient-to-r from-blue-400 to-indigo-500' : metrics.realizedPnL > 0 ? 'bg-gradient-to-r from-emerald-400 to-teal-500' : metrics.realizedPnL < 0 ? 'bg-gradient-to-r from-rose-400 to-red-500' : 'bg-slate-400'}`} />
+
+                <div className="p-4 sm:p-5 flex flex-col flex-1">
+                  {/* Avatar and Status */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border shadow-sm transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3 ${
                       isRuleBreaker 
-                        ? 'bg-amber-100 dark:bg-amber-950/80 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300' 
+                        ? 'bg-amber-100 dark:bg-amber-950/80 border-amber-300 text-amber-800 dark:text-amber-300' 
                         : metrics.isOpen
-                          ? 'bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600 border-blue-400/40 text-white shadow-blue-500/20'
+                          ? 'bg-gradient-to-br from-blue-600 to-indigo-600 border-blue-400/50 text-white shadow-blue-500/20'
                           : metrics.realizedPnL > 0 
-                            ? 'bg-gradient-to-br from-emerald-600 via-teal-500 to-emerald-700 border-emerald-400/40 text-white shadow-emerald-500/20' 
-                            : 'bg-gradient-to-br from-slate-700 to-slate-800 border-slate-600 text-white shadow-slate-500/10'
+                            ? 'bg-gradient-to-br from-emerald-600 to-teal-500 border-emerald-400/50 text-white shadow-emerald-500/20' 
+                            : metrics.realizedPnL < 0
+                              ? 'bg-gradient-to-br from-rose-500 to-red-600 border-rose-400/50 text-white shadow-rose-500/20'
+                              : 'bg-gradient-to-br from-slate-700 to-slate-800 border-slate-600 text-white'
                     }`}>
-                      <SectorIcon className="w-7 h-7 stroke-[2.2]" />
+                      <SectorIcon className="w-6 h-6 stroke-[2]" />
                     </div>
 
-                    <div>
-                      {/* Ticker Symbol + Arabic Name + Status */}
-                      <div className="flex items-center gap-2.5 flex-wrap">
-                        <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight font-mono-num" dir="ltr">
-                          {pos.symbol}
+                    <div className="flex items-center gap-1.5">
+                      {isRuleBreaker && (
+                        <span className="bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 p-1.5 rounded-xl border border-amber-200 dark:border-amber-800/50" title="مخالفة للقواعد (3MS)">
+                          <ShieldAlert className="w-4 h-4" />
                         </span>
-
-                        {stockInfo?.nameAr && (
-                          <span className="text-xs font-black text-slate-700 dark:text-slate-200 bg-slate-100/90 dark:bg-slate-800 px-3 py-1 rounded-xl border border-slate-200/80 dark:border-slate-700/80">
-                            {stockInfo.nameAr}
-                          </span>
-                        )}
-                        
-                        {/* Live Status Pill */}
-                        <span className={`px-2.5 py-1 rounded-xl text-xs font-black border flex items-center gap-1.5 ${
-                          metrics.isOpen 
-                            ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs' 
-                            : metrics.realizedPnL > 0 
-                              ? 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 shadow-xs' 
-                              : metrics.realizedPnL < 0 
-                                ? 'bg-red-50 dark:bg-red-950/70 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800 shadow-xs' 
-                                : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                        }`}>
-                          {metrics.isOpen ? (
-                            <>
-                              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-                              <span>صفقة نشطة</span>
-                            </>
-                          ) : metrics.realizedPnL > 0 ? '✓ ربح محقق' : metrics.realizedPnL < 0 ? '✕ خسارة' : '○ تعادل'}
+                      )}
+                      {!metrics.isOpen && (
+                        <span className={`p-1.5 rounded-xl border ${metrics.realizedPnL > 0 ? 'bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50' : 'bg-rose-50 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800/50'}`}>
+                          {metrics.realizedPnL > 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                         </span>
-
-                        {isRuleBreaker && (
-                          <span className="flex items-center gap-1 bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 text-xs font-black px-2.5 py-1 rounded-xl">
-                            <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
-                            مخالفة خطة الدخول
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Sub-details: Sector & Strategy Tags */}
-                      <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                        <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-lg border flex items-center gap-1.5 ${sectorInfo.badgeClass}`}>
-                          <SectorIcon className="w-3.5 h-3.5" />
-                          <span>{sectorInfo.label}</span>
-                        </span>
-
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold bg-slate-100/70 dark:bg-slate-800/70 px-2.5 py-0.5 rounded-lg">
-                          {pos.plan?.strategy || 'تمركز واستثمار'}
-                        </span>
-
-                        {pos.journal?.tags && pos.journal.tags.map(t => (
-                          <span key={t} className="text-[10px] bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-300 px-2 py-0.5 rounded-md border border-purple-100 dark:border-purple-800 font-bold">
-                            #{t}
-                          </span>
-                        ))}
-                      </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* Actions Segmented Bar */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {metrics.isOpen && (
-                      <div className="flex items-center gap-1.5 bg-slate-100/80 dark:bg-slate-800/80 p-1 rounded-2xl border border-slate-200/70 dark:border-slate-700/70">
-                        <button
-                          onClick={() => setTxModal({ pos, type: 'buy' })}
-                          className="px-3 py-1.5 bg-white dark:bg-slate-700 hover:bg-blue-50 text-blue-700 dark:text-blue-300 text-xs font-black rounded-xl transition-all flex items-center gap-1 shadow-xs"
-                        >
-                          <Plus className="w-3.5 h-3.5 text-blue-600" />
-                          تعزيز
-                        </button>
-                        <button
-                          onClick={() => setTxModal({ pos, type: 'sell' })}
-                          className="px-3 py-1.5 bg-white dark:bg-slate-700 hover:bg-emerald-50 text-emerald-700 dark:text-emerald-300 text-xs font-black rounded-xl transition-all flex items-center gap-1 shadow-xs"
-                        >
-                          <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-600" />
-                          تخفيف
-                        </button>
-                      </div>
-                    )}
+                  {/* Symbol & Name */}
+                  <div className="mb-5">
+                    <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-none mb-1.5" dir="ltr">
+                      {pos.symbol}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold truncate">
+                      {stockInfo?.nameAr || pos.plan?.strategy || 'تمركز'}
+                    </p>
+                  </div>
 
-                    <button 
-                      onClick={() => setSelectedTradeId(pos.id)}
-                      className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black rounded-2xl transition-all flex items-center gap-1.5 border border-slate-200/80 dark:border-slate-700 shadow-xs"
-                      title="الشارت ومحرك الوقف"
-                    >
-                      <LineChart className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                      الوقف والشارت
-                    </button>
+                  {/* Key Metrics Grid */}
+                  <div className="grid grid-cols-2 gap-2 mt-auto">
+                    <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                      <span className="text-[10px] text-slate-400 font-bold block mb-0.5">سعر الدخول</span>
+                      <span className="text-sm font-black text-slate-900 dark:text-white font-mono-num" dir="ltr">
+                        {metrics.avgEntry.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                      <span className="text-[10px] text-slate-400 font-bold block mb-0.5">الكمية</span>
+                      <span className="text-sm font-black text-slate-900 dark:text-white font-mono-num" dir="ltr">
+                        {metrics.openShares}
+                      </span>
+                    </div>
+                  </div>
 
-                    <button 
-                      onClick={() => { setEditingTrade(pos); setIsNewTradeOpen(true); }}
-                      className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 rounded-2xl transition-colors border border-transparent hover:border-blue-200"
-                      title="تعديل"
-                    >
-                      <PenTool className="w-4 h-4" />
-                    </button>
-
-                    {deleteConfirmId === pos.id ? (
-                      <div className="flex items-center gap-1 bg-red-50 dark:bg-red-950/60 p-1 rounded-2xl border border-red-200 dark:border-red-800">
-                        <button
-                          onClick={() => { deletePosition(pos.id); setDeleteConfirmId(null); }}
-                          className="px-2.5 py-1 bg-red-600 text-white text-xs font-black rounded-xl shadow-xs"
-                        >
-                          تأكيد
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirmId(null)}
-                          className="px-1.5 py-1 text-slate-400 hover:text-slate-700 text-xs"
-                        >
-                          ✕
-                        </button>
+                  {/* Profit / Loss or Target */}
+                  <div className="mt-3.5 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3">
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                      {metrics.isOpen ? 'الهدف / الوقف' : 'الربح المحقق'}
+                    </span>
+                    {metrics.isOpen ? (
+                      <div className="flex items-center gap-1.5 font-mono-num font-black text-xs" dir="ltr">
+                        <span className="text-rose-500">{metrics.currentStop.toFixed(2)}</span>
+                        <span className="text-slate-300 dark:text-slate-600">/</span>
+                        <span className="text-emerald-500">{pos.plan?.target ? pos.plan.target.toFixed(2) : '—'}</span>
                       </div>
                     ) : (
-                      <button 
-                        onClick={() => setDeleteConfirmId(pos.id)}
-                        className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-2xl transition-colors border border-transparent hover:border-red-200"
-                        title="حذف المركز"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <span className={`text-sm font-black font-mono-num ${metrics.realizedPnL > 0 ? 'text-emerald-600 dark:text-emerald-400' : metrics.realizedPnL < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500'}`} dir="ltr">
+                        {metrics.realizedPnL > 0 ? '+' : ''}{formatEGP(metrics.realizedPnL)}
+                      </span>
                     )}
                   </div>
                 </div>
-
-                {/* 2. HIGH-IMPACT INFOGRAPHIC FINANCIAL TILES (Clean, Visual, Red/Green Color-Coded) */}
-                <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-3 gap-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30">
-                  
-                  {/* TILE 1: RISK & STOP (Bold Crimson/Red Theme) */}
-                  <div className="bg-rose-100/60 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-900/50 rounded-2xl p-3.5 flex flex-col justify-between space-y-2.5 relative overflow-hidden">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
-                        <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-                        الوقف والمخاطرة
-                      </span>
-                      {riskPct > 0 && (
-                        <span className="text-[11px] font-black bg-rose-200/80 dark:bg-rose-900/80 text-rose-800 dark:text-rose-200 px-2 py-0.5 rounded-lg font-mono-num" dir="ltr">
-                          -{riskPct.toFixed(1)}%
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <div>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold block">سعر الوقف</span>
-                        <span className="font-black text-rose-600 dark:text-rose-400 font-mono-num text-lg block leading-tight" dir="ltr">
-                          {metrics.currentStop % 1 === 0 ? metrics.currentStop : metrics.currentStop.toFixed(2)}
-                        </span>
-                        <span className="text-[10px] text-rose-500/80 font-bold" dir="ltr">
-                          {stopDistPct > 0 ? `-${stopDistPct.toFixed(1)}%` : 'مؤمن'}
-                        </span>
-                      </div>
-
-                      <div>
-                        <span className="text-[11px] text-rose-700 dark:text-rose-300 font-bold block">أقصى خسارة</span>
-                        <span className="font-black text-rose-600 dark:text-rose-400 font-mono-num text-lg block leading-tight" dir="ltr">
-                          {riskAmount > 0 ? `-${formatEGP(Math.round(riskAmount), 0)}` : '0 EGP'}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-bold">
-                          عند كسر الوقف
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* TILE 2: POSITION & ENTRY CAPITAL (Neutral / Blue Theme) */}
-                  <div className="bg-blue-50/50 dark:bg-slate-850 border border-blue-200/60 dark:border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between space-y-2.5 shadow-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                        <Wallet className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                        رأس المال والدخول
-                      </span>
-                      <span className="text-[11px] font-black bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-lg font-mono-num">
-                        {metrics.openShares > 0 ? `${metrics.openShares.toLocaleString()} سهم` : 'مغلق'}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <div>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold block">رأس المال الموظف</span>
-                        <span className="font-black text-slate-900 dark:text-white font-mono-num text-lg block leading-tight" dir="ltr">
-                          {formatEGP(Math.round(investedCapital), 0)}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-bold">
-                          القيمة الحالية
-                        </span>
-                      </div>
-
-                      <div>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold block">متوسط الشراء</span>
-                        <span className="font-black text-blue-600 dark:text-blue-400 font-mono-num text-lg block leading-tight" dir="ltr">
-                          {metrics.avgEntry % 1 === 0 ? metrics.avgEntry : metrics.avgEntry.toFixed(2)}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-bold">
-                          المتوسط الموزون
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* TILE 3: TARGET & PROFIT POTENTIAL (Bold Emerald/Green Theme) */}
-                  <div className="bg-emerald-100/60 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-900/50 rounded-2xl p-3.5 flex flex-col justify-between space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
-                        <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                        الهدف والأرباح
-                      </span>
-                      {rrRatio ? (
-                        <span className="text-[11px] font-black bg-emerald-200/80 dark:bg-emerald-900/80 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 rounded-lg font-mono-num" dir="ltr">
-                          R:R 1:{rrRatio.toFixed(1)}
-                        </span>
-                      ) : targetDistPct > 0 ? (
-                        <span className="text-[11px] font-black bg-emerald-200/80 dark:bg-emerald-900/80 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 rounded-lg font-mono-num" dir="ltr">
-                          +{targetDistPct.toFixed(1)}%
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <div>
-                        <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-bold block">الهدف المتوقع</span>
-                        <span className="font-black text-emerald-600 dark:text-emerald-400 font-mono-num text-lg block leading-tight" dir="ltr">
-                          {pos.plan?.target ? (pos.plan.target % 1 === 0 ? pos.plan.target : pos.plan.target.toFixed(2)) : '—'}
-                        </span>
-                        <span className="text-[10px] text-emerald-600/80 font-bold" dir="ltr">
-                          {pos.plan?.target && pos.plan.target > metrics.avgEntry 
-                            ? `+${formatEGP(Math.round((pos.plan.target - metrics.avgEntry) * metrics.openShares), 0)}`
-                            : targetDistPct > 0 ? `+${targetDistPct.toFixed(1)}%` : 'تتبع'}
-                        </span>
-                      </div>
-
-                      <div>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold block">الربح المحقق</span>
-                        <span className={`font-black font-mono-num text-lg block leading-tight ${
-                          metrics.realizedPnL > 0 
-                            ? 'text-emerald-600 dark:text-emerald-400' 
-                            : metrics.realizedPnL < 0 
-                              ? 'text-rose-600 dark:text-rose-400' 
-                              : 'text-slate-600 dark:text-slate-400'
-                        }`} dir="ltr">
-                          {metrics.realizedPnL !== 0 
-                            ? `${metrics.realizedPnL > 0 ? '+' : ''}${formatEGP(Math.round(metrics.realizedPnL), 0)}`
-                            : '0 EGP'}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-bold">
-                          {metrics.realizedPnL !== 0 ? 'مبيعات جزئية' : 'لا يوجد تخفيف'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* 3. COMPACT PRICE TRACK & FOOTER BAR */}
-                <div className="p-3.5 px-5 bg-white dark:bg-slate-900 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  
-                  {/* Visual Infographic Price Progress Spectrum */}
-                  <div className="flex-1 max-w-md space-y-1.5">
-                    <div className="flex justify-between items-center text-[11px] font-mono-num font-bold">
-                      <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
-                        وقف: {metrics.currentStop % 1 === 0 ? metrics.currentStop : metrics.currentStop.toFixed(2)}
-                      </span>
-                      <span className="text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
-                        دخول: {metrics.avgEntry % 1 === 0 ? metrics.avgEntry : metrics.avgEntry.toFixed(2)}
-                      </span>
-                      {pos.plan?.target && (
-                        <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                          هدف: {pos.plan.target % 1 === 0 ? pos.plan.target : pos.plan.target.toFixed(2)}
-                        </span>
-                      )}
-                    </div>
-                    {pos.plan?.target && pos.plan.target > metrics.currentStop && (
-                      <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex shadow-inner" dir="ltr">
-                        <div 
-                          className="h-full bg-gradient-to-r from-rose-500 to-amber-500 rounded-l-full" 
-                          style={{ width: `${Math.max(12, Math.min(45, (stopDistPct / (stopDistPct + targetDistPct || 1)) * 100))}%` }} 
-                        />
-                        <div 
-                          className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 rounded-r-full" 
-                          style={{ width: `${Math.max(55, Math.min(88, (targetDistPct / (stopDistPct + targetDistPct || 1)) * 100))}%` }} 
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Expand Transactions Button */}
-                  <div className="flex items-center gap-3">
-                    {pos.journal?.lessonLearned && (
-                      <span className="hidden xl:block font-handwriting text-xs text-slate-400 line-clamp-1 max-w-xs">
-                        "{pos.journal.lessonLearned}"
-                      </span>
-                    )}
-
-                    <button
-                      onClick={() => setExpandedPositionId(isExpanded ? null : pos.id)}
-                      className={`px-4 py-2 rounded-2xl text-xs font-black flex items-center gap-2 transition-all border shadow-xs ${
-                        isExpanded
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/20'
-                          : 'bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
-                      }`}
-                    >
-                      <Layers className="w-4 h-4 text-blue-500" />
-                      <span>سجل الحركات المالية المباشرة</span>
-                      <span className="bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full text-[10px] font-mono-num font-black">
-                        {pos.transactions?.length || 0}
-                      </span>
-                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                </div>
-
-                {/* 4. EXPANDABLE PROFESSIONAL TRANSACTION LEDGER TABLE */}
-                {isExpanded && (
-                  <div className="bg-slate-50/90 dark:bg-slate-950/60 border-t border-slate-200/80 dark:border-slate-800 p-5 space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
-                        <h4 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                          <Sparkles className="w-4 h-4 text-blue-500" />
-                          جدول الحركات والصفقات الجزئية لـ {stockInfo?.nameAr || pos.symbol}
-                        </h4>
-                        <p className="text-xs text-slate-400 font-bold mt-0.5">
-                          توثيق دقيق لكل عملية شراء، تعزيز، أو بيع وتخفيف جزئي بالأسعار والكميات.
-                        </p>
-                      </div>
-
-                      {metrics.isOpen && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => setTxModal({ pos, type: 'buy' })}
-                            className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-xl shadow-sm transition-all flex items-center gap-1.5"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            + شراء / تعزيز
-                          </button>
-                          <button
-                            onClick={() => setTxModal({ pos, type: 'sell' })}
-                            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl shadow-sm transition-all flex items-center gap-1.5"
-                          >
-                            <ArrowDownLeft className="w-3.5 h-3.5" />
-                            + بيع جزئي
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {(!pos.transactions || pos.transactions.length === 0) ? (
-                      <p className="text-xs text-slate-400 dark:text-slate-500 font-bold text-center py-6">
-                        لا توجد حركات مسجلة بعد في هذا المركز.
-                      </p>
-                    ) : (
-                      <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-                        <table className="w-full text-right text-xs">
-                          <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/80 text-slate-500 dark:text-slate-400 font-black text-[11px]">
-                            <tr>
-                              <th className="py-3 px-4">نوع العملية</th>
-                              <th className="py-3 px-3">التاريخ والوقت</th>
-                              <th className="py-3 px-3 text-left">الكمية (الأسهم)</th>
-                              <th className="py-3 px-3 text-left">سعر التنفيذ</th>
-                              <th className="py-3 px-3 text-left">إجمالي القيمة</th>
-                              <th className="py-3 px-3 text-left">الربح المحقق</th>
-                              <th className="py-3 px-3">الملاحظات والسبب</th>
-                              <th className="py-3 px-3 text-center">إجراء</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
-                            {pos.transactions.map((tx, idx) => {
-                              const isBuy = tx.type === 'buy';
-                              const txPnl = !isBuy && metrics.avgEntry > 0 ? (tx.price - metrics.avgEntry) * tx.shares : 0;
-
-                              return (
-                                <tr key={tx.id || idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                                  {/* Type */}
-                                  <td className="py-3 px-4">
-                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black border ${
-                                      isBuy 
-                                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' 
-                                        : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                                    }`}>
-                                      {isBuy ? <Plus className="w-3 h-3" /> : <ArrowDownLeft className="w-3 h-3" />}
-                                      {isBuy ? 'شراء وتمركز' : 'بيع جزئي'}
-                                    </span>
-                                  </td>
-
-                                  {/* Date */}
-                                  <td className="py-3 px-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                                    {new Date(tx.date).toLocaleDateString('ar-EG', { dateStyle: 'medium' })}
-                                    <span className="text-[10px] text-slate-400 block font-mono-num" dir="ltr">
-                                      {new Date(tx.date).toLocaleTimeString('ar-EG', { timeStyle: 'short' })}
-                                    </span>
-                                  </td>
-
-                                  {/* Shares */}
-                                  <td className="py-3 px-3 text-left font-mono-num font-black text-slate-900 dark:text-white" dir="ltr">
-                                    {tx.shares.toLocaleString()} سهم
-                                  </td>
-
-                                  {/* Price */}
-                                  <td className="py-3 px-3 text-left font-mono-num font-black text-slate-900 dark:text-white" dir="ltr">
-                                    {tx.price.toFixed(2)} EGP
-                                  </td>
-
-                                  {/* Amount */}
-                                  <td className="py-3 px-3 text-left font-mono-num font-black text-slate-900 dark:text-white" dir="ltr">
-                                    {formatEGP(tx.amount)}
-                                  </td>
-
-                                  {/* Realized PnL for this tx */}
-                                  <td className="py-3 px-3 text-left font-mono-num font-black" dir="ltr">
-                                    {!isBuy && txPnl !== 0 ? (
-                                      <span className={txPnl > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
-                                        {txPnl > 0 ? '+' : ''}{formatEGP(txPnl)}
-                                      </span>
-                                    ) : (
-                                      <span className="text-slate-300 dark:text-slate-600">—</span>
-                                    )}
-                                  </td>
-
-                                  {/* Note */}
-                                  <td className="py-3 px-3 text-slate-600 dark:text-slate-300 max-w-[180px] truncate">
-                                    {tx.note || <span className="text-slate-400 text-[11px]">—</span>}
-                                  </td>
-
-                                  {/* Delete */}
-                                  <td className="py-3 px-3 text-center">
-                                    <button
-                                      onClick={() => deleteTransaction(pos.id, tx.id)}
-                                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors"
-                                      title="حذف هذه الحركة"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-
               </div>
             );
           })}
         </div>
       ) : (
-        
         /* ========================================================
            VIEW 2: PROFESSIONAL COMPACT FINANCIAL TABLE
            ======================================================== */
@@ -808,14 +439,13 @@ export default function TradesJournal({
             <table className="w-full text-right text-xs">
               <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/80 text-slate-500 dark:text-slate-400 font-black text-[11px]">
                 <tr>
-                  <th className="py-3.5 px-4">السهم والشركة</th>
-                  <th className="py-3.5 px-3">القطاع والحالة</th>
-                  <th className="py-3.5 px-3 text-left">متوسط الدخول</th>
-                  <th className="py-3.5 px-3 text-left">الوقف المتحرك</th>
-                  <th className="py-3.5 px-3 text-left">الهدف</th>
-                  <th className="py-3.5 px-3 text-left">الأسهم المفتوحة</th>
-                  <th className="py-3.5 px-3 text-left">رأس المال والمخاطرة</th>
-                  <th className="py-3.5 px-3 text-left">صافي الربح / الخسارة</th>
+                  <th className="py-3.5 px-4">السهم / التاريخ</th>
+                  <th className="py-3.5 px-3">النوع</th>
+                  <th className="py-3.5 px-3 text-left">السعر والتكلفة</th>
+                  <th className="py-3.5 px-3 text-left">الكمية</th>
+                  <th className="py-3.5 px-3 text-center">الانضباط (3MS)</th>
+                  <th className="py-3.5 px-3 text-center">السبب / المشاعر</th>
+                  <th className="py-3.5 px-3 text-left">الربح المحقق (للبيع)</th>
                   <th className="py-3.5 px-4 text-center">الإجراءات</th>
                 </tr>
               </thead>
@@ -1122,17 +752,7 @@ export default function TradesJournal({
         />
       </Modal>
 
-      <Modal 
-        isOpen={!!selectedTradeId} 
-        onClose={() => setSelectedTradeId(null)} 
-        title="📊 تفاصيل الصفقة، الشارت ومحرك الوقف المتحرك"
-        maxWidth="max-w-[95vw] lg:max-w-[82vw]"
-      >
-        <ActiveTrades 
-          tradeId={selectedTradeId!} 
-          onClose={() => setSelectedTradeId(null)} 
-        />
-      </Modal>
+
 
       {/* Partial Transaction Modal */}
       <TransactionFormModal

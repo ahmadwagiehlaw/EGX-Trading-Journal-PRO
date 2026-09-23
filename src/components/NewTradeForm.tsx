@@ -188,6 +188,9 @@ export default function NewTradeForm({
         shares,
         amount: entry * shares,
         note: 'شراء أولي وتمركز',
+        checklist,
+        entryReason: 'indicator', // Default initial reason
+        isRuleBreaker
       };
 
       await addPosition({

@@ -6,7 +6,9 @@ import {
   AlertTriangle, 
   CheckCircle, 
   Plus,
-  ArrowDownLeft
+  ArrowDownLeft,
+  LineChart,
+  Target
 } from 'lucide-react';
 import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 import { useTrades } from '../context/TradeContext';
@@ -27,11 +29,6 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
   const [newHighestPrice, setNewHighestPrice] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   
-  const [exitPrice, setExitPrice] = useState<string>('');
-  const [isClosing, setIsClosing] = useState(false);
-  const [emotion, setEmotion] = useState<string>('confident');
-  const [lesson, setLesson] = useState<string>('');
-  const [mistake, setMistake] = useState<string>('');
   const [txModalType, setTxModalType] = useState<'buy' | 'sell' | null>(null);
 
   if (!position || !metrics) return null;
@@ -61,15 +58,6 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
     setNewHighestPrice('');
   };
 
-  const handleCloseTrade = async () => {
-    const exitVal = parseFloat(exitPrice);
-    if (isNaN(exitVal) || exitVal <= 0) {
-      setError('يرجى إدخال سعر إغلاق صحيح.');
-      return;
-    }
-    await closePosition(position.id, exitVal, emotion, lesson, mistake);
-    onClose();
-  };
 
   return (
     <div className="w-full space-y-6" dir="rtl">
@@ -116,6 +104,94 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
               <div className="text-left">
                 <p className="text-slate-400 font-bold text-xs">الكمية المفتوحة</p>
                 <p className="text-xl font-black text-slate-900 dark:text-white font-mono-num">{metrics.openShares.toLocaleString()} سهم</p>
+              </div>
+            </div>
+
+            {/* Plan vs Reality Visual Chart */}
+            <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 mb-6">
+              <div className="flex justify-between items-center mb-6">
+                <h4 className="font-black text-slate-800 dark:text-slate-200 text-sm flex items-center gap-1.5">
+                  <LineChart className="w-4.5 h-4.5 text-blue-500" />
+                  المخطط مقابل الواقع (Plan vs Reality)
+                </h4>
+                <div className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 border ${
+                  metrics.realizedPnL > 0 
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400' 
+                    : metrics.realizedPnL < 0 
+                      ? 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-400' 
+                      : 'bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'
+                }`}>
+                  صافي الأرباح المحققة: {metrics.realizedPnL > 0 ? '+' : ''}{metrics.realizedPnL.toFixed(2)} EGP
+                </div>
+              </div>
+              
+              <div className="relative h-12 w-full flex items-center mt-6 mb-2">
+                {/* Track */}
+                <div className="absolute w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden shadow-inner">
+                  {position.plan?.target && position.plan?.stop ? (
+                    <div 
+                      className="h-full bg-gradient-to-l from-emerald-400 via-blue-400 to-rose-400 opacity-80"
+                      style={{ width: '100%' }}
+                    />
+                  ) : null}
+                </div>
+
+                {/* Markers */}
+                {position.plan?.target && position.plan?.stop ? (() => {
+                  const minP = position.plan.stop;
+                  const maxP = position.plan.target;
+                  const range = maxP - minP;
+                  const entryPercent = Math.max(0, Math.min(100, ((metrics.avgEntry - minP) / range) * 100));
+                  const stopPercent = 0; // stop is at 0%
+                  const targetPercent = 100; // target is at 100%
+                  const trailingStopPercent = Math.max(0, Math.min(100, ((currentStop - minP) / range) * 100));
+
+                  return (
+                    <>
+                      {/* Target Marker */}
+                      <div className="absolute left-0 -top-8 text-center transform -translate-x-1/2">
+                        <span className="block text-[10px] font-black text-emerald-600 dark:text-emerald-400">الهدف 🎯</span>
+                        <span className="block text-[11px] font-mono-num font-bold text-slate-700 dark:text-slate-300">{maxP.toFixed(2)}</span>
+                      </div>
+                      
+                      {/* Stop Marker */}
+                      <div className="absolute right-0 -top-8 text-center transform translate-x-1/2">
+                        <span className="block text-[10px] font-black text-rose-600 dark:text-rose-400">الوقف 🛡️</span>
+                        <span className="block text-[11px] font-mono-num font-bold text-slate-700 dark:text-slate-300">{minP.toFixed(2)}</span>
+                      </div>
+
+                      {/* Entry Marker */}
+                      <div 
+                        className="absolute -top-9 text-center transform translate-x-1/2 z-10"
+                        style={{ right: `${entryPercent}%` }}
+                      >
+                        <span className="block text-[10px] font-black text-blue-600 dark:text-blue-400">الدخول</span>
+                        <span className="block text-[11px] font-mono-num font-black text-slate-900 dark:text-white bg-white/80 dark:bg-slate-800/80 px-1 rounded">{metrics.avgEntry.toFixed(2)}</span>
+                        <div className="mx-auto w-3.5 h-3.5 rounded-full bg-blue-600 dark:bg-blue-500 mt-0.5 border-[2.5px] border-white dark:border-slate-800 shadow-sm relative">
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0.5 h-4 bg-blue-200 dark:bg-blue-800/50 -z-10"></div>
+                        </div>
+                      </div>
+
+                      {/* Trailing Stop Marker */}
+                      {currentStop > minP && (
+                        <div 
+                          className="absolute -bottom-8 text-center transform translate-x-1/2 z-10"
+                          style={{ right: `${trailingStopPercent}%` }}
+                        >
+                          <div className="mx-auto w-3.5 h-3.5 rounded-full bg-orange-500 dark:bg-orange-400 mb-0.5 border-[2.5px] border-white dark:border-slate-800 shadow-sm relative">
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 w-0.5 h-4 bg-orange-200 dark:bg-orange-800/50 -z-10"></div>
+                          </div>
+                          <span className="block text-[10px] font-black text-orange-600 dark:text-orange-400">وقف متحرك</span>
+                          <span className="block text-[11px] font-mono-num font-black text-slate-900 dark:text-white">{currentStop.toFixed(2)}</span>
+                        </div>
+                      )}
+                    </>
+                  );
+                })() : (
+                  <div className="text-[11px] font-bold text-slate-400 text-center w-full absolute">
+                    الخطة غير مكتملة (يرجى إضافة هدف ووقف للخطة)
+                  </div>
+                )}
               </div>
             </div>
 
@@ -208,85 +284,14 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
 
           {/* Close Position (Full Exit) Section */}
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-            {!isClosing ? (
-              metrics.isOpen && (
-                <button 
-                  onClick={() => setIsClosing(true)}
-                  className="w-full bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white font-black py-3.5 rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 text-xs"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  إغلاق وتصفية كامل المركز المالي
-                </button>
-              )
-            ) : (
-              <div className="space-y-4 bg-slate-900 p-5 rounded-2xl shadow-inner border border-slate-700 text-white text-xs">
-                <h4 className="font-black text-sm text-center text-slate-100">تأكيد إغلاق وتصفية المركز</h4>
-                
-                <div>
-                  <label className="text-slate-400 font-bold block mb-1">سعر الخروج الفعلي (EGP)</label>
-                  <input 
-                    type="number" 
-                    step="any"
-                    value={exitPrice}
-                    onChange={(e) => setExitPrice(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-600 rounded-xl py-2 px-3 text-white font-black focus:border-blue-500 outline-none text-base text-center"
-                    placeholder="85.00"
-                    dir="ltr"
-                  />
-                </div>
-                
-                <div>
-                  <label className="text-slate-400 font-bold block mb-1">الحالة النفسية أثناء التداول</label>
-                  <select 
-                    value={emotion}
-                    onChange={(e) => setEmotion(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-600 rounded-xl py-2 px-3 text-white font-bold outline-none"
-                  >
-                    <option value="confident">😎 واثق ومنضبط</option>
-                    <option value="neutral">😐 محايد (طبيعي)</option>
-                    <option value="fomo">😰 فومو (خوف من ضياع الفرصة)</option>
-                    <option value="fear">😨 خوف وتردد</option>
-                    <option value="greed">🤑 طمع (تأخير جني الأرباح)</option>
-                    <option value="revenge">😡 انتقام وتداول عاطفي</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-slate-400 font-bold block mb-1">الخطأ الفني أو النفسي (إن وجد)</label>
-                  <input 
-                    type="text" 
-                    value={mistake}
-                    onChange={(e) => setMistake(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-600 rounded-xl py-2 px-3 text-white font-bold outline-none"
-                    placeholder="مثال: فومو، عدم الالتزام بالوقف..."
-                  />
-                </div>
-
-                <div>
-                  <label className="text-slate-400 font-bold block mb-1">الدرس المستفاد للمستقبل 📝</label>
-                  <textarea 
-                    value={lesson}
-                    onChange={(e) => setLesson(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-600 rounded-xl py-2 px-3 text-white font-bold outline-none min-h-[50px]"
-                    placeholder="ماذا تعلمت من هذا المركز المالي؟"
-                  />
-                </div>
-
-                <div className="flex gap-2.5 pt-1">
-                  <button 
-                    onClick={handleCloseTrade}
-                    className="flex-1 bg-gradient-to-l from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-black py-2.5 rounded-xl shadow-md transition-all text-xs"
-                  >
-                    تأكيد التصفية والإغلاق
-                  </button>
-                  <button 
-                    onClick={() => setIsClosing(false)}
-                    className="px-5 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 rounded-xl transition-all text-xs"
-                  >
-                    إلغاء
-                  </button>
-                </div>
-              </div>
+            {metrics.isOpen && (
+              <button 
+                onClick={() => setTxModalType('sellAll')}
+                className="w-full bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white font-black py-3.5 rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 text-xs"
+              >
+                <CheckCircle className="w-4 h-4" />
+                إغلاق وتصفية كامل المركز المالي
+              </button>
             )}
           </div>
 
@@ -298,7 +303,8 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
         isOpen={!!txModalType}
         onClose={() => setTxModalType(null)}
         position={position}
-        defaultType={txModalType || 'buy'}
+        defaultType={txModalType === 'sellAll' ? 'sell' : txModalType || 'buy'}
+        defaultShares={txModalType === 'sellAll' ? metrics.openShares.toString() : ''}
       />
     </div>
   );
