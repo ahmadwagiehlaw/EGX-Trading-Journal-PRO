@@ -40,8 +40,8 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
 
   const navigation = [
     { name: 'لوحة القيادة', icon: LayoutDashboard, color: 'text-blue-600 dark:text-blue-400', activeBg: 'bg-blue-600 text-white shadow-blue-500/20' },
-    { name: 'قائمة المراقبة', icon: Target, color: 'text-orange-600 dark:text-orange-400', activeBg: 'bg-orange-600 text-white shadow-orange-500/20' },
-    { name: 'سجل الصفقات', icon: BookOpen, color: 'text-emerald-600 dark:text-emerald-400', activeBg: 'bg-emerald-600 text-white shadow-emerald-500/20' },
+    { name: 'سجل الصفقات', icon: BookOpen, color: 'text-emerald-600 dark:text-emerald-500', activeBg: 'bg-emerald-600 text-white shadow-emerald-500/20' },
+    { name: 'استراتيجيات التداول', icon: Target, color: 'text-orange-600 dark:text-orange-400', activeBg: 'bg-orange-600 text-white shadow-orange-500/20' },
     { name: 'الخزينة', icon: Landmark, color: 'text-indigo-600 dark:text-indigo-400', activeBg: 'bg-indigo-600 text-white shadow-indigo-500/20' },
     { name: 'التحليلات', icon: BarChart2, color: 'text-purple-600 dark:text-purple-400', activeBg: 'bg-purple-600 text-white shadow-purple-500/20' },
     { name: 'الإعدادات', icon: Settings, color: 'text-slate-600 dark:text-slate-400', activeBg: 'bg-slate-800 dark:bg-slate-700 text-white' },
@@ -112,7 +112,7 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
               : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'
           }`}>
             <div className="flex items-center gap-2">
-              {isOnline ? <Wifi className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> : <WifiOff className="w-4 h-4 text-amber-600 dark:text-amber-400 animate-pulse" />}
+              {isOnline ? <Wifi className="w-4 h-4 text-emerald-600 dark:text-emerald-500" /> : <WifiOff className="w-4 h-4 text-amber-600 dark:text-amber-400 animate-pulse" />}
               <span>{isOnline ? 'متصل بالسحابة (Sync)' : 'يعمل بدون إنترنت (Offline)'}</span>
             </div>
             <ShieldCheck className="w-4 h-4 opacity-70" />
@@ -142,9 +142,9 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
             </button>
 
             <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg ${
-              isOnline ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400' : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400'
+              isOnline ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-500' : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400'
             }`}>
-              {isOnline ? <Wifi className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
+              {isOnline ? <Wifi className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-500" /> : <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
               <span>{isOnline ? 'مزامنة' : 'أوفلاين'}</span>
             </div>
           </div>
@@ -169,10 +169,10 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
 
             <div className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-xl border ${
               isOnline 
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' 
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-500 border-emerald-200 dark:border-emerald-800' 
                 : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
             }`}>
-              {isOnline ? <Wifi className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
+              {isOnline ? <Wifi className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-500" /> : <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
               <span>{isOnline ? 'متصل بالسحابة' : 'وضع غير متصل (Offline Ready)'}</span>
             </div>
           </div>

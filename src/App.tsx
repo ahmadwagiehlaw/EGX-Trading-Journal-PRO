@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, lazy, Suspense, useCallback } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import Watchlist from './components/Watchlist';
@@ -12,6 +12,7 @@ import { Target } from 'lucide-react';
 const Analytics = lazy(() => import('./components/Analytics'));
 const Settings = lazy(() => import('./components/Settings'));
 const TradingDeskModal = lazy(() => import('./components/TradingDeskModal'));
+const RiskCalculatorModal = lazy(() => import('./components/RiskCalculatorModal'));
 
 function App() {
   const [activeTab, setActiveTab] = useState('لوحة القيادة');
@@ -21,31 +22,29 @@ function App() {
   const [isTradingDeskOpen, setIsTradingDeskOpen] = useState(false);
   const [tradingDeskSymbol, setTradingDeskSymbol] = useState('COMI');
 
-  const handleStartTrade = (tradeData: any) => {
+  const handleStartTrade = useCallback((tradeData: any) => {
     setDraftTrade(tradeData);
     setActiveTab('سجل الصفقات');
     setIsNewTradeModalOpen(true);
-  };
+  }, []);
 
-  const handleAddToWatchlist = (tradeData: any) => {
-    console.log("Adding to watchlist:", tradeData);
-    setActiveTab('قائمة المراقبة');
-  };
+
+  const handleOpenTradingDesk = useCallback((sym?: string) => {
+    setTradingDeskSymbol(sym || 'COMI');
+    setIsTradingDeskOpen(true);
+  }, []);
 
   return (
     <>
       <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-        <div className={activeTab === 'لوحة القيادة' ? 'block' : 'hidden'}>
+        <div className={activeTab === 'لوحة القيادة' || activeTab === 'الرئيسية' ? 'block' : 'hidden'}>
           <Dashboard 
-            onOpenTradingDesk={(sym) => {
-              setTradingDeskSymbol(sym || 'COMI');
-              setIsTradingDeskOpen(true);
-            }} 
+            onOpenTradingDesk={handleOpenTradingDesk} 
             onNavigate={setActiveTab}
           />
         </div>
         
-        <div className={activeTab === 'قائمة المراقبة' ? 'block' : 'hidden'}>
+        <div className={activeTab === 'استراتيجيات التداول' ? 'block' : 'hidden'}>
           <Watchlist onMoveToJournal={handleStartTrade} />
         </div>
         
@@ -73,25 +72,31 @@ function App() {
         />
       </Layout>
 
-      {/* Floating Action Button (FAB) for Trading Desk - Positioned higher on mobile to avoid bottom nav bar */}
+      {/* Floating Action Button (FAB) */}
       <button 
         onClick={() => setIsTradingDeskOpen(true)}
-        className="fixed bottom-20 left-4 md:bottom-8 md:left-8 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl p-3.5 md:p-4 shadow-xl hover:shadow-blue-500/40 hover:-translate-y-0.5 transition-all z-40 flex items-center justify-center"
-        title="غرفة العمليات (حاسبة المخاطر والشارت)"
+        className={`fixed bottom-20 left-4 md:bottom-8 md:left-8 text-white rounded-2xl p-3.5 md:p-4 shadow-xl hover:-translate-y-0.5 transition-all z-40 flex items-center justify-center ${activeTab === 'الرئيسية' || activeTab === 'لوحة القيادة' ? 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-500/40' : activeTab === 'استراتيجيات التداول' ? 'bg-orange-600 hover:bg-orange-700 hover:shadow-orange-500/40' : 'bg-emerald-600 hover:bg-emerald-700 hover:shadow-emerald-500/40'}`}
+        title={activeTab === 'الرئيسية' || activeTab === 'لوحة القيادة' ? 'حاسبة المخاطر' : activeTab === 'استراتيجيات التداول' ? 'إضافة استراتيجية' : 'إضافة مركز/صفقة'}
       >
         <Target className="w-6 h-6 md:w-7 md:h-7" />
       </button>
 
-      {/* Lazy Trading Desk Modal */}
+      {/* Dynamic Modal based on activeTab */}
       {isTradingDeskOpen && (
         <Suspense fallback={null}>
-          <TradingDeskModal 
-            isOpen={isTradingDeskOpen}
-            onClose={() => setIsTradingDeskOpen(false)}
-            onStartTrade={handleStartTrade}
-            onAddToWatchlist={handleAddToWatchlist}
-            initialSymbol={tradingDeskSymbol}
-          />
+          {(activeTab === 'الرئيسية' || activeTab === 'لوحة القيادة') ? (
+            <RiskCalculatorModal 
+              isOpen={isTradingDeskOpen} 
+              onClose={() => setIsTradingDeskOpen(false)} 
+              initialSymbol={tradingDeskSymbol}
+            />
+          ) : (
+            <TradingDeskModal 
+              isOpen={isTradingDeskOpen}
+              onClose={() => setIsTradingDeskOpen(false)}
+              initialSymbol={tradingDeskSymbol}
+            />
+          )}
         </Suspense>
       )}
 

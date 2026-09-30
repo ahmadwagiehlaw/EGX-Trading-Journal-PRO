@@ -173,7 +173,7 @@ export default function LedgerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                 ledger.map((entry) => (
                   <div key={entry.id} className="flex items-center justify-between p-3 bg-white dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700/50 rounded-xl">
                     <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${entry.type === 'deposit' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'}`}>
+                      <div className={`p-2 rounded-lg ${entry.type === 'deposit' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-500' : 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-500'}`}>
                         {entry.type === 'deposit' ? <ArrowDownToLine className="w-4 h-4" /> : <ArrowUpFromLine className="w-4 h-4" />}
                       </div>
                       <div>
@@ -194,7 +194,7 @@ export default function LedgerModal({ isOpen, onClose }: { isOpen: boolean; onCl
                       <span className={`font-black font-mono-num ${entry.type === 'deposit' ? 'text-emerald-600' : 'text-rose-600'}`} dir="ltr">
                         {entry.type === 'deposit' ? '+' : '-'}{formatEGP(entry.amount, 0)}
                       </span>
-                      <button onClick={() => deleteLedgerEntry(entry.id)} className="text-slate-400 hover:text-rose-500 transition-colors">
+                      <button onClick={() => deleteLedgerEntry(entry.id)} className="text-slate-400 hover:text-rose-600 transition-colors">
                         <X className="w-4 h-4" />
                       </button>
                     </div>

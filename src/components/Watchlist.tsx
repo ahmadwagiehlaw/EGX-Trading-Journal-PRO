@@ -1,10 +1,44 @@
-import { useState } from 'react';
-import { Plus, Target, Clock, ArrowRight, CheckSquare, X, Save, Search, LineChart, FileText, Trash2, ArrowUpDown } from 'lucide-react';
+import { useState, memo } from 'react';
+import { Plus, Target, Clock, ArrowRight, CheckSquare, X, Save, Search, LineChart, FileText, Trash2, ArrowUpDown, HelpCircle } from 'lucide-react';
 import PlanUpdatesFeed from './PlanUpdatesFeed';
 import StockAutocomplete from './StockAutocomplete';
 import { useTrades, type Plan } from '../context/TradeContext';
 
-export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item: any) => void }) {
+const PLAYBOOK_TEMPLATES = [
+  {
+    name: 'اختراق منطقة تذبذب (VCP / Breakout)',
+    checklist: [
+      'حجم تداول أعلى من المتوسط بـ 150% عند الاختراق',
+      'تقلص التذبذب (Volatility Contraction) قبل الاختراق',
+      'السهم يتداول فوق متوسط 50 و 200 يوم',
+      'السوق في اتجاه عام صاعد (Uptrend)'
+    ]
+  },
+  {
+    name: 'الشراء عند الارتداد (Pullback / Moving Average Bounce)',
+    checklist: [
+      'تراجع السعر نحو دعم أو متوسط (20/50) دون كسره بقوة',
+      'انخفاض حجم التداول أثناء التراجع (Dry up in volume)',
+      'ظهور شمعة انعكاسية (Hammer / Engulfing) عند الدعم',
+      'احتمالية العائد للمخاطرة (RRR) أعلى من 2:1'
+    ]
+  },
+  {
+    name: 'استراتيجية الزخم (Momentum / Gap Up)',
+    checklist: [
+      'قفزة سعرية (Gap Up) مصحوبة بحجم تداول ضخم',
+      'القفزة ناتجة عن أخبار جوهرية أو أرباح ممتازة',
+      'السهم أغلق بالقرب من أعلى سعر في الجلسة',
+      'السهم في أعلى مستوياته (52-Week High)'
+    ]
+  },
+  {
+    name: 'استراتيجية مخصصة (Custom)',
+    checklist: []
+  }
+];
+
+export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item: any) => void }) {
   const { plans, addPlan, updatePlan, deletePlan, convertPlanToPosition, capitalInvestment } = useTrades();
 
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
@@ -12,12 +46,21 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
   const [activeTab, setActiveTab] = useState<'all' | 'waiting' | 'ready'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [showPlaybookInfo, setShowPlaybookInfo] = useState(false);
 
   // Range helper
   const getEntryRange = (plan: Plan) => {
     const min = plan.entryZone?.min ?? plan.entry ?? 0;
     const max = plan.entryZone?.max ?? plan.entry ?? min;
     return { min, max };
+  };
+
+  const calculateScore = (plan: Plan) => {
+    if (!plan.checklist) return 0;
+    const items = Object.values(plan.checklist);
+    if (items.length === 0) return 0;
+    const passed = items.filter(Boolean).length;
+    return Math.round((passed / items.length) * 100);
   };
 
   const calculateRRR = (plan: Plan) => {
@@ -209,7 +252,7 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
                     {isReady ? <Target className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
                     {isReady ? 'جاهز للتنفيذ' : 'قيد المتابعة'}
                   </span>
-                  <span className="text-[10px] font-mono-num font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-md border border-emerald-100 dark:border-emerald-900">
+                  <span className="text-[10px] font-mono-num font-black text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-md border border-emerald-100 dark:border-emerald-900">
                     RR {rrr}
                   </span>
                 </div>
@@ -232,11 +275,11 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
 
                 <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60 dark:border-slate-700/60 text-center text-xs">
                   <div className="bg-emerald-50/70 dark:bg-emerald-950/40 p-1.5 rounded-lg border border-emerald-100 dark:border-emerald-900/60">
-                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 block">الهدف</span>
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500 block">الهدف</span>
                     <span className="font-black text-emerald-700 dark:text-emerald-300" dir="ltr">{item.target?.toFixed(2) || '0.00'}</span>
                   </div>
                   <div className="bg-red-50/70 dark:bg-red-950/40 p-1.5 rounded-lg border border-red-100 dark:border-red-900/60">
-                    <span className="text-[10px] font-bold text-red-600 dark:text-red-400 block">الوقف</span>
+                    <span className="text-[10px] font-bold text-red-600 dark:text-red-500 block">الوقف</span>
                     <span className="font-black text-red-700 dark:text-red-300" dir="ltr">{item.stop?.toFixed(2) || '0.00'}</span>
                   </div>
                 </div>
@@ -315,7 +358,7 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
                 ) : (
                   <button 
                     onClick={() => setDeleteConfirmId(selectedPlan.id)} 
-                    className="p-2 bg-red-50 dark:bg-red-950/60 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-600 dark:text-red-400 rounded-xl transition-colors"
+                    className="p-2 bg-red-50 dark:bg-red-950/60 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-600 dark:text-red-500 rounded-xl transition-colors"
                     title="حذف الخطة"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -358,14 +401,107 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
                 </div>
 
                 <div>
-                  <label className="text-xs font-black text-slate-500 dark:text-slate-400 block mb-1.5">الاستراتيجية / سبب الدخول</label>
-                  <input 
-                    type="text" 
+                  <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-black text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                        <Target className="w-3.5 h-3.5" />
+                        استراتيجية التداول (Playbook)
+                      </label>
+                      <button 
+                        type="button"
+                        onClick={() => setShowPlaybookInfo(!showPlaybookInfo)}
+                        className="text-[10px] flex items-center gap-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 px-2 py-1 rounded-lg font-bold transition-colors"
+                      >
+                        <HelpCircle className="w-3 h-3" />
+                        شرح الاستراتيجيات
+                      </button>
+                    </div>
+                  <select 
                     value={selectedPlan.strategy} 
-                    onChange={(e) => setSelectedPlan({...selectedPlan, strategy: e.target.value})} 
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 font-bold text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none" 
-                    placeholder="مثال: اختراق مع فوليوم عالي وإعادة اختبار" 
-                  />
+                    onChange={(e) => {
+                      const strat = e.target.value;
+                      const template = PLAYBOOK_TEMPLATES.find(t => t.name === strat);
+                      const initialChecklist: Record<string, boolean> = {};
+                      if (template && template.checklist.length > 0) {
+                        template.checklist.forEach(item => initialChecklist[item] = false);
+                      }
+                      setSelectedPlan({...selectedPlan, strategy: strat, checklist: initialChecklist, setupScore: 0});
+                    }} 
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-3 py-2.5 font-bold text-slate-900 dark:text-white text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-900 outline-none mb-3 cursor-pointer"
+                  >
+                    <option value="">-- اختر استراتيجية --</option>
+                    {PLAYBOOK_TEMPLATES.map(t => (
+                      <option key={t.name} value={t.name}>{t.name}</option>
+                    ))}
+                    {!PLAYBOOK_TEMPLATES.some(t => t.name === selectedPlan.strategy) && selectedPlan.strategy && (
+                      <option value={selectedPlan.strategy}>{selectedPlan.strategy}</option>
+                    )}
+                  </select>
+
+                  {showPlaybookInfo && (
+                    <div className="mb-4 bg-blue-50/50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30 p-3.5 rounded-2xl text-xs space-y-3">
+                      <div>
+                        <strong className="text-blue-800 dark:text-blue-300 flex items-center gap-1 mb-1"><Target className="w-3 h-3"/> استراتيجية VCP (مارك مينيرفيني)</strong>
+                        <p className="text-slate-600 dark:text-slate-400 leading-relaxed">تعتمد على إيجاد أسهم في اتجاه صاعد، تمر بفترة تماسك وتقلص في التذبذب (انخفاض حجم التداول). الدخول يكون مع اختراق المقاومة بحجم تداول ضخم.</p>
+                      </div>
+                      <div>
+                        <strong className="text-emerald-800 dark:text-emerald-300 flex items-center gap-1 mb-1"><Target className="w-3 h-3"/> استراتيجية الارتداد (Pullback)</strong>
+                        <p className="text-slate-600 dark:text-slate-400 leading-relaxed">الشراء عندما يتراجع السعر (يصحح) نحو مستوى دعم قوي أو متوسط متحرك (مثل 20 أو 50 يوم) دون أن يكسره بقوة، مع ظهور شموع انعكاسية.</p>
+                      </div>
+                      <div>
+                        <strong className="text-orange-800 dark:text-orange-300 flex items-center gap-1 mb-1"><Target className="w-3 h-3"/> استراتيجية الزخم (Momentum / Gap Up)</strong>
+                        <p className="text-slate-600 dark:text-slate-400 leading-relaxed">تعتمد على الأخبار القوية أو الأرباح الاستثنائية التي تسبب قفزة سعرية (فجوة لأعلى)، وندخل مع استمرار الزخم والقوة الشرائية العنيفة.</p>
+                      </div>
+                    </div>
+                  )}
+
+
+                  {/* Confluence Scoring Checklist */}
+                  {selectedPlan.strategy && PLAYBOOK_TEMPLATES.find(t => t.name === selectedPlan.strategy)?.checklist.length ? (
+                    <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-indigo-100 dark:border-indigo-900/60 shadow-inner">
+                      <div className="flex justify-between items-center mb-3">
+                        <label className="text-[11px] font-black text-indigo-800 dark:text-indigo-400">قائمة التحقق (Confluence Checklist)</label>
+                        <span className={`text-xs font-black px-2 py-0.5 rounded-md ${
+                          calculateScore(selectedPlan) >= 80 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' :
+                          calculateScore(selectedPlan) >= 50 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' :
+                          'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
+                        }`}>
+                          جودة الصفقة: {calculateScore(selectedPlan)}%
+                        </span>
+                      </div>
+                      <div className="space-y-2.5">
+                        {PLAYBOOK_TEMPLATES.find(t => t.name === selectedPlan.strategy)?.checklist.map(item => (
+                          <label key={item} className="flex items-start gap-2 cursor-pointer group">
+                            <input 
+                              type="checkbox" 
+                              checked={!!selectedPlan.checklist?.[item]}
+                              onChange={(e) => {
+                                const newChecklist = { ...selectedPlan.checklist, [item]: e.target.checked };
+                                const items = Object.values(newChecklist);
+                                const passed = items.filter(Boolean).length;
+                                const newScore = Math.round((passed / items.length) * 100);
+                                setSelectedPlan({
+                                  ...selectedPlan, 
+                                  checklist: newChecklist,
+                                  setupScore: newScore
+                                });
+                              }}
+                              className="mt-0.5 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                            />
+                            <span className={`text-xs font-bold leading-relaxed transition-colors ${!!selectedPlan.checklist?.[item] ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-300'}`}>
+                              {item}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : selectedPlan.strategy === 'استراتيجية مخصصة (Custom)' && (
+                    <input 
+                      type="text"
+                      onChange={(e) => setSelectedPlan({...selectedPlan, strategy: e.target.value})}
+                      placeholder="اكتب اسم استراتيجيتك المخصصة..."
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 font-bold text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none"
+                    />
+                  )}
                 </div>
                 
                 {/* Entry Zone Inputs (Min & Max Range) */}
@@ -423,7 +559,7 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
                       step="any"
                       value={selectedPlan.target || ''} 
                       onChange={(e) => setSelectedPlan({...selectedPlan, target: parseFloat(e.target.value) || 0})} 
-                      className="w-full bg-emerald-50 dark:bg-slate-800 border border-emerald-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 font-black text-emerald-700 dark:text-emerald-400 outline-none text-center" 
+                      className="w-full bg-emerald-50 dark:bg-slate-800 border border-emerald-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 font-black text-emerald-700 dark:text-emerald-500 outline-none text-center" 
                       dir="ltr" 
                       placeholder="52.00"
                     />
@@ -436,7 +572,7 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
                       step="any"
                       value={selectedPlan.stop || ''} 
                       onChange={(e) => setSelectedPlan({...selectedPlan, stop: parseFloat(e.target.value) || 0})} 
-                      className="w-full bg-red-50 dark:bg-slate-800 border border-red-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 font-black text-red-700 dark:text-red-400 outline-none text-center" 
+                      className="w-full bg-red-50 dark:bg-slate-800 border border-red-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 font-black text-red-700 dark:text-red-500 outline-none text-center" 
                       dir="ltr" 
                       placeholder="42.50"
                     />
@@ -526,3 +662,4 @@ export default function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item:
     </div>
   );
 }
+)

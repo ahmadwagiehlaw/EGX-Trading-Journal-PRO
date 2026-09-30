@@ -15,14 +15,14 @@ import { useTrades } from '../context/TradeContext';
 import { exportPositionsToCsv, exportPlansToCsv } from '../utils/exportCsv';
 
 export default function Settings() {
-  const { capitalInvestment, capitalSpeculation, positions, plans } = useTrades();
+  const { capitalInvestment, capitalSpeculation, positions, plans, commissionRate, updateCommissionRate } = useTrades();
   const [defaultRisk, setDefaultRisk] = useState('1');
-  const [commission, setCommission] = useState('0.003');
+  const [commission, setCommission] = useState(commissionRate.toString());
 
   const [savedMessage, setSavedMessage] = useState(false);
 
-  const handleSave = () => {
-    // Only risk & commission to be saved later if added to context
+  const handleSave = async () => {
+    await updateCommissionRate(parseFloat(commission) || 0);
     setSavedMessage(true);
     setTimeout(() => setSavedMessage(false), 3000);
   };
@@ -102,7 +102,7 @@ export default function Settings() {
         {/* Risk Management Settings */}
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
           <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-            <ShieldCheck className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+            <ShieldCheck className="w-6 h-6 text-emerald-600 dark:text-emerald-500" />
             <h3 className="text-lg font-black text-slate-900 dark:text-white">إدارة المخاطر والعمولات</h3>
           </div>
 
@@ -192,7 +192,7 @@ export default function Settings() {
               <div className="w-11 h-11 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
                 <Trash2 className="w-5 h-5" />
               </div>
-              <span className="font-black text-xs text-red-700 dark:text-red-400">تصفير سجل الصفقات</span>
+              <span className="font-black text-xs text-red-700 dark:text-red-500">تصفير سجل الصفقات</span>
               <span className="text-[10px] text-slate-400 font-bold">حذف البيانات وبدء سجل جديد</span>
             </button>
 

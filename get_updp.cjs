@@ -1,0 +1,5 @@
+﻿const fs = require('fs');
+const content = fs.readFileSync('src/context/TradeContext.tsx', 'utf8');
+const lines = content.split('\n');
+const idx = lines.findIndex(l => l.includes('const updatePosition = async'));
+console.log(lines.slice(idx, idx + 15).join('\n'));

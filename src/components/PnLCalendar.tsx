@@ -248,7 +248,7 @@ export default function PnLCalendar() {
                 {hasTrades ? (
                   <div className="text-center my-auto">
                     <span className={`text-xs sm:text-sm font-black font-mono-num block leading-tight ${
-                      isProfit ? 'text-emerald-700 dark:text-emerald-400' : isLoss ? 'text-red-700 dark:text-red-400' : 'text-slate-600'
+                      isProfit ? 'text-emerald-700 dark:text-emerald-500' : isLoss ? 'text-red-700 dark:text-red-500' : 'text-slate-600'
                     }`} dir="ltr">
                       {dayItem.netPnL > 0 ? '+' : ''}{dayItem.netPnL.toFixed(0)}
                     </span>

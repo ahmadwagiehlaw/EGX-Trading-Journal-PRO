@@ -21,43 +21,67 @@ import PnLCalendar from './PnLCalendar';
 
 export default function Analytics() {
   const { 
-    positions, 
-    capitalInvestment,
-    totalOpenCapital,
-    totalOpenRisk,
-    openPositionsCount
+        positions, 
+    filteredPositions,
+    activeCapital,
+    activeOpenCapital,
+    activeOpenRisk,
+    openPositionsCount,
+    commissionRate,
+    profitFactor,
+    maxDrawdown
   } = useTrades();
-  const availableLiquidity = capitalInvestment - totalOpenCapital;
-  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'calendar' | 'psychology'>('overview');
+  const availableLiquidity = activeCapital - activeOpenCapital;
+  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'calendar' | 'psychology' | 'playbook' | 'positions'>('overview');
 
   // Closed positions metrics
-  const closedPositions = useMemo(() => {
-    return positions.filter(pos => {
-      const metrics = computePositionMetrics(pos);
+  const positionsWithRealizedPnL = useMemo(() => {
+    return filteredPositions.filter(pos => {
+      const metrics = computePositionMetrics(pos, commissionRate);
       return pos.status === 'closed' || metrics.isFullyClosed;
     });
-  }, [positions]);
+  }, [positions, commissionRate]);
 
-  const wonPositions = closedPositions.filter(p => computePositionMetrics(p).realizedPnL > 0);
-  const lostPositions = closedPositions.filter(p => computePositionMetrics(p).realizedPnL < 0);
+  // Strategy Playbook Analysis
+  const strategyStats = useMemo(() => {
+    const stats: Record<string, { count: number; won: number; pnl: number }> = {};
+    positionsWithRealizedPnL.forEach(p => {
+      const strategy = p.plan?.strategy || 'بدون استراتيجية';
+      const pnl = computePositionMetrics(p, commissionRate).netRealizedPnL;
+      if (!stats[strategy]) stats[strategy] = { count: 0, won: 0, pnl: 0 };
+      stats[strategy].count += 1;
+      stats[strategy].pnl += pnl;
+      if (pnl > 0) stats[strategy].won += 1;
+    });
 
-  const winRate = closedPositions.length > 0 
-    ? ((wonPositions.length / closedPositions.length) * 100).toFixed(1) 
+    return Object.keys(stats).map(key => ({
+      strategy: key,
+      count: stats[key].count,
+      pnl: stats[key].pnl,
+      winRate: stats[key].count > 0 ? (stats[key].won / stats[key].count) * 100 : 0,
+    })).sort((a, b) => b.pnl - a.pnl);
+  }, [positionsWithRealizedPnL, commissionRate]);
+
+  const wonPositions = filteredPositions.filter(p => computePositionMetrics(p, commissionRate).netRealizedPnL > 0);
+  const lostPositions = filteredPositions.filter(p => computePositionMetrics(p, commissionRate).netRealizedPnL < 0);
+
+  const winRate = positionsWithRealizedPnL.length > 0 
+    ? ((wonPositions.length / positionsWithRealizedPnL.length) * 100).toFixed(1) 
     : '0.0';
 
-  const totalGrossPnL = closedPositions.reduce((sum, p) => sum + computePositionMetrics(p).realizedPnL, 0);
-  const totalCommissionPaid = closedPositions.reduce((sum, p) => sum + computePositionMetrics(p).totalCommission, 0);
-  const totalNetPnL = closedPositions.reduce((sum, p) => sum + computePositionMetrics(p).netRealizedPnL, 0);
+  const totalGrossPnL = filteredPositions.reduce((sum, p) => sum + computePositionMetrics(p, commissionRate).realizedPnL, 0);
+  const totalCommissionPaid = filteredPositions.reduce((sum, p) => sum + computePositionMetrics(p, commissionRate).totalCommission, 0);
+  const totalNetPnL = filteredPositions.reduce((sum, p) => sum + computePositionMetrics(p, commissionRate).netRealizedPnL, 0);
 
-  const totalGain = wonPositions.reduce((sum, p) => sum + computePositionMetrics(p).realizedPnL, 0);
-  const totalLoss = lostPositions.reduce((sum, p) => sum + Math.abs(computePositionMetrics(p).realizedPnL), 0);
+  const totalGain = wonPositions.reduce((sum, p) => sum + computePositionMetrics(p, commissionRate).netRealizedPnL, 0);
+  const totalLoss = lostPositions.reduce((sum, p) => sum + Math.abs(computePositionMetrics(p, commissionRate).netRealizedPnL), 0);
 
   const avgWin = wonPositions.length > 0 ? totalGain / wonPositions.length : 0;
   const avgLoss = lostPositions.length > 0 ? totalLoss / lostPositions.length : 0;
   const realRR = avgLoss > 0 ? (avgWin / avgLoss).toFixed(2) : (avgWin > 0 ? '∞' : '0.00');
 
-  const ruleBreakerCount = closedPositions.filter(p => p.journal?.isRuleBreaker).length;
-  const disciplineScore = closedPositions.length > 0 ? Math.max(0, 100 - (ruleBreakerCount * 12)) : 100;
+  const ruleBreakerCount = positionsWithRealizedPnL.filter(p => p.journal?.isRuleBreaker).length;
+  const disciplineScore = positionsWithRealizedPnL.length > 0 ? Math.max(0, 100 - (ruleBreakerCount * 12)) : 100;
 
   // Emotion Performance Analysis
   const emotionStats = useMemo(() => {
@@ -70,9 +94,9 @@ export default function Analytics() {
       revenge: { count: 0, won: 0, pnl: 0 },
     };
 
-    closedPositions.forEach(p => {
+    positionsWithRealizedPnL.forEach(p => {
       const em = p.journal?.emotion || 'neutral';
-      const pnl = computePositionMetrics(p).realizedPnL;
+      const pnl = computePositionMetrics(p, commissionRate).netRealizedPnL;
       if (!stats[em]) stats[em] = { count: 0, won: 0, pnl: 0 };
       stats[em].count += 1;
       stats[em].pnl += pnl;
@@ -95,24 +119,24 @@ export default function Analytics() {
       pnl: stats[key].pnl,
       winRate: stats[key].count > 0 ? (stats[key].won / stats[key].count) * 100 : 0,
     })).filter(s => s.count > 0);
-  }, [closedPositions]);
+  }, [positionsWithRealizedPnL, commissionRate]);
 
   // Top Best and Worst Trades
   const bestTrade = useMemo(() => {
-    if (closedPositions.length === 0) return null;
-    const sorted = [...closedPositions].sort((a, b) => computePositionMetrics(b).realizedPnL - computePositionMetrics(a).realizedPnL);
+    if (positionsWithRealizedPnL.length === 0) return null;
+    const sorted = [...positionsWithRealizedPnL].sort((a, b) => computePositionMetrics(b, commissionRate).netRealizedPnL - computePositionMetrics(a, commissionRate).netRealizedPnL);
     const top = sorted[0];
-    const topPnL = computePositionMetrics(top).realizedPnL;
+    const topPnL = computePositionMetrics(top, commissionRate).netRealizedPnL;
     return topPnL > 0 ? { pos: top, pnl: topPnL } : null;
-  }, [closedPositions]);
+  }, [positionsWithRealizedPnL, commissionRate]);
 
   const worstTrade = useMemo(() => {
-    if (closedPositions.length === 0) return null;
-    const sorted = [...closedPositions].sort((a, b) => computePositionMetrics(a).realizedPnL - computePositionMetrics(b).realizedPnL);
+    if (positionsWithRealizedPnL.length === 0) return null;
+    const sorted = [...positionsWithRealizedPnL].sort((a, b) => computePositionMetrics(a, commissionRate).netRealizedPnL - computePositionMetrics(b, commissionRate).netRealizedPnL);
     const worst = sorted[0];
-    const worstPnL = computePositionMetrics(worst).realizedPnL;
+    const worstPnL = computePositionMetrics(worst, commissionRate).netRealizedPnL;
     return worstPnL < 0 ? { pos: worst, pnl: worstPnL } : null;
-  }, [closedPositions]);
+  }, [positionsWithRealizedPnL, commissionRate]);
 
   return (
     <div className="w-full space-y-6" dir="rtl">
@@ -152,56 +176,90 @@ export default function Analytics() {
           }`}
         >
           <BrainCircuit className="w-4 h-4" />
-          التحليل النفسي والمذكرات
+          التحليل النفسي
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('playbook')}
+          className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+            activeSubTab === 'playbook'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Target className="w-4 h-4" />
+          أداء الاستراتيجيات (Playbook)
         </button>
       </div>
 
       {/* TAB 1: OVERVIEW & EQUITY CURVE */}
       {activeSubTab === 'overview' && (
         <div className="space-y-6">
-          {/* 4 Core Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* 6 Core Summary Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
             
-            <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
               <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-2">
                 <Percent className="w-5 h-5" />
               </div>
-              <p className="text-slate-500 dark:text-slate-400 font-bold text-xs">نسبة النجاح (Win Rate)</p>
-              <h3 className="text-2xl font-black text-blue-700 dark:text-blue-400 font-mono-num mt-1" dir="ltr">{winRate}%</h3>
-              <span className="text-[10px] text-slate-400 font-bold mt-0.5">{wonPositions.length} رابحة من {closedPositions.length}</span>
+              <p className="text-slate-500 dark:text-slate-400 font-bold text-[11px]">نسبة النجاح (Win Rate)</p>
+              <h3 className="text-xl font-black text-blue-700 dark:text-blue-400 font-mono-num mt-1" dir="ltr">{winRate}%</h3>
+              <span className="text-[10px] text-slate-400 font-bold mt-0.5">{wonPositions.length} من {positionsWithRealizedPnL.length} صفقات</span>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-2">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-500 flex items-center justify-center mb-2">
                 <Target className="w-5 h-5" />
               </div>
-              <p className="text-slate-500 dark:text-slate-400 font-bold text-xs">العائد الفعلي للمخاطرة</p>
-              <h3 className="text-2xl font-black text-emerald-700 dark:text-emerald-400 font-mono-num mt-1" dir="ltr">1 : {realRR}</h3>
-              <span className="text-[10px] text-slate-400 font-bold mt-0.5">متوسط الربح / متوسط الخسارة</span>
+              <p className="text-slate-500 dark:text-slate-400 font-bold text-[11px]">عائد المخاطرة (Real RR)</p>
+              <h3 className="text-xl font-black text-emerald-700 dark:text-emerald-500 font-mono-num mt-1" dir="ltr">1 : {realRR}</h3>
+              <span className="text-[10px] text-slate-400 font-bold mt-0.5">الربح / الخسارة</span>
+            </div>
+            
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center mb-2 ${profitFactor >= 2 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-500' : profitFactor >= 1 ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-500' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-500'}`}>
+                <Activity className="w-5 h-5" />
+              </div>
+              <p className="text-slate-500 dark:text-slate-400 font-bold text-[11px]">معامل الربح (Profit Factor)</p>
+              <h3 className={`text-xl font-black font-mono-num mt-1 ${profitFactor >= 2 ? 'text-emerald-600 dark:text-emerald-500' : profitFactor >= 1 ? 'text-amber-600 dark:text-amber-500' : 'text-red-600 dark:text-red-500'}`} dir="ltr">
+                {typeof profitFactor === 'number' ? profitFactor.toFixed(2) : profitFactor}
+              </h3>
+              <span className="text-[10px] text-slate-400 font-bold mt-0.5">إجمالي الأرباح / إجمالي الخسائر</span>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
-              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center mb-2 ${totalNetPnL >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center mb-2 ${totalNetPnL >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-500' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-500'}`}>
                 {totalNetPnL >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
               </div>
-              <p className="text-slate-500 dark:text-slate-400 font-bold text-xs">صافي الأرباح (بعد العمولات)</p>
-              <h3 className={`text-2xl font-black font-mono-num mt-1 ${totalNetPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`} dir="ltr">
+              <p className="text-slate-500 dark:text-slate-400 font-bold text-[11px]">صافي الأرباح المحققة</p>
+              <h3 className={`text-xl font-black font-mono-num mt-1 ${totalNetPnL >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-red-600 dark:text-red-500'}`} dir="ltr">
                 {totalNetPnL > 0 ? '+' : ''}{formatEGP(totalNetPnL)}
               </h3>
-              <span className="text-[10px] text-slate-400 font-bold mt-0.5">
-                العمولات: {formatEGP(totalCommissionPaid)} | الإجمالي: {formatEGP(totalGrossPnL)}
+              <span className="text-[10px] text-slate-400 font-bold mt-0.5" title={`العمولات: ${formatEGP(totalCommissionPaid)} | الإجمالي: ${formatEGP(totalGrossPnL)}`}>
+                صافي بعد العمولات
               </span>
             </div>
+            
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center mb-2 ${maxDrawdown <= 10 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-500' : maxDrawdown <= 20 ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-500' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-500'}`}>
+                <TrendingDown className="w-5 h-5" />
+              </div>
+              <p className="text-slate-500 dark:text-slate-400 font-bold text-[11px]">أقصى تراجع (Max DD)</p>
+              <h3 className={`text-xl font-black font-mono-num mt-1 ${maxDrawdown <= 10 ? 'text-emerald-600 dark:text-emerald-500' : maxDrawdown <= 20 ? 'text-amber-600 dark:text-amber-500' : 'text-red-600 dark:text-red-500'}`} dir="ltr">
+                {maxDrawdown.toFixed(1)}%
+              </h3>
+              <span className="text-[10px] text-slate-400 font-bold mt-0.5">من أعلى قمة للمحفظة</span>
+            </div>
 
-            <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
               <div className="w-10 h-10 rounded-2xl bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-2">
                 <BrainCircuit className="w-5 h-5" />
               </div>
-              <p className="text-slate-500 dark:text-slate-400 font-bold text-xs">مؤشر الانضباط النفسي</p>
-              <h3 className={`text-2xl font-black font-mono-num mt-1 ${disciplineScore >= 80 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`} dir="ltr">
-                {disciplineScore} / 100
+              <p className="text-slate-500 dark:text-slate-400 font-bold text-[11px]">مؤشر الانضباط</p>
+              <h3 className={`text-xl font-black font-mono-num mt-1 ${disciplineScore >= 80 ? 'text-emerald-600 dark:text-emerald-500' : 'text-amber-600 dark:text-amber-400'}`} dir="ltr">
+                {disciplineScore}/100
               </h3>
-              <span className="text-[10px] text-slate-400 font-bold mt-0.5">{ruleBreakerCount} صفقات استثنائية</span>
+              <span className="text-[10px] text-slate-400 font-bold mt-0.5">{ruleBreakerCount} صفقات مخالفة</span>
             </div>
 
           </div>
@@ -232,7 +290,7 @@ export default function Analytics() {
                   </div>
                 </div>
                 <h3 className="text-xl font-black text-purple-700 dark:text-purple-400 font-mono-num" dir="ltr">
-                  {formatEGP(totalOpenCapital)}
+                  {formatEGP(activeOpenCapital)}
                 </h3>
                 <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-1">{openPositionsCount} مراكز مفتوحة</span>
               </div>
@@ -240,12 +298,12 @@ export default function Analytics() {
               <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-200 dark:border-slate-700/80 shadow-sm flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-slate-600 dark:text-slate-400 font-bold text-xs">المخاطرة المفتوحة</span>
-                  <div className="p-1.5 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 rounded-lg">
+                  <div className="p-1.5 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-500 rounded-lg">
                     <ShieldAlert className="w-4 h-4" />
                   </div>
                 </div>
-                <h3 className="text-xl font-black text-red-600 dark:text-red-400 font-mono-num" dir="ltr">
-                  {formatEGP(totalOpenRisk)}
+                <h3 className="text-xl font-black text-red-600 dark:text-red-500 font-mono-num" dir="ltr">
+                  {formatEGP(activeOpenRisk)}
                 </h3>
                 <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-1">عند نقاط الوقف الحالية</span>
               </div>
@@ -288,7 +346,7 @@ export default function Analytics() {
                       </div>
                       <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
                         <div 
-                          className={`h-full rounded-full transition-all ${item.pnl >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} 
+                          className={`h-full rounded-full transition-all ${item.pnl >= 0 ? 'bg-emerald-600' : 'bg-red-600'}`} 
                           style={{ width: `${Math.max(5, item.winRate)}%` }}
                         />
                       </div>
@@ -309,7 +367,7 @@ export default function Analytics() {
                     أفضل صفقة منفذة (Best Winner)
                   </div>
                   {bestTrade && (
-                    <span className="font-mono-num font-black text-lg text-emerald-700 dark:text-emerald-400" dir="ltr">
+                    <span className="font-mono-num font-black text-lg text-emerald-700 dark:text-emerald-500" dir="ltr">
                       +{formatEGP(bestTrade.pnl)}
                     </span>
                   )}
@@ -319,11 +377,11 @@ export default function Analytics() {
                     <span className="text-xl font-black text-emerald-950 dark:text-emerald-200 font-mono-num" dir="ltr">
                       {bestTrade.pos.symbol}
                     </span>
-                    <p className="text-xs text-emerald-700 dark:text-emerald-400 font-bold mt-1">
+                    <p className="text-xs text-emerald-700 dark:text-emerald-500 font-bold mt-1">
                       الاستراتيجية: {bestTrade.pos.plan?.strategy || 'تمركز ناجح'}
                     </p>
                     {bestTrade.pos.journal?.lessonLearned && (
-                      <p className="font-handwriting text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+                      <p className="font-handwriting text-xs text-emerald-600 dark:text-emerald-500 mt-1">
                         "{bestTrade.pos.journal.lessonLearned}"
                       </p>
                     )}
@@ -341,7 +399,7 @@ export default function Analytics() {
                     أكبر خسارة للتعلم منها (Worst Loser)
                   </div>
                   {worstTrade && (
-                    <span className="font-mono-num font-black text-lg text-red-700 dark:text-red-400" dir="ltr">
+                    <span className="font-mono-num font-black text-lg text-red-700 dark:text-red-500" dir="ltr">
                       {formatEGP(worstTrade.pnl)}
                     </span>
                   )}
@@ -351,11 +409,11 @@ export default function Analytics() {
                     <span className="text-xl font-black text-red-950 dark:text-red-200 font-mono-num" dir="ltr">
                       {worstTrade.pos.symbol}
                     </span>
-                    <p className="text-xs text-red-700 dark:text-red-400 font-bold mt-1">
+                    <p className="text-xs text-red-700 dark:text-red-500 font-bold mt-1">
                       السبب أو الخطأ: {worstTrade.pos.journal?.mistake || 'ضرب وقف الخسارة'}
                     </p>
                     {worstTrade.pos.journal?.lessonLearned && (
-                      <p className="font-handwriting text-xs text-red-600 dark:text-red-400 mt-1">
+                      <p className="font-handwriting text-xs text-red-600 dark:text-red-500 mt-1">
                         "{worstTrade.pos.journal.lessonLearned}"
                       </p>
                     )}
@@ -377,7 +435,7 @@ export default function Analytics() {
             </h3>
 
             <div className="grid md:grid-cols-2 gap-4">
-              {closedPositions.filter(p => p.journal?.lessonLearned).slice(-6).reverse().map((p, idx) => (
+              {positionsWithRealizedPnL.filter(p => p.journal?.lessonLearned).slice(-6).reverse().map((p, idx) => (
                 <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-1">
                   <div className="flex items-center justify-between text-xs text-slate-400 font-bold">
                     <span className="text-blue-600 dark:text-blue-400 font-black font-mono-num" dir="ltr">{p.symbol}</span>
@@ -389,12 +447,68 @@ export default function Analytics() {
                 </div>
               ))}
 
-              {closedPositions.filter(p => p.journal?.lessonLearned).length === 0 && (
+              {positionsWithRealizedPnL.filter(p => p.journal?.lessonLearned).length === 0 && (
                 <p className="font-handwriting text-lg text-slate-400 col-span-2 text-center py-6">
                   لم تسجل أي دروس بعد.. عند إغلاق كل صفقة، دوّن ما تعلمته للمستقبل!
                 </p>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: STRATEGY PLAYBOOK */}
+      {activeSubTab === 'playbook' && (
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2 mb-4">
+              <Target className="w-6 h-6 text-blue-600" />
+              سجل أداء الاستراتيجيات (Playbook)
+            </h3>
+            
+            {strategyStats.length === 0 ? (
+              <p className="text-xs text-slate-400 font-bold py-8 text-center">
+                لم تسجل استراتيجيات كافية في الصفقات المغلقة بعد.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-sm">
+                  <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/80 text-slate-500 dark:text-slate-400 font-black text-[11px]">
+                    <tr>
+                      <th className="py-3 px-4">الاستراتيجية</th>
+                      <th className="py-3 px-3 text-center">عدد الصفقات</th>
+                      <th className="py-3 px-3 text-center">نسبة النجاح</th>
+                      <th className="py-3 px-3 text-left">صافي الربح / الخسارة</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
+                    {strategyStats.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                        <td className="py-3 px-4 font-black text-slate-900 dark:text-white">
+                          {item.strategy}
+                        </td>
+                        <td className="py-3 px-3 text-center font-mono-num text-slate-700 dark:text-slate-300">
+                          {item.count}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="font-mono-num font-black" dir="ltr">{item.winRate.toFixed(1)}%</span>
+                            <div className="w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${item.winRate > 50 ? 'bg-emerald-500' : 'bg-red-500'}`} style={{ width: `${item.winRate}%` }} />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-left font-mono-num font-black" dir="ltr">
+                          <span className={`${item.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-red-600 dark:text-red-500'}`}>
+                            {item.pnl > 0 ? '+' : ''}{formatEGP(item.pnl)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

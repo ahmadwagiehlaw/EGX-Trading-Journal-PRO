@@ -128,8 +128,8 @@ export const EGX_STOCKS: EGXStock[] = [
   { symbol: 'ELEC', nameAr: 'القاهرة للخدمات التعليمية', nameEn: 'Cairo Educational Services', sector: 'خدمات تعليمية' }
 ];
 
-export function searchEGXStocks(query: string): EGXStock[] {
-  if (!query || query.trim() === '') return EGX_STOCKS;
+export function searchEGXStocks(query: string, maxResults: number = 30): EGXStock[] {
+  if (!query || query.trim() === '') return EGX_STOCKS.slice(0, maxResults);
   const q = query.trim().toLowerCase();
 
   return EGX_STOCKS.filter(stock => 
@@ -137,7 +137,7 @@ export function searchEGXStocks(query: string): EGXStock[] {
     stock.nameAr.toLowerCase().includes(q) ||
     stock.nameEn.toLowerCase().includes(q) ||
     stock.sector.toLowerCase().includes(q)
-  );
+  ).slice(0, maxResults);
 }
 
 export function getStockBySymbol(symbol: string): EGXStock | undefined {

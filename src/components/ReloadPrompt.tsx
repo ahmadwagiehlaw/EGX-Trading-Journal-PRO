@@ -27,7 +27,7 @@ export default function ReloadPrompt() {
       <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-2xl border border-slate-700 flex items-center justify-between gap-3 backdrop-blur-md bg-slate-900/95">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-blue-600/30 text-blue-400 rounded-xl border border-blue-500/30 shrink-0">
-            {needRefresh ? <RefreshCw className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5 text-emerald-400" />}
+            {needRefresh ? <RefreshCw className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5 text-emerald-500" />}
           </div>
           <div>
             <h4 className="font-black text-sm text-slate-100">

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { 
   Wallet, 
   TrendingUp, 
@@ -26,7 +26,7 @@ import TransactionFormModal from './TransactionFormModal';
 import LedgerModal from './LedgerModal';
 import FixedIncomeModal from './FixedIncomeModal';
 
-export default function Dashboard({ 
+export default memo(function Dashboard({ 
   onOpenTradingDesk,
   onNavigate 
 }: { 
@@ -34,13 +34,17 @@ export default function Dashboard({
   onNavigate?: (tab: string) => void;
 }) {
   const { 
-    capitalInvestment, 
-    positions, 
-    plans,
-    totalOpenCapital,
-    totalOpenRisk,
-    depositedInvestment,
+        positions, 
     fixedIncome,
+    
+    plans,
+    portfolioFilter,
+    setPortfolioFilter,
+    activeCapital,
+    activeDeposited,
+    activeOpenCapital,
+    activeOpenRisk,
+    filteredPositions,
   } = useTrades();
 
   const [selectedPosForTx, setSelectedPosForTx] = useState<{ pos: TickerPosition; type: 'buy' | 'sell' } | null>(null);
@@ -48,7 +52,7 @@ export default function Dashboard({
   const [isFixedIncomeModalOpen, setIsFixedIncomeModalOpen] = useState(false);
 
   // Active positions
-  const activePositions = positions.filter(p => {
+  const activePositions = filteredPositions.filter(p => {
     const metrics = computePositionMetrics(p);
     return p.status === 'active' && metrics.openShares > 0;
   });
@@ -60,13 +64,13 @@ export default function Dashboard({
   });
 
   // Equity Curve Timeline Data
-  const equityData = closedPositions.sort((a, b) => {
+  const computedEquityData = closedPositions.sort((a, b) => {
     const dateA = a.journal?.closedDate || a.journal?.openedDate || 0;
     const dateB = b.journal?.closedDate || b.journal?.openedDate || 0;
     return dateA - dateB;
   }).reduce((acc, p, idx) => {
     const pnl = computePositionMetrics(p).netRealizedPnL;
-    const currentEquity = idx === 0 ? depositedInvestment + pnl : acc[idx - 1].equity + pnl;
+    const currentEquity = idx === 0 ? activeDeposited + pnl : acc[idx - 1].equity + pnl;
     acc.push({
       trade: p.symbol || `#${idx + 1}`,
       equity: currentEquity,
@@ -75,8 +79,8 @@ export default function Dashboard({
     return acc;
   }, [] as { trade: string; equity: number; pnl: number }[]);
 
-  if (equityData.length === 0) {
-    equityData.push({ trade: 'بداية', equity: depositedInvestment, pnl: 0 });
+  if (computedEquityData.length === 0) {
+    computedEquityData.push({ trade: 'بداية', equity: activeDeposited, pnl: 0 });
   }
 
   // Ready plans
@@ -84,10 +88,40 @@ export default function Dashboard({
   const recentPlans = [...plans].slice(0, 4);
 
   // Purchasing power (Total capital minus open invested capital)
-  const availableLiquidity = Math.max(0, capitalInvestment - totalOpenCapital);
+  const availableLiquidity = Math.max(0, activeCapital - activeOpenCapital);
 
   return (
     <div className="w-full space-y-6" dir="rtl">
+      
+      {/* Global Portfolio Filter Toggle */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2 bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <h1 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+          <Activity className="w-6 h-6 text-blue-600 dark:text-blue-500" />
+          متابعة وتقييم الأداء
+        </h1>
+        
+        <div className="flex bg-slate-50 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 w-full md:w-auto">
+          <button 
+            onClick={() => setPortfolioFilter('all')}
+            className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs font-black transition-all ${portfolioFilter === 'all' ? 'bg-slate-900 dark:bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+          >
+            المحفظة الكلية
+          </button>
+          <button 
+            onClick={() => setPortfolioFilter('investment')}
+            className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs font-black transition-all ${portfolioFilter === 'investment' ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+          >
+            الاستثمار
+          </button>
+          <button 
+            onClick={() => setPortfolioFilter('speculation')}
+            className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs font-black transition-all ${portfolioFilter === 'speculation' ? 'bg-purple-600 text-white shadow-sm shadow-purple-500/20' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+          >
+            المضاربة
+          </button>
+        </div>
+      </div>
+
       
       {/* Market Heat / Ready Plans Banner */}
       {readyPlans.length > 0 && (
@@ -121,10 +155,10 @@ export default function Dashboard({
           <div className="flex flex-col">
             <span className="text-slate-400 text-xs font-bold mb-0.5">القيمة السوقية للمحفظة الاستثمارية (Equity)</span>
             <span className="text-xl md:text-2xl font-black font-mono-num tracking-tight">
-              {formatEGP(capitalInvestment)}
+              {formatEGP(activeCapital)}
             </span>
             <span className="text-emerald-400 text-[10px] font-bold mt-1 bg-emerald-400/10 px-2 py-0.5 rounded-md inline-block w-fit">
-              منها {formatEGP(depositedInvestment, 0)} رأس مال مودع
+              منها {formatEGP(activeDeposited, 0)} رأس مال مودع
             </span>
           </div>
         </div>
@@ -155,7 +189,7 @@ export default function Dashboard({
                   <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(Math.max(0, availableLiquidity))}</span>
                 </div>
                 <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-emerald-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (Math.max(0, availableLiquidity) / (capitalInvestment || 1)) * 100)}%` }}></div>
+                  <div className="bg-emerald-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (Math.max(0, availableLiquidity) / (activeCapital || 1)) * 100)}%` }}></div>
                 </div>
               </div>
               
@@ -174,27 +208,27 @@ export default function Dashboard({
                   <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(fixedIncome)}</span>
                 </div>
                 <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-amber-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (fixedIncome / (capitalInvestment || 1)) * 100)}%` }}></div>
+                  <div className="bg-amber-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (fixedIncome / (activeCapital || 1)) * 100)}%` }}></div>
                 </div>
               </div>
 
               <div>
                 <div className="flex justify-between text-xs font-bold mb-1.5">
                   <span className="text-purple-600">السيولة المقيدة (أسهم)</span>
-                  <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(totalOpenCapital)}</span>
+                  <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(activeOpenCapital)}</span>
                 </div>
                 <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-purple-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (totalOpenCapital / (capitalInvestment || 1)) * 100)}%` }}></div>
+                  <div className="bg-purple-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (activeOpenCapital / (activeCapital || 1)) * 100)}%` }}></div>
                 </div>
               </div>
 
               <div>
                 <div className="flex justify-between text-xs font-bold mb-1.5">
                   <span className="text-rose-600">المخاطرة المفتوحة (At Risk)</span>
-                  <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(totalOpenRisk)}</span>
+                  <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(activeOpenRisk)}</span>
                 </div>
                 <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-rose-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (totalOpenRisk / (capitalInvestment || 1)) * 100)}%` }}></div>
+                  <div className="bg-rose-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (activeOpenRisk / (activeCapital || 1)) * 100)}%` }}></div>
                 </div>
               </div>
             </div>
@@ -212,7 +246,7 @@ export default function Dashboard({
           
           <div className="flex-1 w-full min-h-0" dir="ltr">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={equityData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+              <AreaChart data={computedEquityData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorEquityDashboard" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
@@ -470,3 +504,4 @@ export default function Dashboard({
     </div>
   );
 }
+)

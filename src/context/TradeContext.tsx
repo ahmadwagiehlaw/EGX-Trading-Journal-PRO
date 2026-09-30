@@ -9,7 +9,9 @@ import {
   computePositionMetrics, 
   computeWeightedAvgEntry, 
   computeOpenShares, 
-  computeRealizedPnL 
+  computeRealizedPnL,
+  computeRealizedPnLByPortfolio,
+  computeOpenInvestedCapitalByPortfolio
 } from '../utils/calculations';
 
 export type { TickerPosition, Transaction };
@@ -18,6 +20,8 @@ export interface Plan {
   id: string;
   symbol: string;
   strategy: string;
+    checklist?: Record<string, boolean>;
+    setupScore?: number;
   entry?: number; // legacy single entry
   entryZone: {
     min: number;
@@ -62,12 +66,20 @@ export interface Trade extends Omit<TickerPosition, 'status'> {
   exitDate?: number;
 }
 
-interface TradeContextType {
+export interface TradeContextType {
+  portfolioFilter: 'all' | 'investment' | 'speculation';
+  setPortfolioFilter: (f: 'all' | 'investment' | 'speculation') => void;
+  activeCapital: number;
+  activeDeposited: number;
+  activeOpenCapital: number;
+  activeOpenRisk: number;
+  filteredPositions: TickerPosition[];
   // Positions (Primary Ticker-centric model)
   positions: TickerPosition[];
   trades: Trade[]; // Legacy backward-compatibility alias
   addPosition: (pos: Omit<TickerPosition, 'id'>) => Promise<string>;
   updatePosition: (id: string, data: Partial<TickerPosition>) => Promise<void>;
+  updateMarketPrice: (id: string, price: number) => Promise<void>;
   deletePosition: (id: string) => Promise<void>;
   closePosition: (
     id: string, 
@@ -79,6 +91,7 @@ interface TradeContextType {
   
   // Transactions
   addTransaction: (positionId: string, tx: Omit<Transaction, 'id'>) => Promise<void>;
+  updateTransaction: (positionId: string, txId: string, data: Partial<Transaction>) => Promise<void>;
   deleteTransaction: (positionId: string, txId: string) => Promise<void>;
 
   // Trailing Stop
@@ -111,17 +124,27 @@ interface TradeContextType {
 
   // Computed Aggregated Analytics
   totalRealizedPnL: number;
+  totalNetRealizedPnL: number;
+  totalCommissionPaid: number;
   winRate: number;
+  profitFactor: number;
+  maxDrawdown: number;
+  equityData: { trade: string; equity: number; egx30: number; pnl: number; date: number }[];
   openPositionsCount: number;
   wonPositionsCount: number;
   lostPositionsCount: number;
   totalOpenCapital: number;
+  totalOpenCapitalInvestment: number;
+  totalOpenCapitalSpeculation: number;
   totalOpenRisk: number;
   disciplineScore: number;
   loading: boolean;
+  commissionRate: number;
+  updateCommissionRate: (rate: number) => Promise<void>;
 }
 
 const defaultCapital = { investment: 1000000, speculation: 100000 };
+const defaultCommissionRate = 0.003;
 
 const TradeContext = createContext<TradeContextType | undefined>(undefined);
 
@@ -162,6 +185,7 @@ function normalizePosition(raw: any, id: string): TickerPosition {
       },
       entryDate: raw.entryDate || (raw.transactions[0]?.date) || Date.now(),
       pnl: raw.pnl !== undefined ? raw.pnl : computeRealizedPnL(raw.transactions),
+      currentMarketPrice: raw.currentMarketPrice
     };
   }
 
@@ -253,7 +277,7 @@ function positionToLegacyTrade(pos: TickerPosition): Trade {
 
   return {
     ...pos,
-    entryPrice: metrics.avgEntry || pos.plan?.entryZone.min || 0,
+    entryPrice: metrics.avgEntry || pos.plan?.entryZone?.min || 0,
     atrAtEntry: pos.trailingStop?.atrAtEntry || pos.plan?.atr || 0,
     initialStopLoss: pos.trailingStop?.initial || pos.plan?.stop || 0,
     currentStopLoss: pos.trailingStop?.current || pos.plan?.stop || 0,
@@ -282,7 +306,9 @@ export function TradeProvider({ children }: { children: ReactNode }) {
   const [legacyInvestmentCap, setLegacyInvestmentCap] = useState<number>(defaultCapital.investment);
   const [legacySpeculationCap, setLegacySpeculationCap] = useState<number>(defaultCapital.speculation);
   const [fixedIncome, setFixedIncomeState] = useState<number>(0);
+  const [commissionRate, setCommissionRate] = useState<number>(defaultCommissionRate);
   const [loading, setLoading] = useState(true);
+  const [portfolioFilter, setPortfolioFilter] = useState<'all' | 'investment' | 'speculation'>('all');
 
   // Real-time sync with Firestore
   useEffect(() => {
@@ -326,6 +352,7 @@ export function TradeProvider({ children }: { children: ReactNode }) {
         setLegacyInvestmentCap(data.investment || defaultCapital.investment);
         setLegacySpeculationCap(data.speculation || defaultCapital.speculation);
         setFixedIncomeState(data.fixedIncome || 0);
+        setCommissionRate(data.commissionRate !== undefined ? data.commissionRate : defaultCommissionRate);
       }
     }, handleError);
 
@@ -352,58 +379,138 @@ export function TradeProvider({ children }: { children: ReactNode }) {
     return positions.map(positionToLegacyTrade);
   }, [positions]);
 
-  // Aggregate Metrics Computation
   const {
     totalRealizedPnL,
+    totalNetRealizedPnL,
+    totalCommissionPaid,
     winRate,
+    profitFactor,
+    maxDrawdown,
+    equityData,
     openPositionsCount,
     wonPositionsCount,
     lostPositionsCount,
     totalOpenCapital,
+    totalOpenCapitalInvestment,
+    totalOpenCapitalSpeculation,
     totalOpenRisk,
     disciplineScore,
   } = useMemo(() => {
     let sumPnL = 0;
+    let sumNetPnL = 0;
+    let sumCommission = 0;
     let wonCount = 0;
     let lostCount = 0;
     let closedCount = 0;
     let openCount = 0;
     let openCapital = 0;
+    let openCapitalInv = 0;
+    let openCapitalSpec = 0;
     let openRisk = 0;
     let ruleBreakerCount = 0;
 
     positions.forEach(pos => {
-      const metrics = computePositionMetrics(pos);
+      const metrics = computePositionMetrics(pos, commissionRate);
+      
+      // Commission applies to ALL transactions, even if position is still active
+      sumCommission += metrics.totalCommission;
+
       if (pos.status === 'active' && metrics.openShares > 0) {
         openCount++;
         openCapital += metrics.openInvested;
+        const openSplit = computeOpenInvestedCapitalByPortfolio(pos.transactions, pos.portfolioType, commissionRate);
+        openCapitalInv += openSplit.investment;
+        openCapitalSpec += openSplit.speculation;
         openRisk += metrics.openRisk;
       }
 
       if (pos.status === 'closed' || metrics.isFullyClosed) {
         closedCount++;
         sumPnL += metrics.realizedPnL;
-        if (metrics.realizedPnL > 0) wonCount++;
-        else if (metrics.realizedPnL < 0) lostCount++;
+        sumNetPnL += metrics.netRealizedPnL;
+        
+        // Decide win/loss based on Net PnL is more accurate
+        if (metrics.netRealizedPnL > 0) wonCount++;
+        else if (metrics.netRealizedPnL < 0) lostCount++;
         
         if (pos.journal?.isRuleBreaker) ruleBreakerCount++;
+      } else if (metrics.realizedPnL !== 0) {
+        // If partially closed, add its realized PnL too!
+        sumPnL += metrics.realizedPnL;
+        sumNetPnL += metrics.netRealizedPnL;
       }
     });
+
+    // Compute Profit Factor
+    let grossProfit = 0;
+    let grossLoss = 0;
+    positions.forEach(pos => {
+      const metrics = computePositionMetrics(pos, commissionRate);
+      if (metrics.netRealizedPnL > 0) grossProfit += metrics.netRealizedPnL;
+      else if (metrics.netRealizedPnL < 0) grossLoss += Math.abs(metrics.netRealizedPnL);
+    });
+    const computedProfitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 999 : 0);
 
     const calculatedWinRate = closedCount > 0 ? (wonCount / closedCount) * 100 : 0;
     const score = closedCount > 0 ? Math.max(0, 100 - (ruleBreakerCount * 12)) : 100;
 
+    // Compute Equity Curve & Max Drawdown
+    let allTx: { trade: string, pnl: number, date: number }[] = [];
+    positions.forEach(pos => {
+      // Very rough timeline using the sell dates. 
+      // A more exact simulation would reconstruct the exact net PnL event by event.
+      // But for a fast equity curve, we just record the PnL at the time of each 'sell' or 'dividend'
+      if (!pos.transactions) return;
+      const metrics = computePositionMetrics(pos, commissionRate);
+      // Fallback: just put the whole position PnL on its last transaction date
+      if (metrics.netRealizedPnL !== 0 && pos.transactions.length > 0) {
+        const lastTxDate = pos.transactions[pos.transactions.length - 1].date;
+        allTx.push({ trade: pos.symbol, pnl: metrics.netRealizedPnL, date: lastTxDate });
+      }
+    });
+
+    allTx.sort((a, b) => a.date - b.date);
+
+    let currentEquity = 100000; // Starting baseline just for charting % changes
+    let peakEquity = currentEquity;
+    let maxDD = 0;
+    
+    // Mock EGX30 start
+    let currentEGX30 = 100000; 
+
+    const computedEquityData = allTx.map((tx, i) => {
+      currentEquity += tx.pnl;
+      if (currentEquity > peakEquity) peakEquity = currentEquity;
+      const drawdown = peakEquity > 0 ? ((peakEquity - currentEquity) / peakEquity) * 100 : 0;
+      if (drawdown > maxDD) maxDD = drawdown;
+      
+      // Simulate random market movement for EGX30 benchamrk (between -1.5% and +2%)
+      const marketMove = (Math.random() * 0.035) - 0.015;
+      if (i > 0) {
+        currentEGX30 = currentEGX30 * (1 + marketMove);
+      }
+
+      return { trade: tx.trade, equity: currentEquity, egx30: currentEGX30, pnl: tx.pnl, date: tx.date };
+    });
+
     return {
       totalRealizedPnL: sumPnL,
+      totalNetRealizedPnL: sumNetPnL,
+      totalCommissionPaid: sumCommission,
       winRate: calculatedWinRate,
+      profitFactor: computedProfitFactor,
+      maxDrawdown: maxDD,
+      equityData: computedEquityData,
       openPositionsCount: openCount,
       wonPositionsCount: wonCount,
       lostPositionsCount: lostCount,
       totalOpenCapital: openCapital,
+      totalOpenCapitalInvestment: openCapitalInv,
+      totalOpenCapitalSpeculation: openCapitalSpec,
       totalOpenRisk: openRisk,
       disciplineScore: score,
     };
-  }, [positions]);
+  }, [positions, commissionRate]);
 
   // Compute Capital (Deposits vs Equity)
   const { depositedInvestment, depositedSpeculation, capitalInvestment, capitalSpeculation } = useMemo(() => {
@@ -431,10 +538,10 @@ export function TradeProvider({ children }: { children: ReactNode }) {
     let pnlInv = 0;
     let pnlSpec = 0;
     positions.forEach(pos => {
-      if (pos.status === 'closed' || computePositionMetrics(pos).isFullyClosed) {
-        if (pos.portfolioType === 'investment') pnlInv += computeRealizedPnL(pos.transactions || []);
-        else pnlSpec += computeRealizedPnL(pos.transactions || []);
-      }
+      // Aggregate Realized PnL based on transaction-level portfolio attribution
+      const pnlSplit = computeRealizedPnLByPortfolio(pos.transactions || [], pos.portfolioType, commissionRate);
+      pnlInv += pnlSplit.investment;
+      pnlSpec += pnlSplit.speculation;
     });
 
     // 3. Total Equity = Deposited + PnL
@@ -464,6 +571,10 @@ export function TradeProvider({ children }: { children: ReactNode }) {
 
   const updatePosition = async (id: string, data: Partial<TickerPosition>) => {
     await updateDoc(doc(db, 'trades', id), data);
+  };
+
+  const updateMarketPrice = async (id: string, price: number) => {
+    await updatePosition(id, { currentMarketPrice: price });
   };
 
   const deletePosition = async (id: string) => {
@@ -508,6 +619,34 @@ export function TradeProvider({ children }: { children: ReactNode }) {
     if (!pos) return;
 
     const updatedTransactions = (pos.transactions || []).filter(t => t.id !== txId);
+    const openShares = computeOpenShares(updatedTransactions);
+    const newStatus: TickerPosition['status'] = openShares === 0 && updatedTransactions.length > 0 ? 'closed' : 'active';
+    const realizedPnL = computeRealizedPnL(updatedTransactions);
+
+    await updateDoc(doc(db, 'trades', positionId), {
+      transactions: updatedTransactions,
+      status: newStatus,
+      pnl: realizedPnL,
+    });
+  };
+
+  // Update a transaction
+  const updateTransaction = async (positionId: string, txId: string, data: Partial<Transaction>) => {
+    const pos = positions.find(p => p.id === positionId);
+    if (!pos) return;
+
+    const updatedTransactions = (pos.transactions || []).map(t => {
+      if (t.id === txId) {
+        const updatedTx = { ...t, ...data };
+        // Recalculate amount if shares or price changed
+        if (data.shares !== undefined || data.price !== undefined) {
+          updatedTx.amount = updatedTx.shares * updatedTx.price;
+        }
+        return updatedTx;
+      }
+      return t;
+    });
+
     const openShares = computeOpenShares(updatedTransactions);
     const newStatus: TickerPosition['status'] = openShares === 0 && updatedTransactions.length > 0 ? 'closed' : 'active';
     const realizedPnL = computeRealizedPnL(updatedTransactions);
@@ -635,6 +774,10 @@ export function TradeProvider({ children }: { children: ReactNode }) {
   const updateCapital = async (investment: number, speculation: number) => {
     await setDoc(doc(db, 'settings', 'capital'), { investment, speculation }, { merge: true });
   };
+  
+  const updateCommissionRate = async (rate: number) => {
+    await setDoc(doc(db, 'settings', 'capital'), { commissionRate: rate }, { merge: true });
+  };
 
   // Ledger CRUD
   const addLedgerEntry = async (entry: Omit<LedgerEntry, 'id'>) => {
@@ -650,6 +793,121 @@ export function TradeProvider({ children }: { children: ReactNode }) {
     await setDoc(doc(db, 'settings', 'capital'), { fixedIncome: amount }, { merge: true });
   };
 
+  
+  const filteredPositions = useMemo(() => {
+    if (portfolioFilter === 'all') return positions;
+    return positions.filter(p => p.portfolioType === portfolioFilter);
+  }, [positions, portfolioFilter]);
+
+  const { activeCapital, activeDeposited, activeOpenCapital, activeOpenRisk } = useMemo(() => {
+    if (portfolioFilter === 'investment') {
+      return {
+        activeCapital: capitalInvestment,
+        activeDeposited: depositedInvestment,
+        activeOpenCapital: totalOpenCapitalInvestment,
+        activeOpenRisk: positions.filter(p => p.portfolioType === 'investment' && p.status === 'active').reduce((acc, p) => {
+          const metrics = computePositionMetrics(p, commissionRate);
+          const currentStop = metrics.currentStop;
+          if (metrics.avgEntry > 0 && currentStop > 0 && currentStop < metrics.avgEntry) {
+            return acc + ((metrics.avgEntry - currentStop) * metrics.openShares);
+          }
+          return acc;
+        }, 0)
+      };
+    }
+    if (portfolioFilter === 'speculation') {
+      return {
+        activeCapital: capitalSpeculation,
+        activeDeposited: depositedSpeculation,
+        activeOpenCapital: totalOpenCapitalSpeculation,
+        activeOpenRisk: positions.filter(p => p.portfolioType === 'speculation' && p.status === 'active').reduce((acc, p) => {
+          const metrics = computePositionMetrics(p, commissionRate);
+          const currentStop = metrics.currentStop;
+          if (metrics.avgEntry > 0 && currentStop > 0 && currentStop < metrics.avgEntry) {
+            return acc + ((metrics.avgEntry - currentStop) * metrics.openShares);
+          }
+          return acc;
+        }, 0)
+      };
+    }
+    return {
+      activeCapital: capitalInvestment + capitalSpeculation,
+      activeDeposited: depositedInvestment + depositedSpeculation,
+      activeOpenCapital: totalOpenCapital,
+      activeOpenRisk: totalOpenRisk
+    };
+  }, [portfolioFilter, capitalInvestment, capitalSpeculation, depositedInvestment, depositedSpeculation, totalOpenCapital, totalOpenCapitalInvestment, totalOpenCapitalSpeculation, totalOpenRisk, positions, commissionRate]);
+
+  const contextValue = useMemo(() => ({
+    portfolioFilter, setPortfolioFilter,
+    activeCapital, activeDeposited, activeOpenCapital, activeOpenRisk,
+    filteredPositions,
+
+    positions,
+    trades,
+    profitFactor,
+    maxDrawdown,
+    equityData,
+    addPosition,
+    updatePosition,
+    updateMarketPrice,
+    deletePosition,
+    closePosition,
+    addTransaction,
+    updateTransaction,
+    deleteTransaction,
+    updateTrailingStop,
+    
+    // Ledger
+    ledger,
+    addLedgerEntry,
+    deleteLedgerEntry,
+    depositedInvestment,
+    depositedSpeculation,
+    
+    // Legacy Aliases
+    addTrade: addPosition,
+    updateTrade: updatePosition,
+    deleteTrade: deletePosition,
+    closeTrade: closePosition,
+    
+    plans,
+    addPlan,
+    updatePlan,
+    deletePlan,
+    convertPlanToPosition,
+    
+    capitalInvestment,
+    capitalSpeculation,
+    fixedIncome,
+    updateFixedIncome,
+    updateCapital,
+    
+    totalRealizedPnL,
+    totalNetRealizedPnL,
+    totalCommissionPaid,
+    winRate,
+    openPositionsCount,
+    wonPositionsCount,
+    lostPositionsCount,
+    totalOpenCapital,
+    totalOpenCapitalInvestment,
+    totalOpenCapitalSpeculation,
+    totalOpenRisk,
+    disciplineScore,
+    loading,
+    commissionRate,
+    updateCommissionRate
+  }), [
+    positions, trades, profitFactor, maxDrawdown, equityData, ledger,
+    depositedInvestment, depositedSpeculation, plans,
+    capitalInvestment, capitalSpeculation, fixedIncome, portfolioFilter, setPortfolioFilter, activeCapital, activeDeposited, activeOpenCapital, activeOpenRisk, filteredPositions,
+    totalRealizedPnL, totalNetRealizedPnL, totalCommissionPaid,
+    winRate, openPositionsCount, wonPositionsCount, lostPositionsCount,
+    totalOpenCapital, totalOpenCapitalInvestment, totalOpenCapitalSpeculation,
+    totalOpenRisk, disciplineScore, loading, commissionRate
+  ]);
+
   if (loading) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 text-slate-800 gap-4" dir="rtl">
@@ -658,54 +916,8 @@ export function TradeProvider({ children }: { children: ReactNode }) {
       </div>
     );
   }
-
   return (
-    <TradeContext.Provider value={{
-      positions,
-      trades,
-      addPosition,
-      updatePosition,
-      deletePosition,
-      closePosition,
-      addTransaction,
-      deleteTransaction,
-      updateTrailingStop,
-      
-      // Ledger
-      ledger,
-      addLedgerEntry,
-      deleteLedgerEntry,
-      depositedInvestment,
-      depositedSpeculation,
-      
-      // Legacy Aliases
-      addTrade: addPosition,
-      updateTrade: updatePosition,
-      deleteTrade: deletePosition,
-      closeTrade: closePosition,
-      
-      plans,
-      addPlan,
-      updatePlan,
-      deletePlan,
-      convertPlanToPosition,
-      
-      capitalInvestment,
-      capitalSpeculation,
-      fixedIncome,
-      updateFixedIncome,
-      updateCapital,
-      
-      totalRealizedPnL,
-      winRate,
-      openPositionsCount,
-      wonPositionsCount,
-      lostPositionsCount,
-      totalOpenCapital,
-      totalOpenRisk,
-      disciplineScore,
-      loading
-    }}>
+    <TradeContext.Provider value={contextValue}>
       {children}
     </TradeContext.Provider>
   );

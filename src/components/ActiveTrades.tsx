@@ -1,16 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   ArrowDownToLine, 
   Lock, 
   Maximize2,
   Minimize2,
   ShieldAlert, 
-  AlertTriangle, 
+   
   CheckCircle, 
   Plus,
   ArrowDownLeft,
-  LineChart,
-  Target
+  
+  Target,
+  Trash2
 } from 'lucide-react';
 import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 import { useTrades } from '../context/TradeContext';
@@ -18,8 +19,10 @@ import { useTheme } from '../context/ThemeContext';
 import { computePositionMetrics } from '../utils/calculations';
 import TransactionFormModal from './TransactionFormModal';
 
-export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; onClose: () => void }) {
-  const { positions, updateTrailingStop, closePosition } = useTrades();
+export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: () => void }) {
+
+
+  const { positions, updateTrailingStop, updatePosition } = useTrades();
   const { theme } = useTheme();
   
   const position = positions.find(p => p.id === tradeId);
@@ -30,35 +33,94 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
 
   const [newHighestPrice, setNewHighestPrice] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  
-  const [txModalType, setTxModalType] = useState<'buy' | 'sell' | null>(null);
+  const [txModalType, setTxModalType] = useState<'buy' | 'sell' | 'sellAll' | 'edit' | null>(null);
+  const [rightPaneView, setRightPaneView] = useState<'ledger' | 'chart'>('ledger');
   const [isChartExpanded, setIsChartExpanded] = useState(false);
 
+  const [marketPriceInput, setMarketPriceInput] = useState(position?.currentMarketPrice?.toString() || '');
+  const [isEditingMarketPrice, setIsEditingMarketPrice] = useState(false);
+  const [isEditingHighestPrice, setIsEditingHighestPrice] = useState(false);
+  const [isEditingAtr, setIsEditingAtr] = useState(false);
+  const [atrInput, setAtrInput] = useState('');
+  const [isEditingStop, setIsEditingStop] = useState(false);
+  const [manualStopInput, setManualStopInput] = useState('');
+  
+  const handleManualStopUpdate = async () => {
+    const val = parseFloat(manualStopInput);
+    if (!isNaN(val) && val > 0 && position) {
+      const updatedData: any = { trailingStop: { ...position.trailingStop, current: val } };
+      await updatePosition(position.id, updatedData);
+      setIsEditingStop(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isEditingAtr && position) {
+      const currentAtr = position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0;
+      setAtrInput(currentAtr.toString());
+    }
+  }, [isEditingAtr, position]);
+
+  const handleUpdateMarketPrice = async () => {
+    if (!metrics) return;
+    const p = parseFloat(marketPriceInput);
+    if (!isNaN(p) && p > 0 && position) {
+      await updatePosition(position!.id, { currentMarketPrice: p });
+      setIsEditingMarketPrice(false);
+    }
+  };
+
+  const handleUpdateAtr = async () => {
+    if (!metrics) return;
+    const newAtr = parseFloat(atrInput);
+    if (!isNaN(newAtr) && newAtr > 0 && position) {
+      const updatedData: any = {};
+      
+      const highest = position!.trailingStop?.highestReached || metrics!.avgEntry;
+      let newStop = highest - (2 * newAtr);
+      newStop = Math.max(newStop, metrics!.currentStop);
+
+      if (position!.trailingStop) {
+        updatedData.trailingStop = { ...position!.trailingStop, atrAtEntry: newAtr, current: newStop };
+      } else {
+        updatedData.trailingStop = { initial: metrics!.currentStop, current: newStop, highestReached: highest, atrAtEntry: newAtr };
+      }
+      
+      if (position!.plan) {
+        updatedData.plan = { ...position!.plan, atr: newAtr };
+      }
+      
+      await updatePosition(position!.id, updatedData);
+      setIsEditingAtr(false);
+    }
+  };
+
+  
+  
   if (!position || !metrics) return null;
 
-  const currentHighest = position.trailingStop?.highestReached || metrics.avgEntry;
-  const currentStop = metrics.currentStop;
-  const atr = position.trailingStop?.atrAtEntry || position.plan?.atr || 0;
+  const currentHighest = position!.trailingStop?.highestReached || metrics!.avgEntry;
+  const currentStop = metrics!.currentStop;
+  
 
-  const handleUpdateTrailingStop = async () => {
+  const handleUpdateTrailingStop = async (): Promise<boolean> => {
+    if (!metrics) return false;
     const highest = parseFloat(newHighestPrice);
     
     if (isNaN(highest) || highest <= currentHighest) {
       setError(`يجب إدخال سعر أعلى من أعلى سعر مسجل سابقاً (${currentHighest.toFixed(2)} EGP).`);
-      return;
+      return false;
     }
 
-    const calculatedNewStop = atr > 0 ? highest - (2 * atr) : highest * 0.95;
-
-    // Rule: Stop Loss CANNOT move down (Steve Burns Rule #30)
-    if (calculatedNewStop < currentStop) {
-      setError("مخالفة قاعدة ستيف بيرنز: الوقف لا يتحرك للخلف أبداً. السعر الجديد يعطي وقف خسارة أقل من الحالي.");
-      return;
-    }
+    const atrVal = position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0;
+    const calculatedNewStop = atrVal > 0 ? highest - (2 * atrVal) : highest * 0.95;
+    const finalStop = Math.max(calculatedNewStop, currentStop);
 
     setError(null);
-    await updateTrailingStop(position.id, highest, calculatedNewStop);
+    await updateTrailingStop(position!.id, highest, finalStop);
     setNewHighestPrice('');
+    setIsEditingHighestPrice(false);
+    return true;
   };
 
 
@@ -66,28 +128,99 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
     <div className="w-full space-y-6" dir="rtl">
       <div className={isChartExpanded ? "flex flex-col" : "grid lg:grid-cols-2 gap-6 items-stretch"}>
         
-        {/* Right Column: Live TradingView Chart */}
+        {/* Right Column: Live TradingView Chart OR Ledger */}
         <div className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col relative z-10 transition-all duration-300 ${isChartExpanded ? 'h-[80vh]' : 'min-h-[520px]'}`}>
-          <button 
-            onClick={() => setIsChartExpanded(!isChartExpanded)}
-            className="absolute top-4 right-4 z-50 p-2.5 bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700 backdrop-blur-md rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-all flex items-center gap-2"
-            title={isChartExpanded ? "تصغير الشارت" : "تكبير الشارت"}
-          >
-            {isChartExpanded ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
-            <span className="text-xs font-bold hidden sm:inline">{isChartExpanded ? "تصغير" : "تكبير الشاشة"}</span>
-          </button>
-          <AdvancedRealTimeChart 
-            symbol={`EGX:${position.symbol}`}
-            interval="D"
-            theme={theme === 'dark' ? 'dark' : 'light'}
-            locale="ar_AE"
-            autosize
-            allow_symbol_change={false}
-            hide_side_toolbar={false}
-            details={true}
-            save_image={true}
-            timezone="Africa/Cairo"
-          />
+          
+          <div className="absolute top-4 right-4 z-50 flex gap-2">
+            <button 
+              onClick={() => setIsChartExpanded(!isChartExpanded)}
+              className="p-2.5 bg-white/90 dark:bg-slate-800/90 hover:bg-white dark:hover:bg-slate-700 backdrop-blur-md rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-all flex items-center gap-2"
+              title={isChartExpanded ? "تصغير" : "تكبير"}
+            >
+              {isChartExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+            <button 
+              onClick={() => setRightPaneView(rightPaneView === 'ledger' ? 'chart' : 'ledger')}
+              className="px-4 py-2 bg-white/90 dark:bg-slate-800/90 hover:bg-white dark:hover:bg-slate-700 backdrop-blur-md rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 transition-all flex items-center gap-2 font-black text-xs"
+            >
+              {rightPaneView === 'ledger' ? 'الشارت الفني' : 'سجل صفقات السهم'}
+            </button>
+          </div>
+
+          {rightPaneView === 'ledger' ? (
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-900/50 mt-14">
+               <div className="flex flex-wrap gap-2 mb-6">
+                 <button onClick={() => setTxModalType('buy')} className="flex-1 py-2 bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded-xl font-black text-xs border border-blue-200 dark:border-blue-800">+ تمركز إضافي</button>
+                 <button onClick={() => setTxModalType('sell')} className="flex-1 py-2 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 rounded-xl font-black text-xs border border-emerald-200 dark:border-emerald-800">↙ بيع جزئي</button>
+                 <button className="flex-1 py-2 bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 rounded-xl font-black text-xs border border-amber-200 dark:border-amber-800 opacity-50 cursor-not-allowed">توزيع نقدي</button>
+                 <button className="flex-1 py-2 bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 rounded-xl font-black text-xs border border-purple-200 dark:border-purple-800 opacity-50 cursor-not-allowed">تجزئة/مجاني</button>
+               </div>
+
+               <div className="overflow-x-auto">
+                 <table className="w-full text-sm text-center">
+                   <thead className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold text-[11px]">
+                     <tr>
+                       <th className="py-3 px-2 rounded-r-xl">العملية</th>
+                       <th className="py-3 px-2">التاريخ</th>
+                       <th className="py-3 px-2">الكمية</th>
+                       <th className="py-3 px-2">السعر</th>
+                       <th className="py-3 px-2">الإجمالي</th>
+                       <th className="py-3 px-2">الربح المحقق</th>
+                       <th className="py-3 px-2 rounded-l-xl">إجراءات</th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                     {[...position!.transactions].sort((a,b)=>b.date - a.date).map(tx => (
+                       <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors font-mono-num">
+                         <td className="py-4 px-2">
+                           <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-black ${tx.type === 'buy' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'}`}>
+                             {tx.type === 'buy' ? 'شراء' : 'بيع (جني ربح)'}
+                           </span>
+                         </td>
+                         <td className="py-4 px-2 font-bold text-slate-600 dark:text-slate-300 text-xs">
+                           {new Date(tx.date).toLocaleDateString('en-GB')}
+                         </td>
+                         <td className="py-4 px-2 font-black text-slate-800 dark:text-white">
+                           {tx.shares.toLocaleString()}
+                         </td>
+                         <td className="py-4 px-2 font-black text-slate-800 dark:text-white">
+                           {tx.price.toFixed(2)}
+                         </td>
+                         <td className="py-4 px-2 font-black text-slate-800 dark:text-white">
+                           {tx.amount.toFixed(2)}
+                         </td>
+                         <td className="py-4 px-2">
+                           {tx.type === 'sell' && tx.id ? (
+                             <span className={`font-black ${(metrics!.txPnL?.[tx.id] || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} dir="ltr">
+                               {(metrics!.txPnL?.[tx.id] || 0) >= 0 ? '+' : ''}{(metrics!.txPnL?.[tx.id] || 0).toFixed(2)}
+                             </span>
+                           ) : <span className="text-slate-300 dark:text-slate-600">-</span>}
+                         </td>
+                         <td className="py-4 px-2 flex justify-center">
+                            <button className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors" title="Delete coming soon">
+                              <Trash2 className="w-4 h-4"/>
+                            </button>
+                         </td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
+            </div>
+          ) : (
+            <AdvancedRealTimeChart 
+              symbol={`EGX:${position!.symbol}`}
+              interval="D"
+              theme={theme === 'dark' ? 'dark' : 'light'}
+              locale="ar_AE"
+              autosize
+              allow_symbol_change={false}
+              hide_side_toolbar={false}
+              details={true}
+              save_image={true}
+              timezone="Africa/Cairo"
+            />
+          )}
         </div>
 
         {/* Left Column: Trailing Stop Engine & Ledger Control */}
@@ -98,110 +231,223 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
             <div className="flex justify-between items-start mb-6 border-b border-slate-100 dark:border-slate-800 pb-5">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight" dir="ltr">{position.symbol}</h3>
+                  <h3 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight" dir="ltr">{position!.symbol}</h3>
                   <span className={`px-2.5 py-0.5 rounded-lg text-xs font-black border ${
-                    metrics.isOpen 
+                    metrics!.isOpen 
                       ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' 
                       : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                   }`}>
-                    {metrics.isOpen ? 'مركز مفتوح' : 'مغلق'}
+                    {metrics!.isOpen ? 'مركز مفتوح' : 'مغلق'}
                   </span>
                 </div>
-                <p className="text-slate-500 dark:text-slate-400 font-bold text-xs mt-1">
-                  متوسط سعر الدخول: <span className="text-blue-600 dark:text-blue-400 font-mono-num font-black">{metrics.avgEntry.toFixed(2)} EGP</span>
+                <p className="text-slate-500 dark:text-slate-400 font-bold text-xs mt-1 mb-2">
+                  متوسط سعر الدخول: <span className="text-blue-600 dark:text-blue-400 font-mono-num font-black">{metrics!.avgEntry.toFixed(2)} EGP</span>
                 </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Market Price Pill */}
+                  <div className="flex items-center bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shadow-sm">
+                    <button 
+                      onClick={() => { setIsEditingMarketPrice(!isEditingMarketPrice); setIsEditingHighestPrice(false); setIsEditingAtr(false); }}
+                      className="px-2 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                      title="تعديل سعر السوق يدوياً"
+                    >
+                      سعر السوق:
+                    </button>
+                    {isEditingMarketPrice ? (
+                      <div className="flex items-center">
+                        <input 
+                          type="number" step="any"
+                          value={marketPriceInput}
+                          onChange={(e) => setMarketPriceInput(e.target.value)}
+                          className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-slate-900 dark:text-white"
+                          dir="ltr"
+                          autoFocus
+                          placeholder={metrics!.currentPrice.toFixed(2)}
+                        />
+                        <button 
+                          onClick={handleUpdateMarketPrice}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1.5 text-[10px] font-bold transition-colors"
+                        >حفظ</button>
+                      </div>
+                    ) : (
+                      <div 
+                        className="px-3 py-1.5 text-xs font-black text-slate-800 dark:text-slate-200 cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors font-mono-num"
+                        onClick={() => { setIsEditingMarketPrice(true); setIsEditingHighestPrice(false); setIsEditingAtr(false); }}
+                        dir="ltr"
+                        title="انقر لتعديل السعر"
+                      >
+                        {metrics!.currentPrice.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Highest Price Pill (Trailing Stop) */}
+                  {metrics!.isOpen && (
+                  <div className="flex items-center bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg overflow-hidden shadow-sm">
+                    <button 
+                      onClick={() => { setIsEditingHighestPrice(!isEditingHighestPrice); setIsEditingMarketPrice(false); setIsEditingAtr(false); }}
+                      className="px-2 py-1.5 text-[10px] font-bold text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-1"
+                      title="تحديث أعلى سعر لتفعيل الوقف المتحرك"
+                    >
+                      <Lock className="w-3 h-3" />
+                      أقصى سعر:
+                    </button>
+                    {isEditingHighestPrice ? (
+                      <div className="flex items-center">
+                        <input 
+                          type="number" step="any"
+                          value={newHighestPrice}
+                          onChange={(e) => { setNewHighestPrice(e.target.value); setError(null); }}
+                          className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-blue-900 dark:text-blue-100"
+                          dir="ltr"
+                          autoFocus
+                          placeholder={currentHighest.toFixed(2)}
+                        />
+                        <button 
+                          onClick={handleUpdateTrailingStop}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1.5 text-[10px] font-bold transition-colors"
+                        >حفظ</button>
+                      </div>
+                    ) : (
+                      <div 
+                        className="px-3 py-1.5 text-xs font-black text-blue-800 dark:text-blue-200 cursor-pointer hover:text-blue-600 dark:hover:text-blue-300 transition-colors font-mono-num"
+                        onClick={() => { setIsEditingHighestPrice(true); setIsEditingMarketPrice(false); setIsEditingAtr(false); }}
+                        dir="ltr"
+                        title="انقر لتعديل أقصى سعر"
+                      >
+                        {currentHighest.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                  )}
+
+                  {/* ATR Pill */}
+                  {metrics!.isOpen && (
+                  <div className="flex items-center bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-lg overflow-hidden shadow-sm">
+                    <button 
+                      onClick={() => { setIsEditingAtr(!isEditingAtr); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); }}
+                      className="px-2 py-1.5 text-[10px] font-bold text-purple-700 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors flex items-center gap-1"
+                      title="تعديل قيمة ATR لحساب الوقف الميكانيكي"
+                    >
+                      ATR:
+                    </button>
+                    {isEditingAtr ? (
+                      <div className="flex items-center">
+                        <input 
+                          type="number" step="any"
+                          value={atrInput}
+                          onChange={(e) => setAtrInput(e.target.value)}
+                          className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-purple-900 dark:text-purple-100"
+                          dir="ltr"
+                          autoFocus
+                          placeholder={((position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0)).toFixed(2)}
+                        />
+                        <button 
+                          onClick={handleUpdateAtr}
+                          className="bg-purple-600 hover:bg-purple-700 text-white px-2 py-1.5 text-[10px] font-bold transition-colors"
+                        >حفظ</button>
+                      </div>
+                    ) : (
+                      <div 
+                        className="px-3 py-1.5 text-xs font-black text-purple-800 dark:text-purple-200 cursor-pointer hover:text-purple-600 dark:hover:text-purple-300 transition-colors font-mono-num"
+                        onClick={() => { setIsEditingAtr(true); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); }}
+                        dir="ltr"
+                        title="انقر لتعديل ATR"
+                      >
+                        {((position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0)).toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                  )}
+                </div>
+                {error && isEditingHighestPrice && (
+                  <p className="text-[10px] font-bold text-rose-600 dark:text-rose-400 mt-2 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded inline-block w-full max-w-sm">
+                    {error}
+                  </p>
+                )}
               </div>
 
               <div className="text-left">
                 <p className="text-slate-400 font-bold text-xs">الكمية المفتوحة</p>
-                <p className="text-xl font-black text-slate-900 dark:text-white font-mono-num">{metrics.openShares.toLocaleString()} سهم</p>
+                <p className="text-xl font-black text-slate-900 dark:text-white font-mono-num">{metrics!.openShares.toLocaleString()} سهم</p>
               </div>
             </div>
 
             {/* Plan vs Reality Visual Chart */}
-            <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 mb-6">
-              <div className="flex justify-between items-center mb-6">
-                <h4 className="font-black text-slate-800 dark:text-slate-200 text-sm flex items-center gap-1.5">
-                  <LineChart className="w-4.5 h-4.5 text-blue-500" />
-                  المخطط مقابل الواقع (Plan vs Reality)
-                </h4>
-                <div className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 border ${
-                  metrics.realizedPnL > 0 
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400' 
-                    : metrics.realizedPnL < 0 
-                      ? 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-400' 
-                      : 'bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'
-                }`}>
-                  صافي الأرباح المحققة: {metrics.realizedPnL > 0 ? '+' : ''}{metrics.realizedPnL.toFixed(2)} EGP
-                </div>
+            <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-10 rounded-3xl border border-slate-200 dark:border-slate-700/60 mb-6 relative mt-6 shadow-inner">
+              <div className={`absolute -top-4 left-4 z-10 px-3 py-1.5 rounded-xl text-sm font-black flex items-center gap-1.5 border shadow-sm ${
+                metrics!.realizedPnL > 0 
+                  ? 'bg-emerald-100 border-emerald-300 text-emerald-800 dark:bg-emerald-900/60 dark:border-emerald-700 dark:text-emerald-300' 
+                  : metrics!.realizedPnL < 0 
+                    ? 'bg-rose-100 border-rose-300 text-rose-800 dark:bg-rose-900/60 dark:border-rose-700 dark:text-rose-300' 
+                    : 'bg-white border-slate-200 text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
+              }`}>
+                صافي الأرباح المحققة: {metrics!.realizedPnL > 0 ? '+' : ''}{metrics!.realizedPnL.toFixed(2)} EGP
               </div>
               
-              <div className="relative h-12 w-full flex items-center mt-6 mb-2">
+              <div className="relative h-16 w-full flex items-center mt-8 mb-4">
                 {/* Track */}
-                <div className="absolute w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden shadow-inner">
-                  {position.plan?.target && position.plan?.stop ? (
+                <div className="absolute w-full h-4 bg-slate-200 dark:bg-slate-700 rounded-full shadow-inner overflow-hidden">
+                  {position!.plan?.target && position!.plan?.stop ? (
                     <div 
-                      className="h-full bg-gradient-to-l from-emerald-400 via-blue-400 to-rose-400 opacity-80"
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-blue-400 to-rose-500 opacity-90"
                       style={{ width: '100%' }}
                     />
                   ) : null}
                 </div>
 
                 {/* Markers */}
-                {position.plan?.target && position.plan?.stop ? (() => {
-                  const minP = position.plan.stop;
-                  const maxP = position.plan.target;
+                {position!.plan?.target && position!.plan?.stop ? (() => {
+                  const minP = position!.plan.stop;
+                  const maxP = position!.plan.target;
                   const range = maxP - minP;
-                  const entryPercent = Math.max(0, Math.min(100, ((metrics.avgEntry - minP) / range) * 100));
-                  const stopPercent = 0; // stop is at 0%
-                  const targetPercent = 100; // target is at 100%
+                  const entryPercent = Math.max(0, Math.min(100, ((metrics!.avgEntry - minP) / range) * 100));
                   const trailingStopPercent = Math.max(0, Math.min(100, ((currentStop - minP) / range) * 100));
+                  const currentPercent = Math.max(0, Math.min(100, ((metrics!.currentPrice - minP) / range) * 100));
 
                   return (
                     <>
-                      {/* Target Marker */}
-                      <div className="absolute left-0 -top-8 text-center transform -translate-x-1/2">
-                        <span className="block text-[10px] font-black text-emerald-600 dark:text-emerald-400">الهدف 🎯</span>
-                        <span className="block text-[11px] font-mono-num font-bold text-slate-700 dark:text-slate-300">{maxP.toFixed(2)}</span>
+                      {/* Initial Stop */}
+                      <div className="absolute flex flex-col items-center" style={{ right: '0%', transform: 'translateX(50%)', bottom: '100%', marginBottom: '14px' }}>
+                        <span className="text-[10px] font-black text-rose-600 dark:text-rose-400 flex items-center gap-1"><ShieldAlert className="w-3 h-3"/> الوقف</span>
+                        <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{minP.toFixed(2)}</span>
                       </div>
                       
-                      {/* Stop Marker */}
-                      <div className="absolute right-0 -top-8 text-center transform translate-x-1/2">
-                        <span className="block text-[10px] font-black text-rose-600 dark:text-rose-400">الوقف 🛡️</span>
-                        <span className="block text-[11px] font-mono-num font-bold text-slate-700 dark:text-slate-300">{minP.toFixed(2)}</span>
+                      {/* Target */}
+                      <div className="absolute flex flex-col items-center" style={{ right: '100%', transform: 'translateX(50%)', bottom: '100%', marginBottom: '14px' }}>
+                        <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><Target className="w-3 h-3"/> الهدف</span>
+                        <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{maxP.toFixed(2)}</span>
                       </div>
 
-                      {/* Entry Marker */}
-                      <div 
-                        className="absolute -top-9 text-center transform translate-x-1/2 z-10"
-                        style={{ right: `${entryPercent}%` }}
-                      >
-                        <span className="block text-[10px] font-black text-blue-600 dark:text-blue-400">الدخول</span>
-                        <span className="block text-[11px] font-mono-num font-black text-slate-900 dark:text-white bg-white/80 dark:bg-slate-800/80 px-1 rounded">{metrics.avgEntry.toFixed(2)}</span>
-                        <div className="mx-auto w-3.5 h-3.5 rounded-full bg-blue-600 dark:bg-blue-500 mt-0.5 border-[2.5px] border-white dark:border-slate-800 shadow-sm relative">
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0.5 h-4 bg-blue-200 dark:bg-blue-800/50 -z-10"></div>
-                        </div>
+                      {/* Entry */}
+                      <div className="absolute flex flex-col items-center" style={{ right: `${entryPercent}%`, transform: 'translateX(50%)', bottom: '100%', marginBottom: '14px' }}>
+                        <span className="text-[10px] font-black text-blue-600 dark:text-blue-400">الدخول</span>
+                        <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{metrics!.avgEntry.toFixed(2)}</span>
+                        <div className="w-0.5 h-4 bg-blue-500 absolute -bottom-4"></div>
+                        <div className="w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white dark:border-slate-900 absolute -bottom-5"></div>
                       </div>
 
-                      {/* Trailing Stop Marker */}
+                      {/* Trailing Stop */}
                       {currentStop > minP && (
-                        <div 
-                          className="absolute -bottom-8 text-center transform translate-x-1/2 z-10"
-                          style={{ right: `${trailingStopPercent}%` }}
-                        >
-                          <div className="mx-auto w-3.5 h-3.5 rounded-full bg-orange-500 dark:bg-orange-400 mb-0.5 border-[2.5px] border-white dark:border-slate-800 shadow-sm relative">
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 w-0.5 h-4 bg-orange-200 dark:bg-orange-800/50 -z-10"></div>
-                          </div>
-                          <span className="block text-[10px] font-black text-orange-600 dark:text-orange-400">وقف متحرك</span>
-                          <span className="block text-[11px] font-mono-num font-black text-slate-900 dark:text-white">{currentStop.toFixed(2)}</span>
+                        <div className="absolute flex flex-col items-center" style={{ right: `${trailingStopPercent}%`, transform: 'translateX(50%)', top: '100%', marginTop: '14px' }}>
+                          <div className="w-3.5 h-3.5 rounded-full bg-orange-500 border-2 border-white dark:border-slate-900 absolute -top-5"></div>
+                          <div className="w-0.5 h-4 bg-orange-500 absolute -top-4"></div>
+                          <span className="text-[10px] font-black text-orange-600 dark:text-orange-400">وقف متحرك</span>
+                          <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{currentStop.toFixed(2)}</span>
                         </div>
                       )}
+                      
+                      {/* Current Price */}
+                      <div className="absolute flex flex-col items-center" style={{ right: `${currentPercent}%`, transform: 'translateX(50%)', top: '100%', marginTop: '14px' }}>
+                          <div className="w-3.5 h-3.5 rounded-full bg-slate-800 dark:bg-white border-2 border-white dark:border-slate-900 absolute -top-5"></div>
+                          <div className="w-0.5 h-4 bg-slate-800 dark:bg-white absolute -top-4"></div>
+                          <span className="text-[10px] font-black text-slate-600 dark:text-slate-300">السوق</span>
+                          <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{metrics!.currentPrice.toFixed(2)}</span>
+                      </div>
                     </>
                   );
                 })() : (
-                  <div className="text-[11px] font-bold text-slate-400 text-center w-full absolute">
-                    الخطة غير مكتملة (يرجى إضافة هدف ووقف للخطة)
-                  </div>
+                  <div className="text-center w-full text-[10px] text-slate-500 font-bold mt-8">الخطة غير مكتملة (يرجى إضافة هدف ووقف)</div>
                 )}
               </div>
             </div>
@@ -214,7 +460,7 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
                   الوقف المبدئي
                 </div>
                 <div className="text-2xl font-black text-slate-700 dark:text-slate-200 font-mono-num" dir="ltr">
-                  {(position.trailingStop?.initial || position.plan?.stop || 0).toFixed(2)}
+                  {(position!.trailingStop?.initial || position!.plan?.stop || 0).toFixed(2)}
                 </div>
               </div>
 
@@ -224,57 +470,26 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
                   <ShieldAlert className="w-4 h-4" />
                   الوقف المتحرك الحالي
                 </div>
-                <div className="text-2xl font-black text-red-600 dark:text-red-400 font-mono-num" dir="ltr">
-                  {currentStop.toFixed(2)}
-                </div>
+                {isEditingStop ? (
+                  <div className="flex items-center justify-center gap-2 mt-2">
+                    <input type="number" step="any" value={manualStopInput} onChange={e => setManualStopInput(e.target.value)} className="w-20 text-center px-2 py-1 rounded bg-white dark:bg-slate-900 border text-red-600 dark:text-red-400 font-black text-sm" dir="ltr" autoFocus placeholder={currentStop.toFixed(2)} />
+                    <button onClick={handleManualStopUpdate} className="text-[10px] bg-red-600 text-white px-2 py-1 rounded font-bold">حفظ</button>
+                    <button onClick={() => setIsEditingStop(false)} className="text-[10px] bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded font-bold">إلغاء</button>
+                  </div>
+                ) : (
+                  <div className="text-2xl font-black text-red-600 dark:text-red-400 font-mono-num flex items-center justify-center gap-2" dir="ltr">
+                    {currentStop.toFixed(2)}
+                    <button onClick={() => setIsEditingStop(true)} className="text-[10px] text-red-500 hover:text-red-700 underline" title="تعديل يدوي للوقف (تراجع عن خطأ)">تعديل</button>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Trailing Stop Adjustment Input */}
-            {metrics.isOpen && (
-              <div className="bg-blue-50/60 dark:bg-blue-950/30 rounded-2xl p-5 border border-blue-100 dark:border-blue-900/50 space-y-3">
-                <h4 className="font-black text-blue-900 dark:text-blue-300 text-sm flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  تحديث أعلى سعر وصل له السهم (Trailing Stop Engine)
-                </h4>
-                
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="relative flex-1">
-                    <input 
-                      type="number"
-                      step="any"
-                      value={newHighestPrice}
-                      onChange={(e) => setNewHighestPrice(e.target.value)}
-                      placeholder={`أعلى من ${currentHighest.toFixed(2)}`}
-                      className="w-full text-lg font-black text-slate-900 dark:text-white py-2.5 px-4 border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-800 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900 text-left outline-none"
-                      dir="ltr"
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">EGP</div>
-                  </div>
-                  <button 
-                    onClick={handleUpdateTrailingStop}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-black px-6 py-2.5 rounded-xl shadow-md shadow-blue-500/20 transition-all text-xs shrink-0"
-                  >
-                    تحديث الوقف ميكانيكياً
-                  </button>
-                </div>
-
-                {error && (
-                  <div className="p-3 bg-red-100/90 dark:bg-red-950/60 text-red-700 dark:text-red-300 text-xs font-bold rounded-xl flex items-center gap-2 border border-red-200 dark:border-red-800">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    {error}
-                  </div>
-                )}
-                
-                <p className="text-[11px] text-blue-600/90 dark:text-blue-400 font-bold">
-                  * قاعدة ستيف بيرنز #30: الوقف يُسحب للأعلى تلقائياً بفاصل (2 × ATR) ولا يتحرك للأسفل أبداً لحماية الأرباح.
-                </p>
-              </div>
-            )}
-          </div>
+            
+</div>
 
           {/* Quick Partial Transactions Row */}
-          {metrics.isOpen && (
+          {metrics!.isOpen && (
             <div className="flex gap-3 pt-2">
               <button
                 onClick={() => setTxModalType('buy')}
@@ -295,7 +510,7 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
 
           {/* Close Position (Full Exit) Section */}
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-            {metrics.isOpen && (
+            {metrics!.isOpen && (
               <button 
                 onClick={() => setTxModalType('sellAll')}
                 className="w-full bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white font-black py-3.5 rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 text-xs"
@@ -314,8 +529,8 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
         isOpen={!!txModalType}
         onClose={() => setTxModalType(null)}
         position={position}
-        defaultType={txModalType === 'sellAll' ? 'sell' : txModalType || 'buy'}
-        defaultShares={txModalType === 'sellAll' ? metrics.openShares.toString() : ''}
+        defaultType={txModalType === 'sellAll' || txModalType === 'edit' ? 'sell' : (txModalType as 'buy' | 'sell' | undefined) || 'buy'}
+        defaultShares={txModalType === 'sellAll' ? metrics!.openShares.toString() : ''}
       />
     </div>
   );

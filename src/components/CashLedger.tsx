@@ -107,7 +107,7 @@ export default function CashLedger() {
                 onClick={() => setType('deposit')}
                 className={`py-3 rounded-2xl text-xs font-black flex flex-col items-center gap-1.5 transition-all border ${
                   type === 'deposit' 
-                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 shadow-sm' 
+                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-500 border-emerald-200 dark:border-emerald-800 shadow-sm' 
                     : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent hover:bg-slate-100 dark:hover:bg-slate-700'
                 }`}
               >
@@ -120,7 +120,7 @@ export default function CashLedger() {
                 onClick={() => setType('withdrawal')}
                 className={`py-3 rounded-2xl text-xs font-black flex flex-col items-center gap-1.5 transition-all border ${
                   type === 'withdrawal' 
-                    ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800 shadow-sm' 
+                    ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-500 border-rose-200 dark:border-rose-800 shadow-sm' 
                     : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent hover:bg-slate-100 dark:hover:bg-slate-700'
                 }`}
               >
@@ -215,16 +215,15 @@ export default function CashLedger() {
                   ) : (
                     sortedLedger.map((entry) => {
                       const isAddition = entry.type === 'deposit' || entry.type === 'fixed_income_sell';
-                      const isWithdrawal = entry.type === 'withdrawal' || entry.type === 'fixed_income_buy';
                       
                       return (
                         <tr key={entry.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                           <td className="py-3.5 px-5">
                             <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black border inline-flex items-center gap-1.5 ${
                               entry.type === 'deposit' 
-                                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' 
+                                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-500 border-emerald-200 dark:border-emerald-800' 
                                 : entry.type === 'withdrawal'
-                                  ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800'
+                                  ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-500 border-rose-200 dark:border-rose-800'
                                   : entry.type === 'fixed_income_buy'
                                     ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800'
                                     : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
@@ -241,7 +240,7 @@ export default function CashLedger() {
                           </td>
                           <td className="py-3.5 px-4 text-left font-mono-num font-black" dir="ltr">
                             <span className={
-                              isAddition ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                              isAddition ? 'text-emerald-600 dark:text-emerald-500' : 'text-rose-600 dark:text-rose-500'
                             }>
                               {isAddition ? '+' : '-'}{formatEGP(entry.amount)}
                             </span>

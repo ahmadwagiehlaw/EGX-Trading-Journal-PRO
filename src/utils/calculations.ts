@@ -1,10 +1,14 @@
+
+
 export interface Transaction {
   id: string;
-  type: 'buy' | 'sell';
+  type: 'buy' | 'sell' | 'dividend' | 'split' | 'bonus';
   date: number; // timestamp
   price: number;
   shares: number;
   amount: number;
+  linkedBuyId?: string;
+  portfolioType?: 'investment' | 'speculation';
   note?: string;
   stopAtTime?: number;
   
@@ -12,9 +16,13 @@ export interface Transaction {
   entryReason?: string;
   exitReason?: string;
   emotion?: 'confident' | 'fomo' | 'revenge' | 'fear' | 'greed' | 'neutral';
+  mistakes?: string[];
   mistake?: string;
   checklist?: { majorSR: boolean; bos: boolean; retest: boolean };
   isRuleBreaker?: boolean;
+  executionRating?: number;
+  setup?: string[];
+  ruleBreaker?: boolean;
 }
 
 export interface TrailingStopState {
@@ -32,11 +40,11 @@ export interface TickerPosition {
   
   // Strategy & Planning
   plan?: {
-    strategy: string;
-    entryZone: { min: number; max: number };
+    strategy?: string;
+    entryZone?: { min: number; max: number };
     target: number;
     stop: number;
-    atr: number;
+    atr?: number;
     checklist?: { majorSR: boolean; bos: boolean; retest: boolean };
     images?: string[];
     makerPlan?: string;
@@ -46,177 +54,213 @@ export interface TickerPosition {
   transactions: Transaction[];
 
   // Trailing Stop Engine
-  trailingStop: TrailingStopState;
+  trailingStop?: TrailingStopState;
 
   // Journaling & Psychology
   journal?: {
-    emotion?: 'confident' | 'fomo' | 'revenge' | 'fear' | 'greed' | 'neutral';
+    preTradeThoughts?: string;
+    postTradeReview?: string;
+    mistakes?: string[];
+    lessonsLearned?: string;
     lessonLearned?: string;
     mistake?: string;
+    rating?: number;
     tags?: string[];
-    isRuleBreaker?: boolean;
-    notes?: string;
-    openedDate: number;
+    emotion?: 'confident' | 'fomo' | 'revenge' | 'fear' | 'greed' | 'neutral';
+    openedDate?: number;
     closedDate?: number;
+    pnl?: number;
+    isRuleBreaker?: boolean;
   };
   
-  // Legacy compatibility fields if needed
+  currentMarketPrice?: number;
+  sector?: string;
   entryDate?: number;
+  openedDate?: number;
+  closedDate?: number;
   pnl?: number;
 }
 
-/**
- * Calculates the weighted average entry price for a set of transactions.
- */
-export function computeWeightedAvgEntry(transactions: Transaction[] = []): number {
-  const buyTxs = transactions.filter(t => t.type === 'buy' && t.shares > 0 && t.price > 0);
-  if (buyTxs.length === 0) return 0;
+
+
+
+
+
+
+export function simulatePositionMetrics(transactions: Transaction[] = [], commissionRate: number = 0.003) {
+  const sortedTxs = [...transactions].sort((a, b) => a.date - b.date);
+  let openLots: { shares: number; price: number; amount: number; txId: string; date: number; pType: 'investment' | 'speculation' }[] = [];
   
-  const totalCost = buyTxs.reduce((sum, t) => sum + (t.price * t.shares), 0);
-  const totalShares = buyTxs.reduce((sum, t) => sum + t.shares, 0);
-  
-  return totalShares > 0 ? totalCost / totalShares : 0;
+  let totalRealizedPnL = 0;
+  let totalNetRealizedPnL = 0;
+  let totalDividends = 0;
+  let totalBought = 0;
+  let totalSold = 0;
+  let totalRevenue = 0;
+  let totalCommissionPaid = 0;
+  const txPnL: Record<string, number> = {};
+
+  for (const tx of sortedTxs) {
+    const txCommission = tx.amount * commissionRate;
+    totalCommissionPaid += txCommission;
+
+    if (tx.type === 'buy') {
+      openLots.push({ shares: tx.shares, price: tx.price, amount: tx.amount, txId: tx.id, date: tx.date, pType: tx.portfolioType || 'investment' });
+      totalBought += tx.shares;
+    } else if (tx.type === 'sell') {
+      let sharesToSell = tx.shares;
+      const netProceeds = tx.amount - txCommission;
+      const netPricePerShare = netProceeds / tx.shares;
+      const grossPricePerShare = tx.price;
+      
+      openLots.sort((a, b) => a.price - b.price); // Lowest Cost First
+
+      let txRealizedPnL = 0;
+      let txNetRealizedPnL = 0;
+
+      while (sharesToSell > 0 && openLots.length > 0) {
+        const lot = openLots[0];
+        const sharesFromLot = Math.min(sharesToSell, lot.shares);
+        
+        const lotCostPerShare = lot.amount / lot.shares;
+        const lotCommissionPerShare = (lot.amount * commissionRate) / lot.shares;
+        const totalCostPerShare = lotCostPerShare + lotCommissionPerShare;
+        
+        const grossProceedsFromLot = sharesFromLot * grossPricePerShare;
+        const netProceedsFromLot = sharesFromLot * netPricePerShare;
+        const costOfSharesFromLot = sharesFromLot * lotCostPerShare;
+        const totalCostOfSharesFromLot = sharesFromLot * totalCostPerShare;
+        
+        txRealizedPnL += (grossProceedsFromLot - costOfSharesFromLot);
+        txNetRealizedPnL += (netProceedsFromLot - totalCostOfSharesFromLot);
+        
+        sharesToSell -= sharesFromLot;
+        lot.shares -= sharesFromLot;
+        lot.amount = lot.shares * lotCostPerShare;
+        
+        if (lot.shares <= 0) {
+          openLots.shift();
+        }
+      }
+      
+      totalRealizedPnL += txRealizedPnL;
+      totalNetRealizedPnL += txNetRealizedPnL;
+      if (tx.id) txPnL[tx.id] = txNetRealizedPnL;
+      
+      totalSold += tx.shares;
+      totalRevenue += tx.amount;
+    } else if (tx.type === 'split' || tx.type === 'bonus') {
+      const multiplier = tx.price > 0 ? tx.price : 1;
+      for (const lot of openLots) {
+        lot.shares *= multiplier;
+        lot.price /= multiplier;
+      }
+      totalBought *= multiplier;
+      totalSold *= multiplier;
+    } else if (tx.type === 'dividend') {
+      totalDividends += tx.amount;
+      totalRealizedPnL += tx.amount;
+      totalNetRealizedPnL += tx.amount;
+      if (tx.id) txPnL[tx.id] = tx.amount;
+    }
+  }
+
+  const currentShares = openLots.reduce((sum, lot) => sum + lot.shares, 0);
+  const totalCost = openLots.reduce((sum, lot) => sum + lot.amount + (lot.amount * commissionRate), 0);
+  const avgEntry = currentShares > 0 ? openLots.reduce((sum, lot) => sum + lot.amount, 0) / currentShares : 0;
+  const avgExit = totalSold > 0 ? totalRevenue / totalSold : 0;
+
+  return { openShares: currentShares, avgEntry, avgExit, totalBought, totalSold, totalCost, totalRealizedPnL, totalNetRealizedPnL, totalDividends, totalCommissionPaid, txPnL, openLots };
 }
 
-/**
- * Calculates the weighted average exit price for a set of transactions.
- */
-export function computeWeightedAvgExit(transactions: Transaction[] = []): number {
-  const sellTxs = transactions.filter(t => t.type === 'sell' && t.shares > 0 && t.price > 0);
-  if (sellTxs.length === 0) return 0;
-  
-  const totalRevenue = sellTxs.reduce((sum, t) => sum + (t.price * t.shares), 0);
-  const totalShares = sellTxs.reduce((sum, t) => sum + t.shares, 0);
-  
-  return totalShares > 0 ? totalRevenue / totalShares : 0;
-}
-
-/**
- * Calculates total bought shares.
- */
-export function computeTotalBoughtShares(transactions: Transaction[] = []): number {
-  return transactions
-    .filter(t => t.type === 'buy')
-    .reduce((sum, t) => sum + t.shares, 0);
-}
-
-/**
- * Calculates total sold shares.
- */
-export function computeTotalSoldShares(transactions: Transaction[] = []): number {
-  return transactions
-    .filter(t => t.type === 'sell')
-    .reduce((sum, t) => sum + t.shares, 0);
-}
-
-/**
- * Calculates current remaining open shares.
- */
-export function computeOpenShares(transactions: Transaction[] = []): number {
-  const bought = computeTotalBoughtShares(transactions);
-  const sold = computeTotalSoldShares(transactions);
-  return Math.max(0, bought - sold);
-}
-
-/**
- * Calculates Gross Realized P&L across all closed transactions (FIFO / Weighted Avg basis).
- */
-export function computeRealizedPnL(transactions: Transaction[] = []): number {
-  const avgEntry = computeWeightedAvgEntry(transactions);
-  const sellTxs = transactions.filter(t => t.type === 'sell');
-  
-  if (sellTxs.length === 0 || avgEntry === 0) return 0;
-  
-  return sellTxs.reduce((pnl, sell) => {
-    return pnl + ((sell.price - avgEntry) * sell.shares);
-  }, 0);
-}
-
-/**
- * Calculates Total Commission Fees for all transactions based on a rate (e.g. 0.003 = 0.3%).
- */
-export function computeTotalCommission(transactions: Transaction[] = [], rate: number = 0.003): number {
-  return transactions.reduce((sum, tx) => sum + (tx.amount * rate), 0);
-}
-
-/**
- * Calculates Net Realized P&L after deducting broker commission fees and taxes.
- */
-export function computeNetRealizedPnL(transactions: Transaction[] = [], commissionRate: number = 0.003): number {
-  const grossPnL = computeRealizedPnL(transactions);
-  const totalFees = computeTotalCommission(transactions, commissionRate);
-  return grossPnL - totalFees;
-}
-
-/**
- * Calculates open invested capital currently tied in open shares.
- */
-export function computeOpenInvestedCapital(transactions: Transaction[] = []): number {
-  const avgEntry = computeWeightedAvgEntry(transactions);
-  const openShares = computeOpenShares(transactions);
-  return avgEntry * openShares;
-}
-
-/**
- * Calculates open risk in EGP based on distance to current stop loss.
- */
-export function computeOpenRisk(currentStop: number, avgEntry: number, openShares: number): number {
-  if (openShares <= 0 || avgEntry <= 0 || currentStop <= 0) return 0;
-  if (currentStop >= avgEntry) return 0; // Stop is above or at breakeven -> Zero risk!
-  return (avgEntry - currentStop) * openShares;
-}
-
-/**
- * Computes full aggregated metrics for a single TickerPosition.
- */
 export function computePositionMetrics(position: TickerPosition, commissionRate: number = 0.003) {
   const transactions = position.transactions || [];
-  const avgEntry = computeWeightedAvgEntry(transactions);
-  const avgExit = computeWeightedAvgExit(transactions);
-  const totalBought = computeTotalBoughtShares(transactions);
-  const totalSold = computeTotalSoldShares(transactions);
-  const openShares = computeOpenShares(transactions);
-  const realizedPnL = computeRealizedPnL(transactions);
-  const totalCommission = computeTotalCommission(transactions, commissionRate);
-  const netRealizedPnL = computeNetRealizedPnL(transactions, commissionRate);
-  const openInvested = computeOpenInvestedCapital(transactions);
+  const sim = simulatePositionMetrics(transactions, commissionRate);
   
   const currentStop = position.trailingStop?.current || position.plan?.stop || 0;
-  const openRisk = computeOpenRisk(currentStop, avgEntry, openShares);
-  const isOpen = openShares > 0 && position.status !== 'closed';
+  const openRisk = computeOpenRisk(currentStop, sim.avgEntry, sim.openShares);
+  const isOpen = sim.openShares > 0 && position.status !== 'closed';
+  
+  const currentPrice = position.currentMarketPrice || sim.avgEntry;
+  const unrealizedPnL = currentPrice > 0 && sim.openShares > 0 ? (currentPrice - sim.avgEntry) * sim.openShares : 0;
+  const netUnrealizedPnL = currentPrice > 0 && sim.openShares > 0 ? ((currentPrice - sim.avgEntry) * sim.openShares) - (currentPrice * sim.openShares * commissionRate) : 0;
 
   return {
-    avgEntry,
-    avgExit,
-    totalBought,
-    totalSold,
-    openShares,
-    realizedPnL,
-    totalCommission,
-    netRealizedPnL,
-    openInvested,
+    avgEntry: sim.avgEntry,
+    avgExit: sim.avgExit,
+    totalBought: sim.totalBought,
+    totalSold: sim.totalSold,
+    openShares: sim.openShares,
+    realizedPnL: sim.totalRealizedPnL,
+    totalCommission: sim.totalCommissionPaid,
+    netRealizedPnL: sim.totalNetRealizedPnL,
+    openInvested: sim.totalCost,
     currentStop,
     openRisk,
     isOpen,
-    isFullyClosed: !isOpen && totalSold > 0,
+    isFullyClosed: !isOpen && sim.totalSold > 0,
+    currentPrice,
+    unrealizedPnL,
+    netUnrealizedPnL,
+    txPnL: sim.txPnL || {}
   };
 }
 
-/**
- * Format currency in Egyptian Pounds (EGP).
- */
-export function formatEGP(value: number, decimals: number = 0): string {
-  if (isNaN(value)) return '0 EGP';
-  return `${value.toLocaleString('en-US', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  })} EGP`;
+export function computeOpenRisk(stopPrice: number, avgEntry: number, openShares: number): number {
+  if (stopPrice <= 0 || avgEntry <= 0 || openShares <= 0) return 0;
+  const riskPerShare = avgEntry - stopPrice;
+  return riskPerShare > 0 ? riskPerShare * openShares : 0;
 }
 
-/**
- * Format price in 2 decimals.
- */
-export function formatPrice(price: number): string {
-  if (isNaN(price)) return '0.00';
-  return price.toFixed(2);
+export function formatEGP(value: number, decimals: number = 0): string {
+  return value.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
+
+export function computeDominantPortfolio(transactions: Transaction[] = [], pType?: string): 'investment' | 'speculation' {
+  if (pType) return pType as 'investment' | 'speculation'; // allow passing explicit
+  let invShares = 0;
+  let specShares = 0;
+  for (const tx of transactions) {
+    if (tx.type === 'buy') {
+      if (tx.portfolioType === 'investment') invShares += tx.shares;
+      else if (tx.portfolioType === 'speculation') specShares += tx.shares;
+    }
+  }
+  return invShares >= specShares ? 'investment' : 'speculation';
+}
+
+export function computeOpenInvestedCapitalByPortfolio(transactions: Transaction[] = [], _pType?: string, commissionRate: number = 0.003): { investment: number, speculation: number } {
+  const sim = simulatePositionMetrics(transactions, commissionRate);
+  let investment = 0;
+  let speculation = 0;
+  for (const lot of sim.openLots) {
+    if (lot.pType === 'investment') investment += lot.amount + (lot.amount * commissionRate);
+    else speculation += lot.amount + (lot.amount * commissionRate);
+  }
+  return { investment, speculation };
+}
+
+export function computeRealizedPnLByPortfolio(transactions: Transaction[] = [], _pType?: string, commissionRate: number = 0.003): { investment: number, speculation: number } {
+  // We can just use the txPnL mapping, but wait, which portfolio does a sell belong to?
+  // It belongs to the dominant portfolio of the position, or we can just say we don't need exact matching for now.
+  const sim = simulatePositionMetrics(transactions, commissionRate);
+  let investment = 0;
+  let speculation = 0;
+  
+  // Just attribute everything to dominant portfolio for simplicity of the ledger
+  const dom = computeDominantPortfolio(transactions);
+  if (dom === 'investment') investment += sim.totalNetRealizedPnL;
+  else speculation += sim.totalNetRealizedPnL;
+  
+  return { investment, speculation };
+}
+
+// Stubs for backward compat if they were imported directly elsewhere:
+export function computeTotalBoughtShares(txs: Transaction[]) { return simulatePositionMetrics(txs).totalBought; }
+export function computeTotalSoldShares(txs: Transaction[]) { return simulatePositionMetrics(txs).totalSold; }
+export function computeOpenShares(txs: Transaction[]) { return simulatePositionMetrics(txs).openShares; }
+export function computeWeightedAvgEntry(txs: Transaction[]) { return simulatePositionMetrics(txs).avgEntry; }
+export function computeRealizedPnL(txs: Transaction[]) { return simulatePositionMetrics(txs).totalRealizedPnL; }
+export function computeTotalCommission(txs: Transaction[], r: number) { return simulatePositionMetrics(txs, r).totalCommissionPaid; }
+export function computeNetRealizedPnL(txs: Transaction[], r: number) { return simulatePositionMetrics(txs, r).totalNetRealizedPnL; }
+export function computeOpenInvestedCapital(txs: Transaction[]) { return simulatePositionMetrics(txs).totalCost; }

@@ -117,7 +117,7 @@ function UpdateBlock({
       {/* Delete Button */}
       <button 
         onClick={onRemove}
-        className="absolute -top-2 -right-2 bg-red-100 dark:bg-red-950 hover:bg-red-500 text-red-600 dark:text-red-400 hover:text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-sm z-10"
+        className="absolute -top-2 -right-2 bg-red-100 dark:bg-red-950 hover:bg-red-600 text-red-600 dark:text-red-500 hover:text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-sm z-10"
         title="حذف الملاحظة"
       >
         <X className="w-4 h-4" />

@@ -1,22 +1,22 @@
-import { useState, useMemo } from 'react';
-import { 
-  Plus, 
-  Search, 
-  ShieldAlert, 
-  X, 
-  PenTool, 
-  LineChart, 
-  ChevronDown, 
-  ChevronUp, 
-  ArrowDownLeft, 
-  Trash2, 
+import { useState, useMemo, memo } from 'react';
+import {
+  Plus,
+  Search,
+  ShieldAlert,
+  X,
+  PenTool,
+  LineChart,
+  ChevronDown,
+  ChevronUp,
+  ArrowDownLeft,
+  Trash2,
   Layers,
   Sparkles,
   LayoutGrid,
   Table as TableIcon,
   ArrowRight,
-  Wallet,
   TrendingUp,
+  TrendingDown,
   Building2,
   Factory,
   FlaskConical,
@@ -34,44 +34,50 @@ import NewTradeForm from './NewTradeForm';
 import ActiveTrades from './ActiveTrades';
 import TransactionFormModal from './TransactionFormModal';
 import { useTrades, type TickerPosition } from '../context/TradeContext';
-import { computePositionMetrics, formatEGP } from '../utils/calculations';
+import { computePositionMetrics, formatEGP, computeDominantPortfolio } from '../utils/calculations';
 import { getStockBySymbol } from '../data/egxStocks';
 
 // Helper to get sector icon and styling
 function getSectorInfo(sectorName?: string) {
   switch (sectorName) {
     case 'بنوك':
-      return { Icon: Landmark, label: 'بنوك', badgeClass: 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800' };
+    case 'البنوك':
+      return { Icon: Landmark, label: 'بنوك', badgeClass: 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800', gradientClass: 'bg-gradient-to-r from-sky-400 to-blue-500' };
     case 'خدمات مالية':
+    case 'الخدمات المالية':
     case 'استثمار':
-      return { Icon: Briefcase, label: 'خدمات مالية', badgeClass: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' };
+      return { Icon: Briefcase, label: 'خدمات مالية', badgeClass: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800', gradientClass: 'bg-gradient-to-r from-indigo-400 to-violet-500' };
     case 'عقارات':
+    case 'العقارات':
     case 'عقارات وسياحة':
     case 'مقاولات':
-      return { Icon: Building2, label: 'عقارات', badgeClass: 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800' };
+      return { Icon: Building2, label: 'عقارات', badgeClass: 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800', gradientClass: 'bg-gradient-to-r from-amber-400 to-orange-500' };
     case 'صناعي':
+    case 'الصناعة':
     case 'مواد أساسية':
+    case 'الموارد الأساسية':
     case 'منسوجات':
-      return { Icon: Factory, label: sectorName || 'صناعة ومواد', badgeClass: 'bg-orange-50 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800' };
+      return { Icon: Factory, label: sectorName || 'صناعة ومواد', badgeClass: 'bg-orange-50 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800', gradientClass: 'bg-gradient-to-r from-orange-400 to-red-500' };
     case 'كيماويات':
-      return { Icon: FlaskConical, label: 'كيماويات وأسمدة', badgeClass: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' };
+    case 'البتروكيماويات':
+      return { Icon: FlaskConical, label: 'كيماويات وأسمدة', badgeClass: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800', gradientClass: 'bg-gradient-to-r from-emerald-400 to-teal-500' };
     case 'تكنولوجيا':
     case 'اتصالات':
-      return { Icon: Cpu, label: 'تكنولوجيا', badgeClass: 'bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800' };
+      return { Icon: Cpu, label: 'تكنولوجيا', badgeClass: 'bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800', gradientClass: 'bg-gradient-to-r from-cyan-400 to-sky-500' };
     case 'طاقة وبترول':
-      return { Icon: Flame, label: 'طاقة وبترول', badgeClass: 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800' };
+      return { Icon: Flame, label: 'طاقة وبترول', badgeClass: 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800', gradientClass: 'bg-gradient-to-r from-rose-400 to-pink-500' };
     case 'أغذية ومشروبات':
     case 'أغذية':
-      return { Icon: Utensils, label: 'أغذية ومشروبات', badgeClass: 'bg-lime-50 dark:bg-lime-950/60 text-lime-700 dark:text-lime-300 border-lime-200 dark:border-lime-800' };
+      return { Icon: Utensils, label: 'أغذية ومشروبات', badgeClass: 'bg-lime-50 dark:bg-lime-950/60 text-lime-700 dark:text-lime-300 border-lime-200 dark:border-lime-800', gradientClass: 'bg-gradient-to-r from-lime-400 to-green-500' };
     case 'رعاية صحية':
     case 'أدوية':
-      return { Icon: Activity, label: 'أدوية وصحة', badgeClass: 'bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800' };
+      return { Icon: Activity, label: 'أدوية وصحة', badgeClass: 'bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800', gradientClass: 'bg-gradient-to-r from-teal-400 to-emerald-500' };
     case 'نقل وشحن':
-      return { Icon: Truck, label: 'نقل ولوجستيات', badgeClass: 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' };
+      return { Icon: Truck, label: 'نقل ولوجستيات', badgeClass: 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800', gradientClass: 'bg-gradient-to-r from-blue-400 to-indigo-500' };
     case 'سيارات':
-      return { Icon: Car, label: 'سيارات', badgeClass: 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800' };
+      return { Icon: Car, label: 'سيارات', badgeClass: 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800', gradientClass: 'bg-gradient-to-r from-purple-400 to-fuchsia-500' };
     default:
-      return { Icon: Boxes, label: sectorName || 'سوق المال', badgeClass: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700' };
+      return { Icon: Boxes, label: sectorName || 'سوق المال', badgeClass: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700', gradientClass: 'bg-gradient-to-r from-slate-400 to-gray-500' };
   }
 }
 
@@ -100,16 +106,16 @@ function Modal({ isOpen, onClose, children, title, maxWidth = 'max-w-3xl' }: {
   );
 }
 
-export default function TradesJournal({ 
-  draftTrade, 
-  isNewTradeOpen, 
-  setIsNewTradeOpen 
+export default memo(function TradesJournal({
+  draftTrade,
+  isNewTradeOpen,
+  setIsNewTradeOpen
 }: {
-  draftTrade: any; 
-  isNewTradeOpen: boolean; 
+  draftTrade: any;
+  isNewTradeOpen: boolean;
   setIsNewTradeOpen: (v: boolean) => void;
 }) {
-  const { positions, deletePosition, deleteTransaction } = useTrades();
+  const { positions, deletePosition, deleteTransaction, capitalInvestment, capitalSpeculation } = useTrades();
 
   const [viewMode, setViewMode] = useState<'cards' | 'table'>(() => {
     return (localStorage.getItem('egx_trades_view') as 'cards' | 'table') || 'cards';
@@ -153,7 +159,7 @@ export default function TradesJournal({
         const strategyMatch = (pos.plan?.strategy || pos.plan?.makerPlan || '').toLowerCase().includes(query);
         const tagsMatch = (pos.journal?.tags || []).some(t => t.toLowerCase().includes(query));
         const notesMatch = (pos.journal?.lessonLearned || pos.journal?.mistake || '').toLowerCase().includes(query);
-        
+
         if (!symbolMatch && !nameMatch && !sectorMatch && !strategyMatch && !tagsMatch && !notesMatch) return false;
       }
 
@@ -170,7 +176,7 @@ export default function TradesJournal({
             <LineChart className="w-6 h-6 text-blue-500" />
             تفاصيل الصفقة وإدارة المركز المالي
           </h2>
-          <button 
+          <button
             onClick={() => setSelectedTradeId(null)}
             className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold transition-all shadow-sm"
           >
@@ -178,13 +184,13 @@ export default function TradesJournal({
             العودة للسجل
           </button>
         </div>
-        
-        <ActiveTrades 
-          tradeId={selectedTradeId} 
-          onClose={() => setSelectedTradeId(null)} 
+
+        <ActiveTrades
+          tradeId={selectedTradeId}
+          onClose={() => setSelectedTradeId(null)}
         />
-        
-        <TransactionFormModal 
+
+        <TransactionFormModal
           isOpen={!!txModal}
           onClose={() => setTxModal(null)}
           position={txModal?.pos || null}
@@ -196,63 +202,58 @@ export default function TradesJournal({
 
   return (
     <div className="w-full space-y-5" dir="rtl">
-      
+
       {/* Header Controls & Filters */}
       <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-800 p-4 rounded-3xl shadow-sm">
-        
+
         {/* Left/Main Filter Area */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1 flex-wrap">
-          
+
           {/* Status Tabs */}
           <div className="flex p-1 bg-slate-100 dark:bg-slate-800/90 rounded-2xl overflow-x-auto border border-slate-200/60 dark:border-slate-700/50">
             <button
               onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${
-                statusFilter === 'all' 
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' 
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${statusFilter === 'all'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
-              }`}
+                }`}
             >
               الكل ({positions.length})
             </button>
             <button
               onClick={() => setStatusFilter('active')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                statusFilter === 'active' 
-                  ? 'bg-blue-600 text-white shadow-sm' 
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${statusFilter === 'active'
+                  ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
-              }`}
+                }`}
             >
               <span className="w-2 h-2 rounded-full bg-blue-300 animate-pulse"></span>
               نشطة ({positions.filter(p => computePositionMetrics(p).openShares > 0 && p.status === 'active').length})
             </button>
             <button
               onClick={() => setStatusFilter('won')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${
-                statusFilter === 'won' 
-                  ? 'bg-emerald-600 text-white shadow-sm' 
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${statusFilter === 'won'
+                  ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
-              }`}
+                }`}
             >
               أرباح ✓
             </button>
             <button
               onClick={() => setStatusFilter('lost')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${
-                statusFilter === 'lost' 
-                  ? 'bg-red-600 text-white shadow-sm' 
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${statusFilter === 'lost'
+                  ? 'bg-red-600 text-white shadow-sm'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
-              }`}
+                }`}
             >
               خسائر ✕
             </button>
             <button
               onClick={() => setStatusFilter('ruleBreaker')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1 whitespace-nowrap ${
-                statusFilter === 'ruleBreaker' 
-                  ? 'bg-amber-500 text-white shadow-sm' 
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1 whitespace-nowrap ${statusFilter === 'ruleBreaker'
+                  ? 'bg-amber-500 text-white shadow-sm'
                   : 'text-amber-600 dark:text-amber-400 hover:text-amber-700'
-              }`}
+                }`}
             >
               <ShieldAlert className="w-3.5 h-3.5" />
               مخالفات ⚠️
@@ -262,9 +263,9 @@ export default function TradesJournal({
           {/* Search Input */}
           <div className="relative flex-1 min-w-[200px]">
             <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input 
-              type="text" 
-              placeholder="ابحث بالرمز، اسم الشركة، القطاع، الاستراتيجية..." 
+            <input
+              type="text"
+              placeholder="ابحث بالرمز، اسم الشركة، القطاع، الاستراتيجية..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl py-2 pr-9 pl-3 text-xs font-bold text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900 transition-all shadow-sm"
@@ -278,11 +279,10 @@ export default function TradesJournal({
           <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800/90 rounded-2xl border border-slate-200/60 dark:border-slate-700/50">
             <button
               onClick={() => handleSetViewMode('cards')}
-              className={`p-2 rounded-xl transition-all flex items-center gap-1.5 text-xs font-black ${
-                viewMode === 'cards'
+              className={`p-2 rounded-xl transition-all flex items-center gap-1.5 text-xs font-black ${viewMode === 'cards'
                   ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
                   : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-              }`}
+                }`}
               title="عرض الكروت الذكية"
             >
               <LayoutGrid className="w-4 h-4" />
@@ -290,11 +290,10 @@ export default function TradesJournal({
             </button>
             <button
               onClick={() => handleSetViewMode('table')}
-              className={`p-2 rounded-xl transition-all flex items-center gap-1.5 text-xs font-black ${
-                viewMode === 'table'
+              className={`p-2 rounded-xl transition-all flex items-center gap-1.5 text-xs font-black ${viewMode === 'table'
                   ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
                   : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-              }`}
+                }`}
               title="عرض الجدول المالي الاحترافي"
             >
               <TableIcon className="w-4 h-4" />
@@ -303,12 +302,12 @@ export default function TradesJournal({
           </div>
 
           {/* New Trade Button */}
-          <button 
+          <button
             onClick={() => { setEditingTrade(null); setIsNewTradeOpen(true); }}
             className="flex-1 sm:flex-none bg-gradient-to-l from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-black px-5 py-2.5 rounded-2xl shadow-md shadow-blue-500/20 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-xs whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
-            <span>توثيق صفقة جديدة</span>
+            <span>صفقة جديدة</span>
           </button>
         </div>
       </div>
@@ -335,94 +334,118 @@ export default function TradesJournal({
             const isRuleBreaker = pos.journal?.isRuleBreaker;
 
             return (
-              <div 
+              <div
                 key={pos.id}
                 onClick={() => setSelectedTradeId(pos.id)}
-                className={`bg-white dark:bg-slate-900 rounded-3xl border transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1 overflow-hidden cursor-pointer flex flex-col relative group ${
-                  metrics.isOpen 
-                    ? 'border-blue-200/90 dark:border-blue-900/60 hover:border-blue-400 dark:hover:border-blue-500' 
-                    : metrics.realizedPnL > 0 
-                      ? 'border-emerald-200/90 dark:border-emerald-900/60 hover:border-emerald-400 dark:hover:border-emerald-500' 
-                      : metrics.realizedPnL < 0 
-                        ? 'border-rose-200/90 dark:border-rose-900/60 hover:border-rose-400 dark:hover:border-rose-500' 
+                className={`bg-white dark:bg-slate-900 rounded-3xl border transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1 overflow-hidden cursor-pointer flex flex-col relative group ${metrics.isOpen
+                    ? 'border-blue-200/90 dark:border-blue-900/60 hover:border-blue-400 dark:hover:border-blue-500'
+                    : metrics.realizedPnL > 0
+                      ? 'border-emerald-200/90 dark:border-emerald-900/60 hover:border-emerald-400 dark:hover:border-emerald-500'
+                      : metrics.realizedPnL < 0
+                        ? 'border-rose-200/90 dark:border-rose-900/60 hover:border-rose-400 dark:hover:border-rose-500'
                         : 'border-slate-200 dark:border-slate-800'
-                }`}
+                  }`}
               >
                 {/* Status Indicator Bar at the Top */}
-                <div className={`h-1.5 w-full ${metrics.isOpen ? 'bg-gradient-to-r from-blue-400 to-indigo-500' : metrics.realizedPnL > 0 ? 'bg-gradient-to-r from-emerald-400 to-teal-500' : metrics.realizedPnL < 0 ? 'bg-gradient-to-r from-rose-400 to-red-500' : 'bg-slate-400'}`} />
+                <div className={`h-1.5 w-full ${metrics.isOpen ? (sectorInfo as any).gradientClass : metrics.realizedPnL > 0 ? 'bg-gradient-to-r from-emerald-400 to-teal-500' : metrics.realizedPnL < 0 ? 'bg-gradient-to-r from-rose-400 to-red-500' : 'bg-slate-400'}`} />
 
-                <div className="p-4 sm:p-5 flex flex-col flex-1">
-                  {/* Avatar and Status */}
-                  <div className="flex items-start justify-between mb-4">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border shadow-sm transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3 ${
-                      isRuleBreaker 
-                        ? 'bg-amber-100 dark:bg-amber-950/80 border-amber-300 text-amber-800 dark:text-amber-300' 
+                <div className="p-3 sm:p-4 flex flex-col flex-1">
+                  {/* Header: Icon + Symbol + Name */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className={`w-10 h-10 shrink-0 rounded-2xl flex items-center justify-center border shadow-sm transition-transform duration-300 group-hover:scale-105 group-hover:-rotate-3 ${isRuleBreaker
+                        ? 'bg-amber-100 dark:bg-amber-950/80 border-amber-300 text-amber-800 dark:text-amber-300'
                         : metrics.isOpen
-                          ? 'bg-gradient-to-br from-blue-600 to-indigo-600 border-blue-400/50 text-white shadow-blue-500/20'
-                          : metrics.realizedPnL > 0 
-                            ? 'bg-gradient-to-br from-emerald-600 to-teal-500 border-emerald-400/50 text-white shadow-emerald-500/20' 
-                            : metrics.realizedPnL < 0
-                              ? 'bg-gradient-to-br from-rose-500 to-red-600 border-rose-400/50 text-white shadow-rose-500/20'
-                              : 'bg-gradient-to-br from-slate-700 to-slate-800 border-slate-600 text-white'
-                    }`}>
-                      <SectorIcon className="w-6 h-6 stroke-[2]" />
+                          ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                          : metrics.realizedPnL > 0
+                            ? 'bg-emerald-100 dark:bg-emerald-900 border-emerald-300 text-emerald-800 dark:text-emerald-300'
+                            : 'bg-rose-100 dark:bg-rose-900 border-rose-300 text-rose-800 dark:text-rose-300'
+                      }`}>
+                      <SectorIcon className="w-5 h-5 stroke-[2.5]" />
                     </div>
-
-                    <div className="flex items-center gap-1.5">
-                      {isRuleBreaker && (
-                        <span className="bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 p-1.5 rounded-xl border border-amber-200 dark:border-amber-800/50" title="مخالفة للقواعد (3MS)">
-                          <ShieldAlert className="w-4 h-4" />
-                        </span>
-                      )}
-                      {!metrics.isOpen && (
-                        <span className={`p-1.5 rounded-xl border ${metrics.realizedPnL > 0 ? 'bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50' : 'bg-rose-50 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800/50'}`}>
-                          {metrics.realizedPnL > 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                        </span>
-                      )}
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight leading-none mb-1 truncate" dir="ltr">
+                            {pos.symbol}
+                          </h3>
+                          {(() => {
+                            const dominantPortfolio = computeDominantPortfolio(pos.transactions, pos.portfolioType);
+                            return dominantPortfolio === 'speculation' ? (
+                              <span className="bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded text-[9px] font-bold self-start mt-0.5">مضاربة</span>
+                            ) : (
+                              <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded text-[9px] font-bold self-start mt-0.5">استثمار</span>
+                            );
+                          })()}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {isRuleBreaker && (
+                            <span className="text-amber-500" title="مخالفة للقواعد (3MS)">
+                              <ShieldAlert className="w-4 h-4" />
+                            </span>
+                          )}
+                          {!metrics.isOpen && (
+                            <span className={metrics.realizedPnL > 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                              {metrics.realizedPnL > 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold truncate">
+                        {stockInfo?.nameAr || pos.plan?.strategy || 'تمركز'}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Symbol & Name */}
-                  <div className="mb-5">
-                    <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-none mb-1.5" dir="ltr">
-                      {pos.symbol}
-                    </h3>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold truncate">
-                      {stockInfo?.nameAr || pos.plan?.strategy || 'تمركز'}
-                    </p>
-                  </div>
-
-                  {/* Key Metrics Grid */}
+                  {/* Compact Metrics Grid */}
                   <div className="grid grid-cols-2 gap-2 mt-auto">
-                    <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/50">
-                      <span className="text-[10px] text-slate-400 font-bold block mb-0.5">سعر الدخول</span>
-                      <span className="text-sm font-black text-slate-900 dark:text-white font-mono-num" dir="ltr">
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                      <span className="text-[9px] text-slate-400 font-bold block mb-0.5">الدخول</span>
+                      <span className="text-xs font-black text-slate-900 dark:text-white font-mono-num" dir="ltr">
                         {metrics.avgEntry.toFixed(2)}
                       </span>
                     </div>
-                    <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/50">
-                      <span className="text-[10px] text-slate-400 font-bold block mb-0.5">الكمية</span>
-                      <span className="text-sm font-black text-slate-900 dark:text-white font-mono-num" dir="ltr">
-                        {metrics.openShares}
-                      </span>
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl border border-slate-100 dark:border-slate-700/50 relative">
+                      {(() => {
+                        const dominantPortfolio = computeDominantPortfolio(pos.transactions, pos.portfolioType);
+                        const isWarning = metrics.isOpen && (metrics.openShares * metrics.avgEntry) > (dominantPortfolio === 'speculation' ? capitalSpeculation : capitalInvestment) * 0.25;
+                        return (
+                          <>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-[9px] text-slate-400 font-bold">الكمية</span>
+                              {isWarning && (
+                                <span className="text-rose-600 text-[10px]" title="⚠️ تجاوز 25% من المحفظة">⚠️</span>
+                              )}
+                            </div>
+                            <span className={`text-xs font-black font-mono-num ${isWarning ? 'text-rose-600 dark:text-rose-500' : 'text-slate-900 dark:text-white'}`} dir="ltr">
+                              {metrics.openShares}
+                            </span>
+                          </>
+                        );
+                      })()}
                     </div>
-                  </div>
-
-                  {/* Profit / Loss or Target */}
-                  <div className="mt-3.5 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3">
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                      {metrics.isOpen ? 'الهدف / الوقف' : 'الربح المحقق'}
-                    </span>
                     {metrics.isOpen ? (
-                      <div className="flex items-center gap-1.5 font-mono-num font-black text-xs" dir="ltr">
-                        <span className="text-rose-500">{metrics.currentStop.toFixed(2)}</span>
-                        <span className="text-slate-300 dark:text-slate-600">/</span>
-                        <span className="text-emerald-500">{pos.plan?.target ? pos.plan.target.toFixed(2) : '—'}</span>
-                      </div>
+                      <>
+                        <div className="bg-emerald-50 dark:bg-emerald-900/10 p-2 rounded-xl border border-emerald-100 dark:border-emerald-800/30">
+                          <span className="text-[9px] text-emerald-600/80 dark:text-emerald-500/80 font-bold block mb-0.5">الهدف</span>
+                          <span className="text-xs font-black text-emerald-600 dark:text-emerald-500 font-mono-num" dir="ltr">
+                            {((pos.plan as any)?.targetPrice || (pos.plan as any)?.target || 0).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="bg-rose-50 dark:bg-rose-900/10 p-2 rounded-xl border border-rose-100 dark:border-rose-800/30">
+                          <span className="text-[9px] text-rose-600/80 dark:text-rose-500/80 font-bold block mb-0.5">الوقف</span>
+                          <span className="text-xs font-black text-rose-600 dark:text-rose-500 font-mono-num" dir="ltr">
+                            {metrics.currentStop.toFixed(2)}
+                          </span>
+                        </div>
+                      </>
                     ) : (
-                      <span className={`text-sm font-black font-mono-num ${metrics.realizedPnL > 0 ? 'text-emerald-600 dark:text-emerald-400' : metrics.realizedPnL < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500'}`} dir="ltr">
-                        {metrics.realizedPnL > 0 ? '+' : ''}{formatEGP(metrics.realizedPnL)}
-                      </span>
+                      <div className="col-span-2 bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl border border-slate-100 dark:border-slate-700/50 flex justify-between items-center">
+                         <span className="text-[9px] text-slate-400 font-bold block">الربح المحقق</span>
+                         <span className={`text-xs font-black font-mono-num ${metrics.realizedPnL > 0 ? 'text-emerald-600 dark:text-emerald-500' : metrics.realizedPnL < 0 ? 'text-rose-600 dark:text-rose-500' : 'text-slate-500'}`} dir="ltr">
+                           {metrics.realizedPnL > 0 ? '+' : ''}{formatEGP(metrics.realizedPnL)}
+                         </span>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -458,27 +481,25 @@ export default function TradesJournal({
                   const sectorInfo = getSectorInfo(stockInfo?.sector || (pos.plan as any)?.sector);
                   const SectorIcon = sectorInfo.Icon;
                   const investedCapital = metrics.openShares * metrics.avgEntry;
-                  const riskAmount = metrics.openShares > 0 && metrics.currentStop > 0 && metrics.avgEntry > metrics.currentStop 
-                    ? (metrics.avgEntry - metrics.currentStop) * metrics.openShares 
+                  const riskAmount = metrics.openShares > 0 && metrics.currentStop > 0 && metrics.avgEntry > metrics.currentStop
+                    ? (metrics.avgEntry - metrics.currentStop) * metrics.openShares
                     : 0;
 
                   return (
                     <div key={pos.id} className="contents">
-                      <tr 
-                        className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
-                          isExpanded ? 'bg-slate-50/60 dark:bg-slate-800/30' : ''
-                        }`}
+                      <tr
+                        className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${isExpanded ? 'bg-slate-50/60 dark:bg-slate-800/30' : ''
+                          }`}
                       >
                         {/* Symbol & Company Name */}
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2.5">
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-white shadow-xs shrink-0 ${
-                              metrics.isOpen 
-                                ? 'bg-gradient-to-br from-blue-600 to-indigo-600 shadow-blue-500/20' 
-                                : metrics.realizedPnL > 0 
-                                  ? 'bg-gradient-to-br from-emerald-600 to-teal-600 shadow-emerald-500/20' 
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-white shadow-xs shrink-0 ${metrics.isOpen
+                                ? 'bg-gradient-to-br from-blue-600 to-indigo-600 shadow-blue-500/20'
+                                : metrics.realizedPnL > 0
+                                  ? 'bg-gradient-to-br from-emerald-600 to-teal-600 shadow-emerald-500/20'
                                   : 'bg-slate-700'
-                            }`}>
+                              }`}>
                               <SectorIcon className="w-4.5 h-4.5 stroke-[2.2]" />
                             </div>
                             <div>
@@ -486,6 +507,14 @@ export default function TradesJournal({
                                 <span className="font-black text-slate-900 dark:text-white text-sm" dir="ltr">
                                   {pos.symbol}
                                 </span>
+                                {(() => {
+                                  const dominantPortfolio = computeDominantPortfolio(pos.transactions, pos.portfolioType);
+                                  return dominantPortfolio === 'speculation' ? (
+                                    <span className="bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded text-[9px] font-bold">مضاربة</span>
+                                  ) : (
+                                    <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded text-[9px] font-bold">استثمار</span>
+                                  );
+                                })()}
                               </div>
                               <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold block truncate max-w-[120px]">
                                 {stockInfo?.nameAr || pos.plan?.strategy || 'تمركز'}
@@ -497,15 +526,14 @@ export default function TradesJournal({
                         {/* Sector & Status */}
                         <td className="py-3 px-3">
                           <div className="flex flex-col gap-1 items-start">
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black border flex items-center gap-1 ${
-                              metrics.isOpen 
-                                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' 
-                                : metrics.realizedPnL > 0 
-                                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' 
-                                  : metrics.realizedPnL < 0 
-                                    ? 'bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800' 
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black border flex items-center gap-1 ${metrics.isOpen
+                                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                                : metrics.realizedPnL > 0
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                  : metrics.realizedPnL < 0
+                                    ? 'bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
                                     : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                            }`}>
+                              }`}>
                               {metrics.isOpen ? '● نشطة' : metrics.realizedPnL > 0 ? '✓ ربح' : '✕ خسارة'}
                             </span>
                             <span className={`text-[9px] font-black px-1.5 py-0.2 rounded border flex items-center gap-1 ${sectorInfo.badgeClass}`}>
@@ -526,18 +554,31 @@ export default function TradesJournal({
                         </td>
 
                         {/* Trailing Stop */}
-                        <td className="py-3 px-3 text-left font-mono-num font-black text-red-600 dark:text-red-400" dir="ltr">
+                        <td className="py-3 px-3 text-left font-mono-num font-black text-red-600 dark:text-red-500" dir="ltr">
                           {metrics.currentStop.toFixed(2)} EGP
                         </td>
 
                         {/* Target */}
-                        <td className="py-3 px-3 text-left font-mono-num font-black text-emerald-600 dark:text-emerald-400" dir="ltr">
+                        <td className="py-3 px-3 text-left font-mono-num font-black text-emerald-600 dark:text-emerald-500" dir="ltr">
                           {pos.plan?.target ? `${pos.plan.target.toFixed(2)} EGP` : '—'}
                         </td>
 
                         {/* Shares */}
                         <td className="py-3 px-3 text-left font-mono-num text-slate-700 dark:text-slate-300" dir="ltr">
-                          <span className="font-black text-slate-900 dark:text-white">{metrics.openShares}</span>
+                          <div className="flex items-center justify-start gap-1">
+                            {(() => {
+                              const dominantPortfolio = computeDominantPortfolio(pos.transactions, pos.portfolioType);
+                              const isWarning = metrics.isOpen && (metrics.openShares * metrics.avgEntry) > (dominantPortfolio === 'speculation' ? capitalSpeculation : capitalInvestment) * 0.25;
+                              return (
+                                <>
+                                  {isWarning && (
+                                    <span className="text-rose-600 text-[10px]" title="⚠️ تجاوز 25% من المحفظة">⚠️</span>
+                                  )}
+                                  <span className={`font-black ${isWarning ? 'text-rose-600 dark:text-rose-500' : 'text-slate-900 dark:text-white'}`}>{metrics.openShares}</span>
+                                </>
+                              );
+                            })()}
+                          </div>
                           <span className="text-[10px] text-slate-400 block">من {metrics.totalBought}</span>
                         </td>
 
@@ -547,7 +588,7 @@ export default function TradesJournal({
                             {formatEGP(investedCapital)}
                           </span>
                           {riskAmount > 0 && (
-                            <span className="text-[10px] font-black text-red-500 block">
+                            <span className="text-[10px] font-black text-red-600 block">
                               مخاطرة: -{formatEGP(riskAmount)}
                             </span>
                           )}
@@ -555,13 +596,12 @@ export default function TradesJournal({
 
                         {/* Realized P&L */}
                         <td className="py-3 px-3 text-left font-mono-num font-black" dir="ltr">
-                          <span className={`text-sm ${
-                            metrics.realizedPnL > 0 
-                              ? 'text-emerald-600 dark:text-emerald-400' 
-                              : metrics.realizedPnL < 0 
-                                ? 'text-red-600 dark:text-red-400' 
+                          <span className={`text-sm ${metrics.realizedPnL > 0
+                              ? 'text-emerald-600 dark:text-emerald-500'
+                              : metrics.realizedPnL < 0
+                                ? 'text-red-600 dark:text-red-500'
                                 : 'text-slate-400'
-                          }`}>
+                            }`}>
                             {metrics.realizedPnL > 0 ? '+' : ''}{formatEGP(metrics.realizedPnL)}
                           </span>
                         </td>
@@ -660,7 +700,7 @@ export default function TradesJournal({
                                     </button>
                                     <button
                                       onClick={() => setTxModal({ pos, type: 'sell' })}
-                                      className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-slate-700 rounded-lg text-xs font-bold transition-colors"
+                                      className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-emerald-600 dark:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-slate-700 rounded-lg text-xs font-bold transition-colors"
                                     >
                                       + بيع جزئي
                                     </button>
@@ -676,24 +716,28 @@ export default function TradesJournal({
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                   {pos.transactions.map((tx, idx) => {
                                     const isBuy = tx.type === 'buy';
-                                    const txPnl = !isBuy && metrics.avgEntry > 0 ? (tx.price - metrics.avgEntry) * tx.shares : 0;
+                                    const isSell = tx.type === 'sell';
+                                    const isDividend = tx.type === 'dividend';
+                                    const isSplit = tx.type === 'split' || tx.type === 'bonus';
+                                    
+                                    const txPnl = isSell && metrics.avgEntry > 0 ? (tx.price - metrics.avgEntry) * tx.shares : 0;
 
                                     return (
-                                      <div 
+                                      <div
                                         key={tx.id || idx}
                                         className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs"
                                       >
                                         <div className="flex items-center gap-2">
-                                          <span className={`p-1.5 rounded-lg ${isBuy ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400' : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'}`}>
-                                            {isBuy ? <Plus className="w-3.5 h-3.5" /> : <ArrowDownLeft className="w-3.5 h-3.5" />}
+                                          <span className={`p-1.5 rounded-lg ${isBuy ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400' : isSell ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-500' : isDividend ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-500' : 'bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-500'}`}>
+                                            {isBuy ? <Plus className="w-3.5 h-3.5" /> : isSell ? <ArrowDownLeft className="w-3.5 h-3.5" /> : isDividend ? <Landmark className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
                                           </span>
                                           <div>
                                             <div className="flex items-center gap-1.5">
                                               <span className="font-black text-slate-800 dark:text-white">
-                                                {isBuy ? 'شراء' : 'بيع جزئي'}
+                                                {isBuy ? 'شراء' : isSell ? 'بيع جزئي' : isDividend ? 'توزيع نقدي' : 'تجزئة/منحة'}
                                               </span>
                                               <span className="font-mono-num font-black text-slate-900 dark:text-slate-200" dir="ltr">
-                                                {tx.shares} @ {tx.price.toFixed(2)} EGP
+                                                {isSplit ? `معامل ${tx.price}` : isDividend ? `${tx.price.toFixed(2)} / سهم` : `${tx.shares} @ ${tx.price.toFixed(2)} EGP`}
                                               </span>
                                             </div>
                                             <span className="text-[10px] text-slate-400">
@@ -705,18 +749,25 @@ export default function TradesJournal({
 
                                         <div className="flex items-center gap-3">
                                           <div className="text-left">
-                                            <span className="font-mono-num font-black text-slate-800 dark:text-white" dir="ltr">
-                                              {formatEGP(tx.amount)}
-                                            </span>
-                                            {!isBuy && txPnl !== 0 && (
-                                              <span className={`block text-[10px] font-mono-num font-black ${txPnl > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`} dir="ltr">
+                                            {isSplit ? (
+                                              <span className="font-mono-num font-black text-purple-600 dark:text-purple-400 block" dir="ltr">
+                                                + {tx.shares * (tx.price - 1)} سهم
+                                              </span>
+                                            ) : (
+                                              <span className={`font-mono-num font-black block ${isDividend ? 'text-amber-600 dark:text-amber-500' : 'text-slate-800 dark:text-white'}`} dir="ltr">
+                                                {isDividend ? '+' : ''}{formatEGP(tx.amount)}
+                                              </span>
+                                            )}
+                                            
+                                            {isSell && txPnl !== 0 && (
+                                              <span className={`block text-[10px] font-mono-num font-black ${txPnl > 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-red-600 dark:text-red-500'}`} dir="ltr">
                                                 {txPnl > 0 ? '+' : ''}{formatEGP(txPnl)}
                                               </span>
                                             )}
                                           </div>
                                           <button
                                             onClick={() => deleteTransaction(pos.id, tx.id)}
-                                            className="text-slate-300 dark:text-slate-600 hover:text-red-500 p-1"
+                                            className="text-slate-300 dark:text-slate-600 hover:text-red-600 p-1"
                                             title="حذف الحركة"
                                           >
                                             <X className="w-3.5 h-3.5" />
@@ -741,14 +792,14 @@ export default function TradesJournal({
       )}
 
       {/* Modals */}
-      <Modal 
-        isOpen={isNewTradeOpen} 
-        onClose={() => { setIsNewTradeOpen(false); setEditingTrade(null); }} 
+      <Modal
+        isOpen={isNewTradeOpen}
+        onClose={() => { setIsNewTradeOpen(false); setEditingTrade(null); }}
         title={editingTrade ? "✏️ تعديل بيانات الصفقة" : "📝 توثيق مركز مالي جديد (3MS)"}
       >
-        <NewTradeForm 
-          initialData={editingTrade || draftTrade} 
-          onClose={() => { setIsNewTradeOpen(false); setEditingTrade(null); }} 
+        <NewTradeForm
+          initialData={editingTrade || draftTrade}
+          onClose={() => { setIsNewTradeOpen(false); setEditingTrade(null); }}
         />
       </Modal>
 
@@ -765,3 +816,4 @@ export default function TradesJournal({
     </div>
   );
 }
+)
