@@ -13,9 +13,9 @@ const newHeader = `<p className="text-slate-500 dark:text-slate-400 font-bold te
                     <button 
                       onClick={() => { setIsEditingMarketPrice(!isEditingMarketPrice); setIsEditingHighestPrice(false); setIsEditingAtr(false); }}
                       className="px-2 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                      title="تعديل سعر السوق يدوياً"
+                      title="تعديل السعر يدوياً"
                     >
-                      سعر السوق:
+                      السعر:
                     </button>
                     {isEditingMarketPrice ? (
                       <div className="flex items-center">

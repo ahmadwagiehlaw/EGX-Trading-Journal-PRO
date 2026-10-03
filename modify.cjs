@@ -17,7 +17,7 @@ const livePulse = `
                 
                 <div className="bg-white dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between relative group">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-[10px] font-black text-slate-500">سعر السوق (تحديث يدوي)</span>
+                    <span className="text-[10px] font-black text-slate-500">السعر (تحديث يدوي)</span>
                     <span className="text-[10px] font-bold text-slate-400">EGP</span>
                   </div>
                   <div className="flex items-center gap-2">

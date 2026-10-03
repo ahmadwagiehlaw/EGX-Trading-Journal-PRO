@@ -26,7 +26,7 @@ const tableBlock = `
                 <th className="py-4 px-4 text-right text-xs font-black text-slate-400 uppercase tracking-wider">المحفظة</th>
                 <th className="py-4 px-4 text-center text-xs font-black text-slate-400 uppercase tracking-wider">الكمية</th>
                 <th className="py-4 px-4 text-center text-xs font-black text-slate-400 uppercase tracking-wider">متوسط الدخول</th>
-                <th className="py-4 px-4 text-center text-xs font-black text-slate-400 uppercase tracking-wider">سعر السوق</th>
+                <th className="py-4 px-4 text-center text-xs font-black text-slate-400 uppercase tracking-wider">السعر</th>
                 <th className="py-4 px-4 text-center text-xs font-black text-slate-400 uppercase tracking-wider">أرباح عائمة</th>
                 <th className="py-4 px-4 text-left text-xs font-black text-slate-400 uppercase tracking-wider">الهدف / الوقف</th>
               </tr>

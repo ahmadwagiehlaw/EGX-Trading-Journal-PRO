@@ -14,7 +14,7 @@ const newBlock = `
               </div>
 
               <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700/60">
-                <p className="text-xs font-black text-slate-600 dark:text-slate-400 mb-2 text-center">سعر السوق (تحديث يدوي)</p>
+                <p className="text-xs font-black text-slate-600 dark:text-slate-400 mb-2 text-center">السعر (تحديث يدوي)</p>
                 <div className="flex gap-2">
                   <input 
                     type="number"

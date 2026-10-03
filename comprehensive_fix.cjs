@@ -90,9 +90,9 @@ const newHeader = `<p className="text-slate-500 dark:text-slate-400 font-bold te
                     <button 
                       onClick={() => { setIsEditingMarketPrice(!isEditingMarketPrice); setIsEditingHighestPrice(false); setIsEditingAtr(false); }}
                       className="px-2 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                      title="تعديل سعر السوق يدوياً"
+                      title="تعديل السعر يدوياً"
                     >
-                      سعر السوق:
+                      السعر:
                     </button>
                     {isEditingMarketPrice ? (
                       <div className="flex items-center">
@@ -228,7 +228,7 @@ const newGrid = `<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                   <span className={\`text-2xl font-black font-mono-num \${metrics.netUnrealizedPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}\`} dir="ltr">
                     {metrics.netUnrealizedPnL >= 0 ? '+' : ''}{metrics.netUnrealizedPnL.toFixed(2)} EGP
                   </span>
-                  <span className="text-[9px] text-slate-400 font-bold">بناءً على سعر السوق الحالي ({metrics.currentPrice.toFixed(2)})</span>
+                  <span className="text-[9px] text-slate-400 font-bold">بناءً على السعر الحالي ({metrics.currentPrice.toFixed(2)})</span>
                 </div>
               </div>
 

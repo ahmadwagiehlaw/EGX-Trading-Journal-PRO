@@ -42,9 +42,9 @@ const badgesOld = `<div className="flex flex-wrap items-center gap-2">
                     <button 
                       onClick={() => { setIsEditingMarketPrice(!isEditingMarketPrice); setIsEditingHighestPrice(false); }}
                       className="px-2 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                      title="تعديل سعر السوق يدوياً"
+                      title="تعديل السعر يدوياً"
                     >
-                      سعر السوق:
+                      السعر:
                     </button>
                     {isEditingMarketPrice ? (
                       <div className="flex items-center">
@@ -127,9 +127,9 @@ const badgesNew = `<div className="flex flex-wrap items-center gap-2">
                     <button 
                       onClick={() => { setIsEditingMarketPrice(!isEditingMarketPrice); setIsEditingHighestPrice(false); setIsEditingAtr(false); }}
                       className="px-2 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                      title="تعديل سعر السوق يدوياً"
+                      title="تعديل السعر يدوياً"
                     >
-                      سعر السوق:
+                      السعر:
                     </button>
                     {isEditingMarketPrice ? (
                       <div className="flex items-center">

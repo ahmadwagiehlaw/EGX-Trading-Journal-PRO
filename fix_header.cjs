@@ -5,7 +5,7 @@ c = c.replace(/<p className="text-slate-500 dark:text-slate-400 font-bold text-x
                   متوسط سعر الدخول: <span className="text-blue-600 dark:text-blue-400 font-mono-num font-black">{metrics.avgEntry.toFixed(2)} EGP</span>
                 </p>
                 <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 w-max">
-                  <span className="text-[10px] font-bold text-slate-500 px-1">سعر السوق:</span>
+                  <span className="text-[10px] font-bold text-slate-500 px-1">السعر:</span>
                   <input 
                     type="number"
                     step="any"

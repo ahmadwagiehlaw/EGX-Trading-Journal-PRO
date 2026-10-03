@@ -14,7 +14,7 @@ import {
   Target
 ,
   Trash2
-, X, Pencil, Sparkles, AlertTriangle, TrendingUp
+, X, Pencil, Sparkles, Pin, TrendingUp
 } from 'lucide-react';
 import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 import { useTrades } from '../context/TradeContext';
@@ -39,6 +39,9 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
   const [txModalType, setTxModalType] = useState<'buy' | 'sell' | 'sellAll' | 'edit' | null>(null);
   const [editingTx, setEditingTx] = useState<any | null>(null);
   const [rightPaneView, setRightPaneView] = useState<'ledger' | 'chart'>('ledger');
+  const [leftTab, setLeftTab] = useState<'advisor' | 'plan' | 'risk' | 'notes'>('advisor');
+  const [stockNote, setStockNote] = useState('');
+  const [isEditingNote, setIsEditingNote] = useState(false);
   const [isChartExpanded, setIsChartExpanded] = useState(false);
 
   const [marketPriceInput, setMarketPriceInput] = useState(position?.currentMarketPrice?.toString() || '');
@@ -208,6 +211,12 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     setIsEditingTargets(false);
   };
 
+  const handleUpdateNote = async () => {
+    if (!position) return;
+    await updatePosition(position.id, { plan: { ...position.plan, makerPlan: stockNote } } as any);
+    setIsEditingNote(false);
+  };
+
   const handleUpdateSupports = async () => {
     if (!position) return;
     const s1 = parseFloat(s1Input) || position.plan?.supports?.[0] || 0;
@@ -219,6 +228,7 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
 
   useEffect(() => {
     if (position) {
+      if (!isEditingNote) setStockNote(position.plan?.makerPlan || '');
       if (isEditingAtr) setAtrInput((position.trailingStop?.atrAtEntry || position.plan?.atr || 0).toString());
       if (isEditingRsi) setRsiInput((position.plan?.rsi || 0).toString());
       if (isEditingTargets) {
@@ -429,32 +439,6 @@ if (!position || !metrics) return null;
                
 
                
-             {/* Smart Insights Panel (AI Advisor) */}
-             {insights.length > 0 && (
-               <div className="bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-800/50 rounded-2xl p-5 mb-8 shadow-sm">
-                 <div className="flex items-center gap-2 mb-3">
-                   <Sparkles className="w-5 h-5 text-indigo-500" />
-                   <h3 className="font-black text-indigo-900 dark:text-indigo-300 text-sm">المستشار الذكي (AI) والتوصيات</h3>
-                 </div>
-                 <div className="grid gap-2">
-                   {insights.map((insight, idx) => (
-                     <div key={idx} className={`flex items-start gap-3 p-3 rounded-xl ${
-                       insight.type === 'warning' ? 'bg-rose-100/60 dark:bg-rose-900/30 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800/50' :
-                       insight.type === 'success' ? 'bg-emerald-100/60 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/50' :
-                       'bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                     }`}>
-                       <div className="flex-1 text-xs font-bold leading-relaxed">{insight.text}</div>
-                       {insight.action && (
-                         <button onClick={() => setTxModalType('sell')} className="text-[10px] font-black bg-white dark:bg-slate-800 text-slate-800 dark:text-white px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 dark:border-slate-600 hover:scale-105 transition-transform flex-shrink-0">
-                           {insight.action}
-                         </button>
-                       )}
-                     </div>
-                   ))}
-                 </div>
-               </div>
-             )}
-
              <div className="flex flex-wrap gap-2 mb-8">
                  <button onClick={() => setTxModalType('buy')} className="flex-1 py-2 bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded-xl font-black text-xs border border-blue-200 dark:border-blue-800">+ تمركز إضافي</button>
                  <button onClick={() => setTxModalType('sell')} className="flex-1 py-2 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 rounded-xl font-black text-xs border border-emerald-200 dark:border-emerald-800">↙ بيع جزئي</button>
@@ -603,8 +587,9 @@ if (!position || !metrics) return null;
 
           <div>
             {/* Header / Ticker Summary */}
-            <div className="flex justify-between items-start mb-6 border-b border-slate-100 dark:border-slate-800 pb-5">
-              <div>
+            <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-5">
+              <div className="flex justify-between items-start mb-4">
+                <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight" dir="ltr">{position!.symbol}</h3>
                   <span className={`px-2.5 py-0.5 rounded-lg text-xs font-black border ${
@@ -618,7 +603,14 @@ if (!position || !metrics) return null;
                 <p className="text-slate-500 dark:text-slate-400 font-bold text-xs mt-1 mb-2">
                   متوسط سعر الدخول: <span className="text-blue-600 dark:text-blue-400 font-mono-num font-black">{metrics!.avgEntry.toFixed(2)} EGP</span>
                 </p>
-                <div className="flex flex-wrap items-center gap-2">
+                </div>
+              <div className="text-left">
+                <p className="text-slate-400 font-bold text-xs">الكمية المفتوحة</p>
+                <p className="text-xl font-black text-slate-900 dark:text-white font-mono-num">{metrics!.openShares.toLocaleString()} سهم</p>
+              </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full">
                   {/* Market Price Pill */}
                   <div className="flex items-center bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shadow-sm">
                     <button 
@@ -781,49 +773,74 @@ if (!position || !metrics) return null;
                 )}
               </div>
 
-              <div className="text-left">
-                <p className="text-slate-400 font-bold text-xs">الكمية المفتوحة</p>
-                <p className="text-xl font-black text-slate-900 dark:text-white font-mono-num">{metrics!.openShares.toLocaleString()} سهم</p>
-              </div>
+
+
+            </div> {/* CLOSE INNER DIV FOR HEADER/PILLS */}
+
+          {/* TABS HEADER */}
+          <div className="flex items-center gap-2 mt-8 mb-6 border-b border-slate-200 dark:border-slate-800">
+            <button onClick={() => setLeftTab('advisor')} className={`pb-3 px-4 font-black text-sm border-b-2 transition-colors ${leftTab === 'advisor' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
+              <Sparkles className="w-4 h-4 inline-block ml-1" /> المستشار الذكي
+            </button>
+                        <button onClick={() => setLeftTab('risk')} className={`pb-3 px-4 font-black text-sm border-b-2 transition-colors ${leftTab === 'risk' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
+              <TrendingUp className="w-4 h-4 inline-block ml-1" /> المخاطرة والأداء
+            </button>
+<button onClick={() => setLeftTab('plan')} className={`pb-3 px-4 font-black text-sm border-b-2 transition-colors ${leftTab === 'plan' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
+              <Target className="w-4 h-4 inline-block ml-1" /> إدارة الصفقة
+            </button>
+            <button onClick={() => setLeftTab('notes')} className={`pb-3 px-4 font-black text-sm border-b-2 transition-colors ${leftTab === 'notes' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
+              <Pencil className="w-4 h-4 inline-block ml-1" /> الملاحظات
+            </button>
+          </div>
+
+          {/* ADVISOR TAB */}
+          {leftTab === 'advisor' && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {insights.length === 0 && (
+                <div className="text-center py-10 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <Sparkles className="w-8 h-8 text-slate-400 mx-auto mb-3" />
+                  <p className="font-bold text-slate-500 text-sm">لا توجد توصيات حالياً من المستشار الذكي.</p>
+                </div>
+              )}
+             {/* Smart Insights Panel (AI Advisor) */}
+             {insights.length > 0 && (
+               <div className="bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-800/50 rounded-2xl p-5 mb-2 shadow-sm">
+                 <div className="flex items-center gap-2 mb-3">
+                   <Sparkles className="w-5 h-5 text-indigo-500" />
+                   <h3 className="font-black text-indigo-900 dark:text-indigo-300 text-sm">المستشار الذكي (AI) والتوصيات</h3>
+                 </div>
+                 <div className="grid gap-2">
+                   {insights.map((insight, idx) => (
+                     <div key={idx} className={`flex items-start gap-3 p-3 rounded-xl ${
+                       insight.type === 'warning' ? 'bg-rose-100/60 dark:bg-rose-900/30 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800/50' :
+                       insight.type === 'success' ? 'bg-emerald-100/60 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/50' :
+                       'bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                     }`}>
+                       <div className="flex-1 text-xs font-bold leading-relaxed">{insight.text}</div>
+                       {insight.action && (
+                         <button onClick={() => setTxModalType('sell')} className="text-[10px] font-black bg-white dark:bg-slate-800 text-slate-800 dark:text-white px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 dark:border-slate-600 hover:scale-105 transition-transform flex-shrink-0">
+                           {insight.action}
+                         </button>
+                       )}
+                     </div>
+                   ))}
+                 </div>
+               </div>
+             )}
+
+
             </div>
+          )}
 
-            {/* Stop status banners */}
-            {analytics && metrics!.isOpen && (analytics.status === 'broken' || analytics.status === 'raise' || analytics.status === 'near' || analytics.planIssue) && (
-              <div className="space-y-2 mt-6">
-                {analytics.status === 'broken' && (
-                  <div className="flex items-center justify-between gap-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 rounded-2xl px-4 py-3">
-                    <div className="flex items-center gap-2 text-xs font-black leading-relaxed">
-                      <AlertTriangle className="w-5 h-5 shrink-0" />
-                      الوقف مكسور: السعر {metrics!.currentPrice.toFixed(2)} ≤ الوقف {metrics!.currentStop.toFixed(2)} — قرر الخروج أو راجع الوقف.
-                    </div>
-                    <button onClick={() => setTxModalType('sellAll')} className="shrink-0 text-[10px] font-black bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg">تصفية المركز</button>
-                  </div>
-                )}
-                {analytics.status === 'raise' && analytics.rMultiple !== null && (
-                  <div className="flex items-center justify-between gap-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 rounded-2xl px-4 py-3">
-                    <div className="flex items-center gap-2 text-xs font-black leading-relaxed">
-                      <TrendingUp className="w-5 h-5 shrink-0" />
-                      حققت {analytics.rMultiple.toFixed(2)}R والوقف أقل من الدخول — ارفعه للتعادل ({analytics.breakevenStop.toFixed(2)}).
-                    </div>
-                    <button onClick={() => handleApplyStop(analytics.breakevenStop, 'وقف التعادل')} className="shrink-0 text-[10px] font-black bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg">رفع للتعادل</button>
-                  </div>
-                )}
-                {analytics.status === 'near' && (
-                  <div className="flex items-center gap-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 text-orange-800 dark:text-orange-200 rounded-2xl px-4 py-3 text-xs font-black">
-                    <AlertTriangle className="w-5 h-5 shrink-0" />
-                    السعر قريب جداً من الوقف ({analytics.stopDistancePct.toFixed(1)}%{analytics.stopDistanceAtr !== null ? ' = ' + analytics.stopDistanceAtr.toFixed(1) + ' ATR' : ''}).
-                  </div>
-                )}
-                {analytics.planIssue && (
-                  <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl px-4 py-3 text-xs font-black leading-relaxed">
-                    <AlertTriangle className="w-5 h-5 shrink-0 text-slate-500" />
-                    {analytics.planIssue} (يمكنك تصحيح الوقف المبدئي من بطاقة "الوقف المبدئي" بالأسفل)
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Decision indicators strip */}
+                    {/* RISK TAB */}
+          {leftTab === 'risk' && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <ShieldAlert className="w-5 h-5 text-indigo-500" />
+                  <h3 className="font-black text-slate-800 dark:text-slate-200 text-sm">مؤشرات المخاطرة والأداء المالي</h3>
+                </div>
+{/* Decision indicators strip */}
             {analytics && metrics!.isOpen && (() => {
               const R = analytics.rMultiple;
               const tone = {
@@ -871,7 +888,7 @@ if (!position || !metrics) return null;
             })()}
 
             {/* Plan vs Reality Visual Chart */}
-            <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-10 rounded-3xl border border-slate-200 dark:border-slate-700/60 mb-6 relative mt-6 shadow-inner">
+            <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-10 rounded-3xl border border-slate-200 dark:border-slate-700/60 mb-2 relative mt-6 shadow-inner">
               <div className={`absolute -top-4 left-4 z-10 px-3 py-1.5 rounded-xl text-sm font-black flex items-center gap-1.5 border shadow-sm ${
                 metrics!.realizedPnL > 0 
                   ? 'bg-emerald-100 border-emerald-300 text-emerald-800 dark:bg-emerald-900/60 dark:border-emerald-700 dark:text-emerald-300' 
@@ -928,6 +945,56 @@ if (!position || !metrics) return null;
               </div>
             </div>
 
+          
+              </div>
+            </div>
+          )}
+
+{/* NOTES TAB */}
+          {leftTab === 'notes' && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="bg-yellow-50/50 dark:bg-yellow-900/10 border border-yellow-200/50 dark:border-yellow-800/30 rounded-2xl p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-black text-yellow-900 dark:text-yellow-500 text-sm flex items-center gap-2">
+                    <Pencil className="w-4 h-4" />
+                    ملاحظات حول السهم
+                  </h3>
+                  {isEditingNote ? (
+                    <div className="flex items-center gap-2">
+                      <button onClick={handleUpdateNote} className="px-3 py-1.5 bg-yellow-600 text-white rounded-lg text-xs font-black hover:bg-yellow-700 transition-colors shadow-sm">حفظ</button>
+                      <button onClick={() => { setIsEditingNote(false); setStockNote(position!.plan?.makerPlan || ''); }} className="px-3 py-1.5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 transition-colors">إلغاء</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setIsEditingNote(true)} className="px-3 py-1.5 bg-white dark:bg-slate-800 text-yellow-700 dark:text-yellow-500 border border-yellow-200 dark:border-yellow-800/50 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 rounded-lg text-xs font-black transition-colors shadow-sm">تعديل الملاحظات</button>
+                  )}
+                </div>
+                
+                {isEditingNote ? (
+                  <textarea
+                    value={stockNote}
+                    onChange={(e) => setStockNote(e.target.value)}
+                    placeholder="اكتب أفكارك وملاحظاتك الفنية أو الأخبار الخاصة بهذا السهم هنا..."
+                    className="w-full bg-white dark:bg-slate-900 border border-yellow-200 dark:border-yellow-800/50 rounded-xl p-4 text-sm font-bold text-slate-700 dark:text-slate-300 min-h-[200px] focus:ring-2 focus:ring-yellow-500 outline-none leading-relaxed resize-none"
+                  />
+                ) : (
+                  <div className="bg-white/60 dark:bg-slate-900/60 border border-white dark:border-slate-800 rounded-xl p-4 min-h-[200px]">
+                    {stockNote ? (
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{stockNote}</p>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60 pt-10">
+                        <Pin className="w-8 h-8 mb-3" />
+                        <p className="text-xs font-bold">لا توجد ملاحظات مسجلة.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* PLAN TAB */}
+          {leftTab === 'plan' && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
             {/* Targets and Supports */}
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-800/50">
@@ -1004,8 +1071,6 @@ if (!position || !metrics) return null;
                 </div>
               </div>
             </div>
-
-</div>
 
             {/* Smart Trailing Stop Tools */}
             {metrics!.isOpen && analytics && (
@@ -1147,6 +1212,9 @@ if (!position || !metrics) return null;
               })()}
 
             </div>
+
+            </div>
+          )}
 
           {/* Quick Partial Transactions Row */}
           {metrics!.isOpen && (

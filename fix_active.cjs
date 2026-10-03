@@ -19,7 +19,7 @@ const oldInput = `<input
                         }
                       }}
                       dir="ltr"
-                      title="سعر السوق الفعلي (تحديث يدوي)"
+                      title="السعر الفعلي (تحديث يدوي)"
                     />`;
 
 const newInput = `<input 

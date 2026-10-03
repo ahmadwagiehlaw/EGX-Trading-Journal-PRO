@@ -17,4 +17,4 @@ function searchInDir(dir, query) {
 }
 
 searchInDir('src', 'تحديث يدوي');
-searchInDir('src', 'سعر السوق');
+searchInDir('src', 'السعر');

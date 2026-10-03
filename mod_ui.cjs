@@ -10,7 +10,7 @@ const newHeader = `<p className="text-slate-500 dark:text-slate-400 font-bold te
                   متوسط سعر الدخول: <span className="text-blue-600 dark:text-blue-400 font-mono-num font-black">{metrics.avgEntry.toFixed(2)} EGP</span>
                 </p>
                 <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 w-max">
-                  <span className="text-[10px] font-bold text-slate-500 px-1">سعر السوق:</span>
+                  <span className="text-[10px] font-bold text-slate-500 px-1">السعر:</span>
                   <input 
                     type="number"
                     step="any"
@@ -53,7 +53,7 @@ const oldGrid = `<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
               </div>
 
               <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700/60">
-                <p className="text-xs font-black text-slate-600 dark:text-slate-400 mb-2 text-center">سعر السوق (تحديث يدوي)</p>
+                <p className="text-xs font-black text-slate-600 dark:text-slate-400 mb-2 text-center">السعر (تحديث يدوي)</p>
                 <div className="flex gap-2">
                   <input 
                     type="number"
@@ -82,7 +82,7 @@ const newGrid = `<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                   <span className={\`text-2xl font-black font-mono-num \${metrics.netUnrealizedPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}\`} dir="ltr">
                     {metrics.netUnrealizedPnL >= 0 ? '+' : ''}{metrics.netUnrealizedPnL.toFixed(2)} EGP
                   </span>
-                  <span className="text-[9px] text-slate-400 font-bold">بناءً على سعر السوق الحالي ({metrics.currentPrice.toFixed(2)})</span>
+                  <span className="text-[9px] text-slate-400 font-bold">بناءً على السعر الحالي ({metrics.currentPrice.toFixed(2)})</span>
                 </div>
               </div>
 
