@@ -1,0 +1,13 @@
+﻿const fs = require('fs');
+let code = fs.readFileSync('src/components/ActiveTrades.tsx', 'utf8');
+const start = code.indexOf('<div className="flex flex-wrap gap-2 mb-6">');
+const endMarker = '</div>\n';
+const closeIdx = code.indexOf('تجزئة/مجاني</button>', start);
+const end = code.indexOf('</div>', closeIdx) + 6;
+const block = code.slice(start, end);
+console.log(start, end, block.length);
+code = code.slice(0, start) + code.slice(end);
+const marker = '{/* Open Lots (Lowest Price First / FIFO) Table */}';
+const mi = code.indexOf(marker);
+code = code.slice(0, mi) + block.replace('mb-6', 'mb-8') + '\n\n             ' + code.slice(mi);
+fs.writeFileSync('src/components/ActiveTrades.tsx', code, 'utf8');
