@@ -13,25 +13,25 @@ import {
   
   Target,
   Trash2
-, X, Pencil, Sparkles
+, X, Pencil, Sparkles, AlertTriangle, TrendingUp
 } from 'lucide-react';
 import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 import { useTrades } from '../context/TradeContext';
 import { useTheme } from '../context/ThemeContext';
-import { computePositionMetrics, computeOpenLotsLowestPriceFirst } from '../utils/calculations';
+import { computePositionMetrics, computeOpenLotsLowestPriceFirst, computeStopAnalytics, formatEGP, type TrailingStopState } from '../utils/calculations';
 import TransactionFormModal from './TransactionFormModal';
 
 export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: () => void }) {
 
 
-  const { positions, updateTrailingStop, updatePosition, deleteTransaction, coreStats } = useTrades();
+  const { positions, updateTrailingStop, updatePosition, deleteTransaction, coreStats, capitalInvestment, capitalSpeculation, commissionRate } = useTrades();
   const { theme } = useTheme();
   
   const position = positions.find(p => p.id === tradeId);
   const metrics = useMemo(() => {
     if (!position) return null;
-    return computePositionMetrics(position);
-  }, [position]);
+    return computePositionMetrics(position, commissionRate);
+  }, [position, commissionRate]);
 
   const [newHighestPrice, setNewHighestPrice] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
@@ -46,14 +46,159 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
   const [atrInput, setAtrInput] = useState('');
   const [isEditingStop, setIsEditingStop] = useState(false);
   const [manualStopInput, setManualStopInput] = useState('');
+  const [stopError, setStopError] = useState<string | null>(null);
+  const [stopNote, setStopNote] = useState<string | null>(null);
+  const [coreError, setCoreError] = useState<string | null>(null);
+  const [isEditingInitStop, setIsEditingInitStop] = useState(false);
+  const [initStopInput, setInitStopInput] = useState('');
+  const [riskPct, setRiskPct] = useState<number>(() => {
+    const v = parseFloat(localStorage.getItem('egx_risk_per_trade_pct') || '');
+    return v > 0 ? v : 1;
+  });
+  const [isEditingRisk, setIsEditingRisk] = useState(false);
+  const [riskInput, setRiskInput] = useState('');
+
+  // Single source of truth for all stop / risk indicators (derived, never stored)
+  const analytics = useMemo(() => {
+    if (!position || !metrics) return null;
+    const capital = position.portfolioType === 'investment' ? capitalInvestment : capitalSpeculation;
+    return computeStopAnalytics(position, metrics, { riskPct, capital, commissionRate });
+  }, [position, metrics, riskPct, capitalInvestment, capitalSpeculation, commissionRate]);
+
   
+  // Builds a complete trailingStop object (never undefined fields -> safe for Firestore)
+  const buildTrailing = (over: Partial<TrailingStopState> = {}): TrailingStopState => {
+    const ts = position!.trailingStop;
+    return {
+      initial: ts?.initial ?? position!.plan?.stop ?? metrics!.currentStop ?? 0,
+      current: ts?.current ?? metrics!.currentStop ?? 0,
+      highestReached: ts?.highestReached ?? metrics!.avgEntry ?? 0,
+      atrAtEntry: ts?.atrAtEntry ?? position!.plan?.atr ?? 0,
+      ...(ts?.atrMultiplier ? { atrMultiplier: ts.atrMultiplier } : {}),
+      ...over,
+    };
+  };
+
+  const commitStop = async (newStop: number, over: Partial<TrailingStopState> = {}, extra: any = {}) => {
+    await updatePosition(position!.id, {
+      trailingStop: buildTrailing({ current: newStop, ...over }),
+      currentStopLoss: newStop,
+      ...extra,
+    } as any);
+  };
+
+  // A trailing stop only ratchets UP and must stay below the market price
+  const safeRatchet = (calc: number) => {
+    const cur = metrics!.currentStop;
+    return calc > cur && calc < metrics!.currentPrice ? calc : cur;
+  };
+
   const handleManualStopUpdate = async () => {
     const val = parseFloat(manualStopInput);
-    if (!isNaN(val) && val > 0 && position) {
-      const updatedData: any = { trailingStop: { ...position.trailingStop, current: val } };
-      await updatePosition(position.id, updatedData);
-      setIsEditingStop(false);
+    if (!position || !metrics || isNaN(val) || val <= 0) return;
+    if (metrics.isOpen && metrics.currentPrice > 0 && val >= metrics.currentPrice) {
+      setStopError('الوقف يجب أن يكون أقل من سعر السوق الحالي (' + metrics.currentPrice.toFixed(2) + ') وإلا سيُنفَّذ فوراً.');
+      return;
     }
+    setStopError(null);
+    await commitStop(val);
+    setIsEditingStop(false);
+  };
+
+  const handleApplyStop = async (value: number, label: string) => {
+    if (!position || !metrics) return;
+    if (value >= metrics.currentPrice) {
+      setStopError('لا يمكن تطبيق ' + label + ' (' + value.toFixed(2) + ') لأنه أعلى من سعر السوق الحالي.');
+      return;
+    }
+    if (value <= metrics.currentStop) {
+      setStopError('الوقف الحالي (' + metrics.currentStop.toFixed(2) + ') أعلى بالفعل من ' + label + '. الوقف لا ينخفض تلقائياً.');
+      return;
+    }
+    setStopError(null);
+    await commitStop(value);
+    setStopNote('تم رفع الوقف إلى ' + value.toFixed(2) + ' (' + label + ').');
+  };
+
+  const handleSetMultiplier = async (m: number) => {
+    if (!position || !metrics || !analytics) return;
+    let ns = metrics.currentStop;
+    if (analytics.atr > 0) ns = safeRatchet(analytics.peak - m * analytics.atr);
+    setStopError(null);
+    await commitStop(ns, { atrMultiplier: m });
+    setStopNote('مضاعف ATR = ' + m + (ns > metrics.currentStop ? ' — تم رفع الوقف إلى ' + ns.toFixed(2) : ' — الوقف الحالي لم يتغير.'));
+  };
+
+  const handleInitialStopUpdate = async () => {
+    const val = parseFloat(initStopInput);
+    if (!position || !metrics || !analytics || isNaN(val) || val <= 0) return;
+    if (val >= metrics.avgEntry) {
+      setStopError('وقف الخطة المبدئي يجب أن يكون أقل من متوسط الدخول (' + metrics.avgEntry.toFixed(2) + ').');
+      return;
+    }
+    setStopError(null);
+    const plan = position.plan ? { ...position.plan, stop: val } : { target: 0, stop: val };
+    // If the stop never trailed (still equals the old initial stop), move it together with the plan
+    const neverTrailed = Math.abs(metrics.currentStop - analytics.initialStop) < 1e-9;
+    await updatePosition(position.id, {
+      plan,
+      trailingStop: buildTrailing({ initial: val, current: neverTrailed ? val : metrics.currentStop }),
+      ...(neverTrailed ? { currentStopLoss: val } : {}),
+    } as any);
+    setIsEditingInitStop(false);
+  };
+
+  const handleSaveRisk = () => {
+    const v = parseFloat(riskInput);
+    if (!isNaN(v) && v > 0 && v <= 10) {
+      setRiskPct(v);
+      localStorage.setItem('egx_risk_per_trade_pct', String(v));
+      setIsEditingRisk(false);
+    }
+  };
+
+  const handleUpdateMarketPrice = async () => {
+    if (!metrics || !position) return;
+    const p = parseFloat(marketPriceInput);
+    if (isNaN(p) || p <= 0) return;
+    const data: any = { currentMarketPrice: p };
+    // Auto-trail: a new peak raises the stop (Chandelier) — never lowers it
+    if (metrics.isOpen) {
+      const peak = position.trailingStop?.highestReached || metrics.avgEntry;
+      if (p > peak) {
+        const atr = position.trailingStop?.atrAtEntry || position.plan?.atr || 0;
+        const mult = position.trailingStop?.atrMultiplier || 2;
+        const calc = atr > 0 ? p - mult * atr : p * 0.95;
+        const newStop = calc > metrics.currentStop && calc < p ? calc : metrics.currentStop;
+        data.trailingStop = buildTrailing({ highestReached: p, current: newStop });
+        data.highestPrice = p;
+        data.currentStopLoss = newStop;
+        if (newStop > metrics.currentStop) {
+          setStopNote('قمة جديدة ' + p.toFixed(2) + ' — تم رفع الوقف المتحرك تلقائياً إلى ' + newStop.toFixed(2));
+        }
+      }
+    }
+    await updatePosition(position.id, data);
+    setIsEditingMarketPrice(false);
+  };
+
+  const handleUpdateAtr = async () => {
+    if (!metrics || !position) return;
+    const newAtr = parseFloat(atrInput);
+    if (isNaN(newAtr) || newAtr <= 0) return;
+    const highest = position.trailingStop?.highestReached || metrics.avgEntry;
+    const mult = position.trailingStop?.atrMultiplier || 2;
+    const newStop = safeRatchet(highest - mult * newAtr);
+    const updatedData: any = {
+      trailingStop: buildTrailing({
+        atrAtEntry: newAtr,
+        current: newStop,
+        initial: position.trailingStop?.initial ?? position.plan?.stop ?? metrics.currentStop,
+      }),
+    };
+    if (position.plan) updatedData.plan = { ...position.plan, atr: newAtr };
+    await updatePosition(position.id, updatedData);
+    setIsEditingAtr(false);
   };
 
   useEffect(() => {
@@ -63,39 +208,9 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     }
   }, [isEditingAtr, position]);
 
-  const handleUpdateMarketPrice = async () => {
-    if (!metrics) return;
-    const p = parseFloat(marketPriceInput);
-    if (!isNaN(p) && p > 0 && position) {
-      await updatePosition(position!.id, { currentMarketPrice: p });
-      setIsEditingMarketPrice(false);
-    }
-  };
 
-  const handleUpdateAtr = async () => {
-    if (!metrics) return;
-    const newAtr = parseFloat(atrInput);
-    if (!isNaN(newAtr) && newAtr > 0 && position) {
-      const updatedData: any = {};
-      
-      const highest = position!.trailingStop?.highestReached || metrics!.avgEntry;
-      let newStop = highest - (2 * newAtr);
-      newStop = Math.max(newStop, metrics!.currentStop);
 
-      if (position!.trailingStop) {
-        updatedData.trailingStop = { ...position!.trailingStop, atrAtEntry: newAtr, current: newStop };
-      } else {
-        updatedData.trailingStop = { initial: metrics!.currentStop, current: newStop, highestReached: highest, atrAtEntry: newAtr };
-      }
-      
-      if (position!.plan) {
-        updatedData.plan = { ...position!.plan, atr: newAtr };
-      }
-      
-      await updatePosition(position!.id, updatedData);
-      setIsEditingAtr(false);
-    }
-  };
+
 
   
   
@@ -114,9 +229,10 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     if (!position || !metrics) return;
     const val = parseInt(coreSharesInput);
     if (isNaN(val) || val < 0 || val > metrics.openShares) {
-      alert('يجب أن تكون كمية الكور رقم صحيح بين 0 والكمية المفتوحة بالكامل (' + metrics.openShares + ')');
+      setCoreError('يجب أن تكون كمية الكور رقماً صحيحاً بين 0 والكمية المفتوحة (' + metrics.openShares + ')');
       return;
     }
+    setCoreError(null);
     await updatePosition(position.id, { coreShares: val });
     setIsEditingCoreShares(false);
   };
@@ -125,6 +241,36 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     if (!position || !metrics) return [];
     const insights = [];
     const pnlPercent = metrics.avgEntry > 0 ? (metrics.unrealizedPnL / (metrics.avgEntry * metrics.openShares)) * 100 : 0;
+
+    if (analytics) {
+      const R = analytics.rMultiple;
+      if (analytics.status === 'broken') {
+        insights.push({ type: 'warning', text: 'الوقف مكسور: السعر (' + metrics.currentPrice.toFixed(2) + ') عند أو تحت الوقف (' + metrics.currentStop.toFixed(2) + '). نفّذ الخروج وفق خطتك أو راجع الوقف بوعي — لا تترك القرار للأمل.', action: 'خروج' });
+      }
+      if (analytics.planIssue) {
+        insights.push({ type: 'warning', text: analytics.planIssue });
+      }
+      if (analytics.status === 'raise' && R !== null) {
+        insights.push({ type: 'info', text: 'حققت ' + R.toFixed(2) + 'R والوقف ما زال تحت الدخول: ارفع الوقف إلى نقطة التعادل (' + analytics.breakevenStop.toFixed(2) + ') لتصبح الصفقة بلا مخاطرة على رأس المال.' });
+      }
+      if (R !== null && R >= 2) {
+        insights.push({ type: 'success', text: 'وصلت إلى ' + R.toFixed(2) + 'R — قاعدة شائعة: بِع ثلث الكمية (من الدفعات الأرخص أولاً) واترك الباقي بوقف متحرك.', action: 'بيع جزئي' });
+      }
+      if (analytics.rr !== null && analytics.rr < 1.5 && R !== null && R > 0) {
+        insights.push({ type: 'info', text: 'نسبة الربح/المخاطرة المتبقية ' + analytics.rr.toFixed(2) + ' (أقل من 1.5): العائد المتبقي لا يبرر المخاطرة — فكّر في جني جزء الآن.', action: 'بيع جزئي' });
+      }
+      if (analytics.isOversized && analytics.maxSharesByRisk !== null) {
+        insights.push({ type: 'warning', text: 'حجم المركز (' + metrics.openShares.toLocaleString() + ' سهم) أكبر من الحد المسموح بمخاطرة ' + riskPct + '% من رأس المال (' + analytics.maxSharesByRisk.toLocaleString() + ' سهم). قلّل الحجم أو ارفع الوقف.' });
+      }
+      if (analytics.drawdownFromPeak > 8 && metrics.unrealizedPnL > 0) {
+        insights.push({ type: 'info', text: 'السعر تراجع ' + analytics.drawdownFromPeak.toFixed(1) + '% من القمة (' + analytics.peak.toFixed(2) + ') — الوقف المتحرك هو حمايتك، تأكد أنه مضبوط.' });
+      }
+      const tsd = position.plan?.timeStopDays;
+      if (tsd && analytics.daysHeld !== null && analytics.daysHeld > tsd) {
+        insights.push({ type: 'warning', text: 'تجاوزت مدة الاحتفاظ المخططة (' + tsd + ' يوم) — الآن ' + analytics.daysHeld + ' يوم. قيّم تكلفة الفرصة البديلة.' });
+      }
+    }
+
     
     if (pnlPercent > 15) {
       insights.push({ type: 'success', text: `أنت محقق ربح ممتاز بحوالي ${pnlPercent.toFixed(1)}% في هذا التمركز. يوصى بجني جزء من الأرباح (بيع جزئي) لتأمين المكسب.`, action: 'بيع جزئي' });
@@ -179,7 +325,7 @@ if (!position || !metrics) return null;
     }
 
     const atrVal = position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0;
-    const calculatedNewStop = atrVal > 0 ? highest - (2 * atrVal) : highest * 0.95;
+    const calculatedNewStop = atrVal > 0 ? highest - ((position!.trailingStop?.atrMultiplier || 2) * atrVal) : highest * 0.95;
     const finalStop = Math.max(calculatedNewStop, currentStop);
 
     setError(null);
@@ -189,6 +335,45 @@ if (!position || !metrics) return null;
     return true;
   };
 
+
+  // --- Plan gauge layout: scale always covers ALL markers; clustered labels are stacked ---
+  const gaugeStop = position!.plan?.stop || 0;
+  const gaugeTarget = position!.plan?.target || 0;
+  const gaugeValid = gaugeStop > 0 && gaugeTarget > 0;
+  const gaugeVals = [gaugeStop, gaugeTarget, metrics!.avgEntry, currentStop, metrics!.currentPrice].filter(v => v > 0);
+  const gLo = Math.min(...gaugeVals);
+  const gHi = Math.max(...gaugeVals);
+  const gPad = (gHi - gLo) * 0.04 || 1;
+  const gPct = (v: number) => Math.max(0, Math.min(100, ((v - (gLo - gPad)) / ((gHi + gPad) - (gLo - gPad))) * 100));
+  type GaugeItem = { key: string; label: string; value: number; pct: number; level: number; dot: string; text: string };
+  const stackItems = (items: Omit<GaugeItem, 'pct' | 'level'>[]): GaugeItem[] => {
+    const list: GaugeItem[] = items.map(i => ({ ...i, pct: gPct(i.value), level: 0 })).sort((a, b) => a.pct - b.pct);
+    let prev = -100;
+    let lvl = 0;
+    list.forEach(i => {
+      if (i.pct - prev < 18) lvl = Math.min(lvl + 1, 2); else lvl = 0;
+      i.level = lvl;
+      prev = i.pct;
+    });
+    return list;
+  };
+  const gaugeTop = stackItems([
+    { key: 'stop', label: 'الوقف', value: gaugeStop, dot: 'bg-rose-500', text: 'text-rose-600 dark:text-rose-400' },
+    { key: 'target', label: 'الهدف', value: gaugeTarget, dot: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' },
+    { key: 'entry', label: 'الدخول', value: metrics!.avgEntry, dot: 'bg-blue-500', text: 'text-blue-600 dark:text-blue-400' },
+  ]);
+  const trailDistinct = currentStop > 0 && Math.abs(currentStop - gaugeStop) > 0.005;
+  const gaugeBottom = stackItems([
+    ...(trailDistinct ? [{ key: 'trail', label: 'وقف متحرك', value: currentStop, dot: 'bg-orange-500', text: 'text-orange-600 dark:text-orange-400' }] : []),
+    { key: 'price', label: 'السوق', value: metrics!.currentPrice, dot: 'bg-slate-800 dark:bg-white', text: 'text-slate-600 dark:text-slate-300' },
+  ]);
+  const gauge = {
+    valid: gaugeValid,
+    top: gaugeTop,
+    bottom: gaugeBottom,
+    mt: 32 + Math.max(0, ...gaugeTop.map(i => i.level)) * 36,
+    mb: 16 + Math.max(0, ...gaugeBottom.map(i => i.level)) * 36,
+  };
 
   return (
     <div className="w-full space-y-6" dir="rtl">
@@ -537,6 +722,89 @@ if (!position || !metrics) return null;
               </div>
             </div>
 
+            {/* Stop status banners */}
+            {analytics && metrics!.isOpen && (analytics.status === 'broken' || analytics.status === 'raise' || analytics.status === 'near' || analytics.planIssue) && (
+              <div className="space-y-2 mt-6">
+                {analytics.status === 'broken' && (
+                  <div className="flex items-center justify-between gap-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 rounded-2xl px-4 py-3">
+                    <div className="flex items-center gap-2 text-xs font-black leading-relaxed">
+                      <AlertTriangle className="w-5 h-5 shrink-0" />
+                      الوقف مكسور: السعر {metrics!.currentPrice.toFixed(2)} ≤ الوقف {metrics!.currentStop.toFixed(2)} — قرر الخروج أو راجع الوقف.
+                    </div>
+                    <button onClick={() => setTxModalType('sellAll')} className="shrink-0 text-[10px] font-black bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg">تصفية المركز</button>
+                  </div>
+                )}
+                {analytics.status === 'raise' && analytics.rMultiple !== null && (
+                  <div className="flex items-center justify-between gap-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 rounded-2xl px-4 py-3">
+                    <div className="flex items-center gap-2 text-xs font-black leading-relaxed">
+                      <TrendingUp className="w-5 h-5 shrink-0" />
+                      حققت {analytics.rMultiple.toFixed(2)}R والوقف أقل من الدخول — ارفعه للتعادل ({analytics.breakevenStop.toFixed(2)}).
+                    </div>
+                    <button onClick={() => handleApplyStop(analytics.breakevenStop, 'وقف التعادل')} className="shrink-0 text-[10px] font-black bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg">رفع للتعادل</button>
+                  </div>
+                )}
+                {analytics.status === 'near' && (
+                  <div className="flex items-center gap-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 text-orange-800 dark:text-orange-200 rounded-2xl px-4 py-3 text-xs font-black">
+                    <AlertTriangle className="w-5 h-5 shrink-0" />
+                    السعر قريب جداً من الوقف ({analytics.stopDistancePct.toFixed(1)}%{analytics.stopDistanceAtr !== null ? ' = ' + analytics.stopDistanceAtr.toFixed(1) + ' ATR' : ''}).
+                  </div>
+                )}
+                {analytics.planIssue && (
+                  <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl px-4 py-3 text-xs font-black leading-relaxed">
+                    <AlertTriangle className="w-5 h-5 shrink-0 text-slate-500" />
+                    {analytics.planIssue} (يمكنك تصحيح الوقف المبدئي من بطاقة "الوقف المبدئي" بالأسفل)
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Decision indicators strip */}
+            {analytics && metrics!.isOpen && (() => {
+              const R = analytics.rMultiple;
+              const tone = {
+                good: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-300',
+                bad: 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/50 text-rose-700 dark:text-rose-300',
+                warn: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50 text-amber-700 dark:text-amber-300',
+                neutral: 'bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200',
+              } as const;
+              const cards: { label: string; value: string; tone: keyof typeof tone; hint: string }[] = [
+                { label: 'R الحالي', value: R === null ? '—' : (R >= 0 ? '+' : '') + R.toFixed(2) + 'R', tone: R === null ? 'neutral' : R >= 1 ? 'good' : R < 0 ? 'bad' : 'neutral', hint: '(السوق − الدخول) ÷ مخاطرة الخطة' },
+                { label: 'ربح/مخاطرة (RR)', value: analytics.rr === null ? '—' : analytics.rr.toFixed(2), tone: analytics.rr === null ? 'neutral' : analytics.rr >= 2 ? 'good' : analytics.rr < 1.5 ? 'warn' : 'neutral', hint: '(الهدف − السوق) ÷ (السوق − الوقف)' },
+                analytics.lockedProfit > 0
+                  ? { label: 'ربح مؤمَّن 🔒', value: '+' + formatEGP(analytics.lockedProfit), tone: 'good', hint: 'الوقف أعلى من متوسط الدخول' }
+                  : { label: 'مخاطرة رأس المال', value: analytics.capitalAtRisk > 0 ? formatEGP(analytics.capitalAtRisk) + ' (' + analytics.capitalAtRiskPct.toFixed(1) + '%)' : (metrics!.currentStop > 0 ? '🔒 صفر' : '—'), tone: analytics.capitalAtRisk > analytics.riskAmountAllowed && analytics.riskAmountAllowed > 0 ? 'bad' : 'neutral', hint: 'الخسارة لو ضُرب الوقف مقابل الدخول' },
+                { label: 'مسافة الوقف', value: analytics.stopDistanceAtr !== null ? analytics.stopDistanceAtr.toFixed(1) + ' ATR' : analytics.stopDistancePct.toFixed(1) + '%', tone: analytics.stopDistanceAtr !== null && analytics.stopDistanceAtr < 1 ? 'warn' : 'neutral', hint: analytics.stopDistancePct.toFixed(1) + '% تحت السعر' },
+                { label: 'تراجع من القمة', value: analytics.drawdownFromPeak.toFixed(1) + '%', tone: analytics.drawdownFromPeak > 8 ? 'warn' : 'neutral', hint: 'القمة ' + analytics.peak.toFixed(2) },
+                { label: 'أيام الاحتفاظ', value: analytics.daysHeld === null ? '—' : String(analytics.daysHeld), tone: position!.plan?.timeStopDays && analytics.daysHeld !== null && analytics.daysHeld > position!.plan.timeStopDays ? 'warn' : 'neutral', hint: position!.plan?.timeStopDays ? 'المخطط ' + position!.plan.timeStopDays + ' يوم' : 'منذ أول شراء' },
+                { label: 'الحد الأقصى للحجم', value: analytics.maxSharesByRisk === null ? '—' : analytics.maxSharesByRisk.toLocaleString() + ' سهم', tone: analytics.isOversized ? 'bad' : 'neutral', hint: 'مخاطرة ' + riskPct + '% من رأس المال' },
+                { label: 'وزن المحفظة', value: analytics.weightPct === null ? '—' : analytics.weightPct.toFixed(1) + '%', tone: analytics.weightPct !== null && analytics.weightPct > 25 ? 'warn' : 'neutral', hint: 'قيمة المركز ÷ رأس المال' },
+              ];
+              return (
+                <div className="mt-6">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {cards.map(c => (
+                      <div key={c.label} className={`rounded-xl border px-3 py-2 text-center ${tone[c.tone]}`} title={c.hint}>
+                        <div className="text-[10px] font-bold opacity-70">{c.label}</div>
+                        <div className="text-sm font-black font-mono-num mt-0.5" dir="ltr">{c.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 mt-2 px-1">
+                    <span>المخاطرة المسموحة لكل صفقة: {riskPct}% ≈ {formatEGP(analytics.riskAmountAllowed)}</span>
+                    {isEditingRisk ? (
+                      <span className="flex items-center gap-1">
+                        <input type="number" step="0.1" value={riskInput} onChange={e => setRiskInput(e.target.value)} className="w-14 text-center px-1 py-0.5 rounded border bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-black" dir="ltr" autoFocus />
+                        <button onClick={handleSaveRisk} className="bg-blue-600 text-white px-2 py-0.5 rounded font-bold">حفظ</button>
+                        <button onClick={() => setIsEditingRisk(false)} className="bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded font-bold">إلغاء</button>
+                      </span>
+                    ) : (
+                      <button onClick={() => { setRiskInput(String(riskPct)); setIsEditingRisk(true); }} className="underline text-blue-600 dark:text-blue-400">تعديل النسبة</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Plan vs Reality Visual Chart */}
             <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-10 rounded-3xl border border-slate-200 dark:border-slate-700/60 mb-6 relative mt-6 shadow-inner">
               <div className={`absolute -top-4 left-4 z-10 px-3 py-1.5 rounded-xl text-sm font-black flex items-center gap-1.5 border shadow-sm ${
@@ -549,7 +817,7 @@ if (!position || !metrics) return null;
                 صافي الأرباح المحققة: {metrics!.realizedPnL > 0 ? '+' : ''}{metrics!.realizedPnL.toFixed(2)} EGP
               </div>
               
-              <div className="relative h-16 w-full flex items-center mt-8 mb-4">
+              <div className="relative h-16 w-full flex items-center" style={{ marginTop: gauge.mt, marginBottom: gauge.mb }}>
                 {/* Track */}
                 <div className="absolute w-full h-4 bg-slate-200 dark:bg-slate-700 rounded-full shadow-inner overflow-hidden">
                   {position!.plan?.target && position!.plan?.stop ? (
@@ -561,58 +829,37 @@ if (!position || !metrics) return null;
                 </div>
 
                 {/* Markers */}
-                {position!.plan?.target && position!.plan?.stop ? (() => {
-                  const minP = position!.plan.stop;
-                  const maxP = position!.plan.target;
-                  const range = maxP - minP;
-                  const entryPercent = Math.max(0, Math.min(100, ((metrics!.avgEntry - minP) / range) * 100));
-                  const trailingStopPercent = Math.max(0, Math.min(100, ((currentStop - minP) / range) * 100));
-                  const currentPercent = Math.max(0, Math.min(100, ((metrics!.currentPrice - minP) / range) * 100));
-
-                  return (
-                    <>
-                      {/* Initial Stop */}
-                      <div className="absolute flex flex-col items-center" style={{ right: '0%', transform: 'translateX(50%)', bottom: '100%', marginBottom: '14px' }}>
-                        <span className="text-[10px] font-black text-rose-600 dark:text-rose-400 flex items-center gap-1"><ShieldAlert className="w-3 h-3"/> الوقف</span>
-                        <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{minP.toFixed(2)}</span>
-                      </div>
-                      
-                      {/* Target */}
-                      <div className="absolute flex flex-col items-center" style={{ right: '100%', transform: 'translateX(50%)', bottom: '100%', marginBottom: '14px' }}>
-                        <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><Target className="w-3 h-3"/> الهدف</span>
-                        <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{maxP.toFixed(2)}</span>
-                      </div>
-
-                      {/* Entry */}
-                      <div className="absolute flex flex-col items-center" style={{ right: `${entryPercent}%`, transform: 'translateX(50%)', bottom: '100%', marginBottom: '14px' }}>
-                        <span className="text-[10px] font-black text-blue-600 dark:text-blue-400">الدخول</span>
-                        <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{metrics!.avgEntry.toFixed(2)}</span>
-                        <div className="w-0.5 h-4 bg-blue-500 absolute -bottom-4"></div>
-                        <div className="w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white dark:border-slate-900 absolute -bottom-5"></div>
-                      </div>
-
-                      {/* Trailing Stop */}
-                      {currentStop > minP && (
-                        <div className="absolute flex flex-col items-center" style={{ right: `${trailingStopPercent}%`, transform: 'translateX(50%)', top: '100%', marginTop: '14px' }}>
-                          <div className="w-3.5 h-3.5 rounded-full bg-orange-500 border-2 border-white dark:border-slate-900 absolute -top-5"></div>
-                          <div className="w-0.5 h-4 bg-orange-500 absolute -top-4"></div>
-                          <span className="text-[10px] font-black text-orange-600 dark:text-orange-400">وقف متحرك</span>
-                          <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{currentStop.toFixed(2)}</span>
+                {gauge.valid ? (
+                  <>
+                    {gauge.top.map(m => (
+                      <div key={m.key} className="absolute flex flex-col items-center" style={{ right: `${m.pct}%`, transform: 'translateX(50%)', bottom: '100%', marginBottom: '14px' }}>
+                        <div className="flex flex-col items-center" style={{ transform: `translateY(-${m.level * 36}px)` }}>
+                          <span className={`text-[10px] font-black flex items-center gap-1 ${m.text}`}>
+                            {m.key === 'stop' && <ShieldAlert className="w-3 h-3" />}
+                            {m.key === 'target' && <Target className="w-3 h-3" />}
+                            {m.label}
+                          </span>
+                          <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{m.value.toFixed(2)}</span>
                         </div>
-                      )}
-                      
-                      {/* Current Price */}
-                      <div className="absolute flex flex-col items-center" style={{ right: `${currentPercent}%`, transform: 'translateX(50%)', top: '100%', marginTop: '14px' }}>
-                          <div className="w-3.5 h-3.5 rounded-full bg-slate-800 dark:bg-white border-2 border-white dark:border-slate-900 absolute -top-5"></div>
-                          <div className="w-0.5 h-4 bg-slate-800 dark:bg-white absolute -top-4"></div>
-                          <span className="text-[10px] font-black text-slate-600 dark:text-slate-300">السوق</span>
-                          <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{metrics!.currentPrice.toFixed(2)}</span>
+                        <div className={`w-0.5 absolute ${m.dot}`} style={{ height: 16 + m.level * 36, bottom: -16 }}></div>
+                        <div className={`w-3.5 h-3.5 rounded-full border-2 border-white dark:border-slate-900 absolute -bottom-5 ${m.dot}`}></div>
                       </div>
-                    </>
-                  );
-                })() : (
+                    ))}
+                    {gauge.bottom.map(m => (
+                      <div key={m.key} className="absolute flex flex-col items-center" style={{ right: `${m.pct}%`, transform: 'translateX(50%)', top: '100%', marginTop: '14px' }}>
+                        <div className={`w-3.5 h-3.5 rounded-full border-2 border-white dark:border-slate-900 absolute -top-5 ${m.dot}`}></div>
+                        <div className={`w-0.5 absolute ${m.dot}`} style={{ height: 16 + m.level * 36, top: -16 }}></div>
+                        <div className="flex flex-col items-center" style={{ transform: `translateY(${m.level * 36}px)` }}>
+                          <span className={`text-[10px] font-black ${m.text}`}>{m.label}</span>
+                          <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{m.value.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                ) : (
                   <div className="text-center w-full text-[10px] text-slate-500 font-bold mt-8">الخطة غير مكتملة (يرجى إضافة هدف ووقف)</div>
                 )}
+
               </div>
             </div>
 
@@ -623,9 +870,19 @@ if (!position || !metrics) return null;
                   <ArrowDownToLine className="w-4 h-4" />
                   الوقف المبدئي
                 </div>
-                <div className="text-2xl font-black text-slate-700 dark:text-slate-200 font-mono-num" dir="ltr">
-                  {(position!.trailingStop?.initial || position!.plan?.stop || 0).toFixed(2)}
-                </div>
+                {isEditingInitStop ? (
+                  <div className="flex items-center justify-center gap-2 mt-2">
+                    <input type="number" step="any" value={initStopInput} onChange={e => setInitStopInput(e.target.value)} className="w-20 text-center px-2 py-1 rounded bg-white dark:bg-slate-900 border text-slate-700 dark:text-slate-200 font-black text-sm" dir="ltr" autoFocus placeholder={(analytics?.initialStop || 0).toFixed(2)} />
+                    <button onClick={handleInitialStopUpdate} className="text-[10px] bg-slate-700 text-white px-2 py-1 rounded font-bold">حفظ</button>
+                    <button onClick={() => setIsEditingInitStop(false)} className="text-[10px] bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded font-bold">إلغاء</button>
+                  </div>
+                ) : (
+                  <div className="text-2xl font-black text-slate-700 dark:text-slate-200 font-mono-num flex items-center justify-center gap-2" dir="ltr">
+                    {(analytics?.initialStop || 0).toFixed(2)}
+                    <button onClick={() => { setInitStopInput((analytics?.initialStop || 0).toString()); setIsEditingInitStop(true); setStopError(null); }} className="text-[10px] text-slate-500 hover:text-slate-700 underline" title="تعديل وقف الخطة المبدئي (أساس حساب R)">تعديل</button>
+                  </div>
+                )}
+
               </div>
 
               <div className="bg-red-50 dark:bg-red-950/40 p-4 rounded-2xl border border-red-100 dark:border-red-900/60 text-center relative overflow-hidden">
@@ -653,6 +910,60 @@ if (!position || !metrics) return null;
 </div>
 
           
+            {/* Smart Trailing Stop Tools */}
+            {metrics!.isOpen && analytics && (
+              <div className="bg-orange-50/60 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/40 rounded-2xl p-5 mb-6">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-orange-500" />
+                    <span className="text-sm font-black text-slate-700 dark:text-slate-200">الوقف المتحرك الذكي (Chandelier)</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] font-bold text-slate-500">المضاعف × ATR</span>
+                    {[1.5, 2, 2.5, 3].map(m => (
+                      <button
+                        key={m}
+                        onClick={() => handleSetMultiplier(m)}
+                        className={`text-[11px] font-black px-2 py-1 rounded-lg border transition-colors ${analytics.atrMultiplier === m ? 'bg-orange-500 text-white border-orange-500' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-orange-300'}`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="bg-white dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-center">
+                    <div className="text-[10px] font-bold text-slate-500 mb-0.5">وقف القمة − {analytics.atrMultiplier}×ATR</div>
+                    <div className="text-base font-black font-mono-num text-orange-600 dark:text-orange-400" dir="ltr">{analytics.chandelierStop !== null ? analytics.chandelierStop.toFixed(2) : '—'}</div>
+                    <button
+                      disabled={analytics.chandelierStop === null || analytics.chandelierStop <= metrics!.currentStop || analytics.chandelierStop >= metrics!.currentPrice}
+                      onClick={() => analytics.chandelierStop !== null && handleApplyStop(analytics.chandelierStop, 'وقف Chandelier')}
+                      className="mt-2 text-[10px] font-black bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white px-3 py-1 rounded-lg"
+                    >
+                      تطبيق
+                    </button>
+                  </div>
+                  <div className="bg-white dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-center">
+                    <div className="text-[10px] font-bold text-slate-500 mb-0.5">وقف التعادل (شامل العمولة)</div>
+                    <div className="text-base font-black font-mono-num text-emerald-600 dark:text-emerald-400" dir="ltr">{analytics.breakevenStop.toFixed(2)}</div>
+                    <button
+                      disabled={analytics.breakevenStop <= metrics!.currentStop || analytics.breakevenStop >= metrics!.currentPrice}
+                      onClick={() => handleApplyStop(analytics.breakevenStop, 'وقف التعادل')}
+                      className="mt-2 text-[10px] font-black bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white px-3 py-1 rounded-lg"
+                    >
+                      تطبيق
+                    </button>
+                  </div>
+                </div>
+                {analytics.atr <= 0 && (
+                  <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 mb-2">أدخل قيمة ATR (الشريحة البنفسجية بالأعلى) لتفعيل الوقف الديناميكي.</p>
+                )}
+                {stopError && <p className="text-[11px] font-black text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2 mb-2">{stopError}</p>}
+                {stopNote && <p className="text-[11px] font-black text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg px-3 py-2 mb-2">{stopNote}</p>}
+                <p className="text-[10px] font-bold text-slate-500 leading-relaxed">يرتفع الوقف تلقائياً عند تحديث سعر السوق إلى قمة جديدة، ولا ينخفض أبداً إلا بتعديل يدوي منك.</p>
+              </div>
+            )}
+
             {/* Core / Satellite Advanced Bar */}
             <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 mb-6">
               <div className="flex justify-between items-center mb-3">
@@ -712,6 +1023,32 @@ if (!position || !metrics) return null;
                   <div className="w-2 h-2 rounded-full bg-amber-400"></div>
                 </div>
               </div>
+
+              {coreError && <p className="text-[11px] font-black text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2 mt-3">{coreError}</p>}
+              {(() => {
+                if (!analytics) return null;
+                const strat = position!.plan?.strategy;
+                let pct = position!.portfolioType === 'investment' ? (strat === 'core' ? 70 : strat === 'satellite' ? 30 : 50) : 20;
+                const reasons: string[] = [strat === 'core' ? 'سهم أساسي' : strat === 'satellite' ? 'سهم ساتلايت' : position!.portfolioType === 'investment' ? 'استثمار' : 'مضاربة'];
+                if (analytics.weightPct !== null && analytics.weightPct > 25) { pct = Math.round(pct * 0.7); reasons.push('وزن المحفظة مرتفع'); }
+                if (analytics.status === 'broken') { pct = Math.min(pct, 20); reasons.push('الوقف مكسور'); }
+                const suggested = Math.round((metrics!.openShares * pct) / 100);
+                if (suggested === (position!.coreShares || 0)) return null;
+                return (
+                  <div className="mt-3 flex items-center justify-between gap-2 bg-white/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
+                    <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                      💡 الكور المقترح: <b className="font-mono-num text-blue-600 dark:text-blue-400">{suggested.toLocaleString()} سهم ({pct}%)</b> — {reasons.join(' · ')}
+                    </span>
+                    <button
+                      onClick={async () => { await updatePosition(position!.id, { coreShares: suggested }); setCoreError(null); }}
+                      className="shrink-0 text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg"
+                    >
+                      تطبيق
+                    </button>
+                  </div>
+                );
+              })()}
+
             </div>
 
           {/* Quick Partial Transactions Row */}
