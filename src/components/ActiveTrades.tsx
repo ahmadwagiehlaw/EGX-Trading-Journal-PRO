@@ -11,7 +11,8 @@ import {
   Plus,
   ArrowDownLeft,
   
-  Target,
+  Target
+,
   Trash2
 , X, Pencil, Sparkles, AlertTriangle, TrendingUp
 } from 'lucide-react';
@@ -36,6 +37,7 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
   const [newHighestPrice, setNewHighestPrice] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [txModalType, setTxModalType] = useState<'buy' | 'sell' | 'sellAll' | 'edit' | null>(null);
+  const [editingTx, setEditingTx] = useState<any | null>(null);
   const [rightPaneView, setRightPaneView] = useState<'ledger' | 'chart'>('ledger');
   const [isChartExpanded, setIsChartExpanded] = useState(false);
 
@@ -44,13 +46,27 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
   const [isEditingHighestPrice, setIsEditingHighestPrice] = useState(false);
   const [isEditingAtr, setIsEditingAtr] = useState(false);
   const [atrInput, setAtrInput] = useState('');
-  const [isEditingStop, setIsEditingStop] = useState(false);
-  const [manualStopInput, setManualStopInput] = useState('');
+  
+  const [isEditingRsi, setIsEditingRsi] = useState(false);
+  const [rsiInput, setRsiInput] = useState('');
+
+  const [isEditingTargets, setIsEditingTargets] = useState(false);
+  const [t1Input, setT1Input] = useState('');
+  const [t2Input, setT2Input] = useState('');
+  const [t3Input, setT3Input] = useState('');
+
+  const [isEditingSupports, setIsEditingSupports] = useState(false);
+  const [s1Input, setS1Input] = useState('');
+  const [s2Input, setS2Input] = useState('');
+  const [s3Input, setS3Input] = useState('');
+
+  
+  
   const [stopError, setStopError] = useState<string | null>(null);
   const [stopNote, setStopNote] = useState<string | null>(null);
   const [coreError, setCoreError] = useState<string | null>(null);
-  const [isEditingInitStop, setIsEditingInitStop] = useState(false);
-  const [initStopInput, setInitStopInput] = useState('');
+  
+  
   const [riskPct, setRiskPct] = useState<number>(() => {
     const v = parseFloat(localStorage.getItem('egx_risk_per_trade_pct') || '');
     return v > 0 ? v : 1;
@@ -93,17 +109,7 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     return calc > cur && calc < metrics!.currentPrice ? calc : cur;
   };
 
-  const handleManualStopUpdate = async () => {
-    const val = parseFloat(manualStopInput);
-    if (!position || !metrics || isNaN(val) || val <= 0) return;
-    if (metrics.isOpen && metrics.currentPrice > 0 && val >= metrics.currentPrice) {
-      setStopError('الوقف يجب أن يكون أقل من سعر السوق الحالي (' + metrics.currentPrice.toFixed(2) + ') وإلا سيُنفَّذ فوراً.');
-      return;
-    }
-    setStopError(null);
-    await commitStop(val);
-    setIsEditingStop(false);
-  };
+  
 
   const handleApplyStop = async (value: number, label: string) => {
     if (!position || !metrics) return;
@@ -129,24 +135,7 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     setStopNote('مضاعف ATR = ' + m + (ns > metrics.currentStop ? ' — تم رفع الوقف إلى ' + ns.toFixed(2) : ' — الوقف الحالي لم يتغير.'));
   };
 
-  const handleInitialStopUpdate = async () => {
-    const val = parseFloat(initStopInput);
-    if (!position || !metrics || !analytics || isNaN(val) || val <= 0) return;
-    if (val >= metrics.avgEntry) {
-      setStopError('وقف الخطة المبدئي يجب أن يكون أقل من متوسط الدخول (' + metrics.avgEntry.toFixed(2) + ').');
-      return;
-    }
-    setStopError(null);
-    const plan = position.plan ? { ...position.plan, stop: val } : { target: 0, stop: val };
-    // If the stop never trailed (still equals the old initial stop), move it together with the plan
-    const neverTrailed = Math.abs(metrics.currentStop - analytics.initialStop) < 1e-9;
-    await updatePosition(position.id, {
-      plan,
-      trailingStop: buildTrailing({ initial: val, current: neverTrailed ? val : metrics.currentStop }),
-      ...(neverTrailed ? { currentStopLoss: val } : {}),
-    } as any);
-    setIsEditingInitStop(false);
-  };
+  
 
   const handleSaveRisk = () => {
     const v = parseFloat(riskInput);
@@ -201,12 +190,49 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     setIsEditingAtr(false);
   };
 
-  useEffect(() => {
-    if (isEditingAtr && position) {
-      const currentAtr = position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0;
-      setAtrInput(currentAtr.toString());
+  const handleUpdateRsi = async () => {
+    if (!position) return;
+    const newRsi = parseFloat(rsiInput);
+    if (!isNaN(newRsi)) {
+      await updatePosition(position.id, { plan: { ...position.plan, rsi: newRsi } } as any);
     }
-  }, [isEditingAtr, position]);
+    setIsEditingRsi(false);
+  };
+
+  const handleUpdateTargets = async () => {
+    if (!position) return;
+    const t1 = parseFloat(t1Input) || position.plan?.target || 0;
+    const t2 = parseFloat(t2Input) || position.plan?.targets?.[0] || 0;
+    const t3 = parseFloat(t3Input) || position.plan?.targets?.[1] || 0;
+    await updatePosition(position.id, { plan: { ...position.plan, target: t1, targets: [t2, t3] } } as any);
+    setIsEditingTargets(false);
+  };
+
+  const handleUpdateSupports = async () => {
+    if (!position) return;
+    const s1 = parseFloat(s1Input) || position.plan?.supports?.[0] || 0;
+    const s2 = parseFloat(s2Input) || position.plan?.supports?.[1] || 0;
+    const s3 = parseFloat(s3Input) || position.plan?.supports?.[2] || 0;
+    await updatePosition(position.id, { plan: { ...position.plan, supports: [s1, s2, s3] } } as any);
+    setIsEditingSupports(false);
+  };
+
+  useEffect(() => {
+    if (position) {
+      if (isEditingAtr) setAtrInput((position.trailingStop?.atrAtEntry || position.plan?.atr || 0).toString());
+      if (isEditingRsi) setRsiInput((position.plan?.rsi || 0).toString());
+      if (isEditingTargets) {
+        setT1Input((position.plan?.target || 0).toString());
+        setT2Input((position.plan?.targets?.[0] || 0).toString());
+        setT3Input((position.plan?.targets?.[1] || 0).toString());
+      }
+      if (isEditingSupports) {
+        setS1Input((position.plan?.supports?.[0] || 0).toString());
+        setS2Input((position.plan?.supports?.[1] || 0).toString());
+        setS3Input((position.plan?.supports?.[2] || 0).toString());
+      }
+    }
+  }, [isEditingAtr, isEditingRsi, isEditingTargets, isEditingSupports, position]);
 
 
 
@@ -674,7 +700,7 @@ if (!position || !metrics) return null;
                   {metrics!.isOpen && (
                   <div className="flex items-center bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-lg overflow-hidden shadow-sm">
                     <button 
-                      onClick={() => { setIsEditingAtr(!isEditingAtr); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); }}
+                      onClick={() => { setIsEditingAtr(!isEditingAtr); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingRsi(false); }}
                       className="px-2 py-1.5 text-[10px] font-bold text-purple-700 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors flex items-center gap-1"
                       title="تعديل قيمة ATR لحساب الوقف الميكانيكي"
                     >
@@ -699,11 +725,50 @@ if (!position || !metrics) return null;
                     ) : (
                       <div 
                         className="px-3 py-1.5 text-xs font-black text-purple-800 dark:text-purple-200 cursor-pointer hover:text-purple-600 dark:hover:text-purple-300 transition-colors font-mono-num"
-                        onClick={() => { setIsEditingAtr(true); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); }}
+                        onClick={() => { setIsEditingAtr(true); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingRsi(false); }}
                         dir="ltr"
                         title="انقر لتعديل ATR"
                       >
                         {((position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0)).toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                  )}
+
+                  {/* RSI Pill */}
+                  {metrics!.isOpen && (
+                  <div className="flex items-center bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-lg overflow-hidden shadow-sm">
+                    <button 
+                      onClick={() => { setIsEditingRsi(!isEditingRsi); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); }}
+                      className="px-2 py-1.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors flex items-center gap-1"
+                      title="تعديل قيمة RSI"
+                    >
+                      RSI:
+                    </button>
+                    {isEditingRsi ? (
+                      <div className="flex items-center">
+                        <input 
+                          type="number" step="any"
+                          value={rsiInput}
+                          onChange={(e) => setRsiInput(e.target.value)}
+                          className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-indigo-900 dark:text-indigo-100"
+                          dir="ltr"
+                          autoFocus
+                          placeholder={((position!.plan?.rsi || 0)).toFixed(1)}
+                        />
+                        <button 
+                          onClick={handleUpdateRsi}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1.5 text-[10px] font-bold transition-colors"
+                        >حفظ</button>
+                      </div>
+                    ) : (
+                      <div 
+                        className="px-3 py-1.5 text-xs font-black text-indigo-800 dark:text-indigo-200 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors font-mono-num"
+                        onClick={() => { setIsEditingRsi(true); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); }}
+                        dir="ltr"
+                        title="انقر لتعديل RSI"
+                      >
+                        {((position!.plan?.rsi || 0)).toFixed(1)}%
                       </div>
                     )}
                   </div>
@@ -863,53 +928,85 @@ if (!position || !metrics) return null;
               </div>
             </div>
 
-            {/* Trailing Stop Metrics Cards */}
+            {/* Targets and Supports */}
             <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="bg-slate-50 dark:bg-slate-800/70 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/60 text-center">
-                <div className="flex items-center justify-center gap-1.5 mb-1 text-slate-400 font-bold text-xs">
-                  <ArrowDownToLine className="w-4 h-4" />
-                  الوقف المبدئي
+              <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-800/50">
+                <div className="flex items-center justify-between mb-3 border-b border-emerald-100 dark:border-emerald-800/50 pb-2">
+                  <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
+                    <Target className="w-4 h-4" />
+                    المستهدفات (Targets)
+                  </div>
+                  {isEditingTargets ? (
+                    <div className="flex items-center gap-1">
+                      <button onClick={handleUpdateTargets} className="text-[10px] font-black bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded">حفظ</button>
+                      <button onClick={() => setIsEditingTargets(false)} className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded">إلغاء</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setIsEditingTargets(true)} className="text-[10px] font-bold text-emerald-600 hover:underline">تعديل</button>
+                  )}
                 </div>
-                {isEditingInitStop ? (
-                  <div className="flex items-center justify-center gap-2 mt-2">
-                    <input type="number" step="any" value={initStopInput} onChange={e => setInitStopInput(e.target.value)} className="w-20 text-center px-2 py-1 rounded bg-white dark:bg-slate-900 border text-slate-700 dark:text-slate-200 font-black text-sm" dir="ltr" autoFocus placeholder={(analytics?.initialStop || 0).toFixed(2)} />
-                    <button onClick={handleInitialStopUpdate} className="text-[10px] bg-slate-700 text-white px-2 py-1 rounded font-bold">حفظ</button>
-                    <button onClick={() => setIsEditingInitStop(false)} className="text-[10px] bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded font-bold">إلغاء</button>
-                  </div>
-                ) : (
-                  <div className="text-2xl font-black text-slate-700 dark:text-slate-200 font-mono-num flex items-center justify-center gap-2" dir="ltr">
-                    {(analytics?.initialStop || 0).toFixed(2)}
-                    <button onClick={() => { setInitStopInput((analytics?.initialStop || 0).toString()); setIsEditingInitStop(true); setStopError(null); }} className="text-[10px] text-slate-500 hover:text-slate-700 underline" title="تعديل وقف الخطة المبدئي (أساس حساب R)">تعديل</button>
-                  </div>
-                )}
-
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={`t${i}`} className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-500">T{i}</span>
+                      {isEditingTargets ? (
+                        <input
+                          type="number" step="any"
+                          value={i === 1 ? t1Input : i === 2 ? t2Input : t3Input}
+                          onChange={(e) => i === 1 ? setT1Input(e.target.value) : i === 2 ? setT2Input(e.target.value) : setT3Input(e.target.value)}
+                          className="w-16 bg-white dark:bg-slate-900 border text-center font-black rounded px-1 py-0.5"
+                          dir="ltr"
+                        />
+                      ) : (
+                        <span className="font-black text-emerald-700 dark:text-emerald-300 font-mono-num">
+                          {(i === 1 ? position!.plan?.target : i === 2 ? position!.plan?.targets?.[0] : position!.plan?.targets?.[1]) || '—'}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <div className="bg-red-50 dark:bg-red-950/40 p-4 rounded-2xl border border-red-100 dark:border-red-900/60 text-center relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-1.5 h-full bg-red-500 rounded-r-2xl"></div>
-                <div className="flex items-center justify-center gap-1.5 mb-1 text-red-600 dark:text-red-400 font-bold text-xs">
-                  <ShieldAlert className="w-4 h-4" />
-                  الوقف المتحرك الحالي
+              <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-2xl border border-blue-100 dark:border-blue-800/50">
+                <div className="flex items-center justify-between mb-3 border-b border-blue-100 dark:border-blue-800/50 pb-2">
+                  <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold text-xs">
+                    <ArrowDownToLine className="w-4 h-4" />
+                    الدعوم (Supports)
+                  </div>
+                  {isEditingSupports ? (
+                    <div className="flex items-center gap-1">
+                      <button onClick={handleUpdateSupports} className="text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded">حفظ</button>
+                      <button onClick={() => setIsEditingSupports(false)} className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded">إلغاء</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setIsEditingSupports(true)} className="text-[10px] font-bold text-blue-600 hover:underline">تعديل</button>
+                  )}
                 </div>
-                {isEditingStop ? (
-                  <div className="flex items-center justify-center gap-2 mt-2">
-                    <input type="number" step="any" value={manualStopInput} onChange={e => setManualStopInput(e.target.value)} className="w-20 text-center px-2 py-1 rounded bg-white dark:bg-slate-900 border text-red-600 dark:text-red-400 font-black text-sm" dir="ltr" autoFocus placeholder={currentStop.toFixed(2)} />
-                    <button onClick={handleManualStopUpdate} className="text-[10px] bg-red-600 text-white px-2 py-1 rounded font-bold">حفظ</button>
-                    <button onClick={() => setIsEditingStop(false)} className="text-[10px] bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded font-bold">إلغاء</button>
-                  </div>
-                ) : (
-                  <div className="text-2xl font-black text-red-600 dark:text-red-400 font-mono-num flex items-center justify-center gap-2" dir="ltr">
-                    {currentStop.toFixed(2)}
-                    <button onClick={() => setIsEditingStop(true)} className="text-[10px] text-red-500 hover:text-red-700 underline" title="تعديل يدوي للوقف (تراجع عن خطأ)">تعديل</button>
-                  </div>
-                )}
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={`s${i}`} className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-500">S{i}</span>
+                      {isEditingSupports ? (
+                        <input
+                          type="number" step="any"
+                          value={i === 1 ? s1Input : i === 2 ? s2Input : s3Input}
+                          onChange={(e) => i === 1 ? setS1Input(e.target.value) : i === 2 ? setS2Input(e.target.value) : setS3Input(e.target.value)}
+                          className="w-16 bg-white dark:bg-slate-900 border text-center font-black rounded px-1 py-0.5"
+                          dir="ltr"
+                        />
+                      ) : (
+                        <span className="font-black text-blue-700 dark:text-blue-300 font-mono-num">
+                          {(position!.plan?.supports?.[i-1]) || '—'}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
-            
 </div>
 
-          
             {/* Smart Trailing Stop Tools */}
             {metrics!.isOpen && analytics && (
               <div className="bg-orange-50/60 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/40 rounded-2xl p-5 mb-6">
@@ -1090,10 +1187,11 @@ if (!position || !metrics) return null;
       {/* Partial Transaction Modal */}
       <TransactionFormModal
         isOpen={!!txModalType}
-        onClose={() => setTxModalType(null)}
+        onClose={() => { setTxModalType(null); setEditingTx(null); }}
         position={position}
-        defaultType={txModalType === 'sellAll' || txModalType === 'edit' ? 'sell' : (txModalType as 'buy' | 'sell' | undefined) || 'buy'}
+        defaultType={txModalType === 'sellAll' ? 'sell' : txModalType === 'edit' && editingTx ? editingTx.type : (txModalType as 'buy' | 'sell' | undefined) || 'buy'}
         defaultShares={txModalType === 'sellAll' ? metrics!.openShares.toString() : ''}
+        transactionToEdit={txModalType === 'edit' ? editingTx : null}
       />
     
       <ConfirmModal

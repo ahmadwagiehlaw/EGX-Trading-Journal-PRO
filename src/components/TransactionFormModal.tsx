@@ -32,6 +32,7 @@ export default function TransactionFormModal({
   const [type, setType] = useState<'buy' | 'sell' | 'dividend' | 'split' | 'bonus'>(defaultType);
   const [priceStr, setPriceStr] = useState('');
   const [sharesStr, setSharesStr] = useState(defaultShares);
+  const [dateStr, setDateStr] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +56,7 @@ export default function TransactionFormModal({
       setType(transactionToEdit.type);
       setPriceStr(transactionToEdit.price.toString());
       setSharesStr(transactionToEdit.shares.toString());
+      setDateStr(new Date(transactionToEdit.date).toISOString().slice(0, 10));
       setNote(transactionToEdit.note || '');
       
       if (transactionToEdit.type === 'buy') {
@@ -130,7 +132,7 @@ export default function TransactionFormModal({
 
       const rawPayload = {
         type,
-        date: transactionToEdit ? transactionToEdit.date : Date.now(),
+        date: new Date(dateStr).getTime(),
         price,
         shares,
         amount,
@@ -223,6 +225,10 @@ export default function TransactionFormModal({
         </div>
 
         <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5 col-span-2">
+            <label className="text-xs font-black text-slate-500">تاريخ المعاملة</label>
+            <input type="date" required value={dateStr} onChange={e => setDateStr(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 text-center font-bold font-mono-num" />
+          </div>
           <div className="space-y-1.5">
             <label className="text-xs font-black text-slate-500">عدد الأسهم</label>
             <input type="number" step="1" required value={sharesStr} onChange={e => setSharesStr(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 text-center font-bold" />

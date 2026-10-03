@@ -44,7 +44,9 @@ export interface TickerPosition {
     strategy?: string;
     entryZone?: { min: number; max: number };
     target: number; // T1 (Main Target)
-    targets?: number[]; // [T2, T3, ...] optional additional targets for scaling out
+    targets?: number[]; // [T2, T3] optional additional targets
+    supports?: number[]; // [S1, S2, S3] optional supports
+    rsi?: number; // RSI indicator percentage
     stop: number;
     timeStopDays?: number; // Optional max hold time in days
     atr?: number;

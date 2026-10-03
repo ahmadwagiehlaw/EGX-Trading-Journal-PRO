@@ -22,6 +22,16 @@ export function getPath(collectionName: string) {
   return collectionName;
 }
 
+export interface StickyNote {
+  id: string;
+  title: string;
+  content: string;
+  images?: string[];
+  createdAt: number;
+  updatedAt: number;
+  color?: string;
+}
+
 export interface WeeklyReview {
   id: string;
   weekStartDate: number;
@@ -105,6 +115,11 @@ export interface TradeContextType {
   addWeeklyReview: (review: Omit<WeeklyReview, 'id' | 'createdAt'>) => Promise<void>;
   updateWeeklyReview: (id: string, data: Partial<WeeklyReview>) => Promise<void>;
   deleteWeeklyReview: (id: string) => Promise<void>;
+  
+  stickyNotes: StickyNote[];
+  addStickyNote: (note: Omit<StickyNote, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  updateStickyNote: (id: string, data: Partial<StickyNote>) => Promise<void>;
+  deleteStickyNote: (id: string) => Promise<void>;
 
   // Positions (Primary Ticker-centric model)
   positions: TickerPosition[];
@@ -341,6 +356,7 @@ export function TradeProvider({ children }: { children: ReactNode }) {
   
 
   const [weeklyReviews, setWeeklyReviews] = useState<WeeklyReview[]>([]);
+  const [stickyNotes, setStickyNotes] = useState<StickyNote[]>([]);
 
   const addWeeklyReview = async (review: Omit<WeeklyReview, 'id' | 'createdAt'>) => {
     const colRef = collection(db, getPath('weekly_reviews'));
@@ -355,6 +371,21 @@ export function TradeProvider({ children }: { children: ReactNode }) {
 
 const deleteWeeklyReview = async (id: string) => {
     await deleteDoc(doc(db, getPath('weekly_reviews'), id));
+  };
+
+  const addStickyNote = async (note: Omit<StickyNote, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const colRef = collection(db, getPath('sticky_notes'));
+    const docRef = doc(colRef);
+    const newNote = { ...note, createdAt: Date.now(), updatedAt: Date.now() };
+    await setDoc(docRef, newNote);
+  };
+  
+  const updateStickyNote = async (id: string, data: Partial<StickyNote>) => {
+    await updateDoc(doc(db, getPath('sticky_notes'), id), { ...data, updatedAt: Date.now() });
+  };
+  
+  const deleteStickyNote = async (id: string) => {
+    await deleteDoc(doc(db, getPath('sticky_notes'), id));
   };
   const [plans, setPlans] = useState<Plan[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
@@ -427,12 +458,19 @@ const deleteWeeklyReview = async (id: string) => {
       reviews.sort((a, b) => b.weekEndDate - a.weekEndDate);
       setWeeklyReviews(reviews);
     }, handleError);
+    
+    const unsubNotes = onSnapshot(collection(db, getPath('sticky_notes')), (snapshot) => {
+      const notes = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as StickyNote));
+      notes.sort((a, b) => b.updatedAt - a.updatedAt);
+      setStickyNotes(notes);
+    }, handleError);
 
     return () => {
       unsubTrades();
       unsubPlans();
       unsubCapital();
       unsubWeekly();
+      unsubNotes();
       unsubLedger();
     };
   }, []);
@@ -940,6 +978,10 @@ const deleteWeeklyReview = async (id: string) => {
     addWeeklyReview,
     updateWeeklyReview,
     deleteWeeklyReview,
+    stickyNotes,
+    addStickyNote,
+    updateStickyNote,
+    deleteStickyNote,
 
     positions,
     trades,
@@ -1027,4 +1069,5 @@ export function useTrades() {
     throw new Error('useTrades must be used within a TradeProvider');
   }
   return context;
-}    // 5. Listen to weekly reviews
+}
+    // 5. Listen to weekly reviews

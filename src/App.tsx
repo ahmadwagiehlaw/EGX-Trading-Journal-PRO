@@ -1,6 +1,8 @@
 import { useState, lazy, Suspense, useCallback } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
+import StickyNotesPanel from './components/StickyNotesPanel';
+import { Pin } from 'lucide-react';
 import Watchlist from './components/Watchlist';
 import TradesJournal from './components/TradesJournal';
 import CashLedger from './components/CashLedger';
@@ -14,7 +16,8 @@ const Settings = lazy(() => import('./components/Settings'));
 const TradingDeskModal = lazy(() => import('./components/TradingDeskModal'));
 const RiskCalculatorModal = lazy(() => import('./components/RiskCalculatorModal'));
 
-function App() {
+export default function App() {
+  const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('لوحة القيادة');
   const [draftTrade, setDraftTrade] = useState<any>(null);
   const [isNewTradeModalOpen, setIsNewTradeModalOpen] = useState(false);
@@ -106,8 +109,15 @@ function App() {
 
       {/* PWA Background Update Notification */}
       <ReloadPrompt />
+      <button 
+        onClick={() => setIsNotesOpen(true)}
+        className="fixed bottom-6 right-6 z-40 p-4 bg-amber-500 hover:bg-amber-600 text-white rounded-full shadow-2xl hover:shadow-amber-500/50 transition-all transform hover:scale-110 flex items-center justify-center"
+        title="ملاحظات وأفكار"
+      >
+        <Pin className="w-6 h-6" />
+      </button>
+
+      <StickyNotesPanel isOpen={isNotesOpen} onClose={() => setIsNotesOpen(false)} />
     </>
   );
 }
-
-export default App;
