@@ -42,8 +42,10 @@ export interface TickerPosition {
   plan?: {
     strategy?: string;
     entryZone?: { min: number; max: number };
-    target: number;
+    target: number; // T1 (Main Target)
+    targets?: number[]; // [T2, T3, ...] optional additional targets for scaling out
     stop: number;
+    timeStopDays?: number; // Optional max hold time in days
     atr?: number;
     checklist?: { majorSR: boolean; bos: boolean; retest: boolean };
     images?: string[];
@@ -75,6 +77,7 @@ export interface TickerPosition {
   
   currentMarketPrice?: number;
   sector?: string;
+  coreShares?: number; // Core & Satellite: number of shares designated as long-term Core
   entryDate?: number;
   openedDate?: number;
   closedDate?: number;
@@ -202,7 +205,8 @@ export function computePositionMetrics(position: TickerPosition, commissionRate:
     currentPrice,
     unrealizedPnL,
     netUnrealizedPnL,
-    txPnL: sim.txPnL || {}
+    txPnL: sim.txPnL || {},
+    openLots: sim.openLots || []
   };
 }
 
@@ -264,3 +268,44 @@ export function computeRealizedPnL(txs: Transaction[]) { return simulatePosition
 export function computeTotalCommission(txs: Transaction[], r: number) { return simulatePositionMetrics(txs, r).totalCommissionPaid; }
 export function computeNetRealizedPnL(txs: Transaction[], r: number) { return simulatePositionMetrics(txs, r).totalNetRealizedPnL; }
 export function computeOpenInvestedCapital(txs: Transaction[]) { return simulatePositionMetrics(txs).totalCost; }
+
+
+export interface OpenLot {
+  id: string;
+  date: number;
+  price: number;
+  originalShares: number;
+  remainingShares: number;
+}
+
+export function computeOpenLotsLowestPriceFirst(transactions: Transaction[] = []): OpenLot[] {
+  // Extract all buy transactions
+  let buys = transactions
+    .filter(t => t.type === 'buy')
+    .map(t => ({
+      id: t.id,
+      date: t.date,
+      price: t.price,
+      originalShares: t.shares,
+      remainingShares: t.shares
+    }))
+    .sort((a, b) => a.price - b.price); // Lowest price first!
+
+  // Subtract sells
+  const sells = transactions.filter(t => t.type === 'sell');
+  for (const sell of sells) {
+    let sharesToSell = sell.shares;
+    for (const buy of buys) {
+      if (sharesToSell <= 0) break;
+      if (buy.remainingShares > 0) {
+        const deducted = Math.min(buy.remainingShares, sharesToSell);
+        buy.remainingShares -= deducted;
+        sharesToSell -= deducted;
+      }
+    }
+  }
+
+  // Return only remaining lots, sorted by date (or keep lowest price first?)
+  // Let's sort by price ascending so the user sees the cheapest first to sell.
+  return buys.filter(b => b.remainingShares > 0).sort((a, b) => a.price - b.price);
+}

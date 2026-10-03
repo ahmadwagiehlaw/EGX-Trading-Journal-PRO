@@ -18,6 +18,7 @@ import {
 import { useTrades } from '../context/TradeContext';
 import { computePositionMetrics, formatEGP } from '../utils/calculations';
 import PnLCalendar from './PnLCalendar';
+import WeeklyReviewTab from './WeeklyReviewTab';
 
 export default function Analytics() {
   const { 
@@ -32,7 +33,7 @@ export default function Analytics() {
     maxDrawdown
   } = useTrades();
   const availableLiquidity = activeCapital - activeOpenCapital;
-  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'calendar' | 'psychology' | 'playbook' | 'positions'>('overview');
+  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'calendar' | 'psychology' | 'playbook' | 'positions' | 'weekly_review'>('overview');
 
   // Closed positions metrics
   const positionsWithRealizedPnL = useMemo(() => {
@@ -79,11 +80,55 @@ export default function Analytics() {
   const avgWin = wonPositions.length > 0 ? totalGain / wonPositions.length : 0;
   const avgLoss = lostPositions.length > 0 ? totalLoss / lostPositions.length : 0;
   const realRR = avgLoss > 0 ? (avgWin / avgLoss).toFixed(2) : (avgWin > 0 ? '∞' : '0.00');
+  const expectancy = ((parseFloat(winRate) / 100) * avgWin) - ((1 - (parseFloat(winRate) / 100)) * avgLoss);
 
   const ruleBreakerCount = positionsWithRealizedPnL.filter(p => p.journal?.isRuleBreaker).length;
   const disciplineScore = positionsWithRealizedPnL.length > 0 ? Math.max(0, 100 - (ruleBreakerCount * 12)) : 100;
 
   // Emotion Performance Analysis
+  const behavioralDeviations = useMemo(() => {
+    let costOfHope = 0;
+    let costOfFear = 0;
+    let disciplinedCount = 0;
+    let totalAnalyzed = 0;
+
+    positionsWithRealizedPnL.forEach(p => {
+      const metrics = computePositionMetrics(p, commissionRate);
+      const plan = p.plan;
+      if (!plan || !metrics.isFullyClosed) return;
+      
+      totalAnalyzed++;
+      let disciplined = true;
+
+      // Extra loss from ignoring stop loss
+      if (metrics.netRealizedPnL < 0 && plan.stop && plan.stop > 0) {
+        if (metrics.avgExit < plan.stop) {
+          disciplined = false;
+          costOfHope += ((plan.stop - metrics.avgExit) * metrics.totalSold);
+        }
+      }
+      
+      // Early exit from winning trades
+      if (metrics.netRealizedPnL > 0 && plan.target && plan.target > 0) {
+        // We only consider it early exit if they missed out significantly (e.g. at least 1% below target)
+        if (metrics.avgExit < (plan.target * 0.99)) {
+          disciplined = false;
+          costOfFear += ((plan.target - metrics.avgExit) * metrics.totalSold);
+        }
+      }
+      
+      if (disciplined) disciplinedCount++;
+    });
+
+    return {
+      costOfHope,
+      costOfFear,
+      disciplinedCount,
+      totalAnalyzed,
+      disciplineRate: totalAnalyzed > 0 ? (disciplinedCount / totalAnalyzed) * 100 : 0
+    };
+  }, [positionsWithRealizedPnL, commissionRate]);
+
   const emotionStats = useMemo(() => {
     const stats: Record<string, { count: number; won: number; pnl: number }> = {
       confident: { count: 0, won: 0, pnl: 0 },
@@ -190,6 +235,18 @@ export default function Analytics() {
           <Target className="w-4 h-4" />
           أداء الاستراتيجيات (Playbook)
         </button>
+
+        <button
+          onClick={() => setActiveSubTab('weekly_review')}
+          className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+            activeSubTab === 'weekly_review'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          مراجعة نهاية الأسبوع (Weekly Review)
+        </button>
       </div>
 
       {/* TAB 1: OVERVIEW & EQUITY CURVE */}
@@ -208,12 +265,12 @@ export default function Analytics() {
             </div>
 
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-500 flex items-center justify-center mb-2">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center mb-2 ${expectancy > 0 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-500' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-500'}`}>
                 <Target className="w-5 h-5" />
               </div>
-              <p className="text-slate-500 dark:text-slate-400 font-bold text-[11px]">عائد المخاطرة (Real RR)</p>
-              <h3 className="text-xl font-black text-emerald-700 dark:text-emerald-500 font-mono-num mt-1" dir="ltr">1 : {realRR}</h3>
-              <span className="text-[10px] text-slate-400 font-bold mt-0.5">الربح / الخسارة</span>
+              <p className="text-slate-500 dark:text-slate-400 font-bold text-[11px]">توقع الربح (Expectancy)</p>
+              <h3 className={`text-xl font-black font-mono-num mt-1 ${expectancy > 0 ? 'text-emerald-700 dark:text-emerald-500' : 'text-red-700 dark:text-red-500'}`} dir="ltr">{expectancy > 0 ? '+' : ''}{expectancy.toFixed(2)}</h3>
+              <span className="text-[10px] text-slate-400 font-bold mt-0.5" title={`Real RR: 1:${realRR}`}>م. الربح - م. الخسارة للمتوسط</span>
             </div>
             
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">
@@ -321,6 +378,45 @@ export default function Analytics() {
       {/* TAB 3: PSYCHOLOGY & LESSONS */}
       {activeSubTab === 'psychology' && (
         <div className="space-y-6">
+          
+          {/* Behavioral Deviations (Cost of Emotions) */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm mb-6">
+            <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2 mb-6">
+              <Activity className="w-5 h-5 text-indigo-600" />
+              التحليل السلوكي وتكلفة المشاعر (Process vs Outcome)
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              
+              <div className="bg-red-50 dark:bg-red-900/10 p-5 rounded-2xl border border-red-100 dark:border-red-900/30 flex flex-col justify-center">
+                <span className="text-xs font-bold text-red-600 dark:text-red-400 mb-1">تكلفة التمسك بالأمل (Cost of Hope)</span>
+                <span className="text-xl font-black text-red-700 dark:text-red-300 font-mono-num" dir="ltr">
+                  -{formatEGP(behavioralDeviations.costOfHope)}
+                </span>
+                <p className="text-[10px] text-red-500 mt-2 font-medium">خسائر إضافية نتيجة عدم الالتزام بوقف الخسارة المحدد في الخطة.</p>
+              </div>
+
+              <div className="bg-amber-50 dark:bg-amber-900/10 p-5 rounded-2xl border border-amber-100 dark:border-amber-900/30 flex flex-col justify-center">
+                <span className="text-xs font-bold text-amber-600 dark:text-amber-400 mb-1">تكلفة الخوف (Cost of Fear)</span>
+                <span className="text-xl font-black text-amber-700 dark:text-amber-300 font-mono-num" dir="ltr">
+                  -{formatEGP(behavioralDeviations.costOfFear)}
+                </span>
+                <p className="text-[10px] text-amber-500 mt-2 font-medium">أرباح ضائعة نتيجة الخروج المبكر وجني الربح قبل الهدف المحدد.</p>
+              </div>
+
+              <div className="bg-emerald-50 dark:bg-emerald-900/10 p-5 rounded-2xl border border-emerald-100 dark:border-emerald-900/30 flex flex-col justify-center relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500"></div>
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-1">نسبة الانضباط (Discipline Rate)</span>
+                <span className="text-2xl font-black text-emerald-700 dark:text-emerald-300 font-mono-num">
+                  {behavioralDeviations.disciplineRate.toFixed(0)}%
+                </span>
+                <p className="text-[10px] text-emerald-600 mt-2 font-medium">
+                  التزام تام بالخطة في {behavioralDeviations.disciplinedCount} من أصل {behavioralDeviations.totalAnalyzed} صفقة تم إغلاقها.
+                </p>
+              </div>
+
+            </div>
+          </div>
+
           <div className="grid md:grid-cols-2 gap-6">
             
             {/* Emotion vs Win Rate Breakdown */}
@@ -513,6 +609,10 @@ export default function Analytics() {
         </div>
       )}
 
+      {/* TAB 5: WEEKLY REVIEW */}
+      {activeSubTab === 'weekly_review' && (
+        <WeeklyReviewTab />
+      )}
     </div>
   );
 }

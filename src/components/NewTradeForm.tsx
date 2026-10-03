@@ -12,6 +12,11 @@ export default function NewTradeForm({
 }) {
   const { addPosition, updatePosition, capitalInvestment, capitalSpeculation, totalOpenCapitalInvestment } = useTrades();
 
+    const [dateStr, setDateStr] = useState(() => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16);
+  });
   const [symbol, setSymbol] = useState(initialData?.symbol || '');
   const [entryPrice, setEntryPrice] = useState<string>(
     initialData?.entryPrice?.toString() || 
@@ -116,7 +121,7 @@ export default function NewTradeForm({
           atrAtEntry: atr15,
         },
         journal: {
-          openedDate: Date.now(),
+          openedDate: new Date(dateStr).getTime(),
           tags: [],
           isRuleBreaker: false,
           emotion: 'neutral',
@@ -142,6 +147,20 @@ export default function NewTradeForm({
             placeholder="مثال: COMI أو التجاري الدولي..."
           />
         </div>
+      </div>
+
+
+
+      {/* Date Field */}
+      <div className="mt-4">
+        <label className="text-xs font-black text-slate-500 dark:text-slate-400 block mb-2 text-center">تاريخ ووقت فتح الخطة/التمركز</label>
+        <input 
+          type="datetime-local" 
+          value={dateStr}
+          onChange={(e) => setDateStr(e.target.value)}
+          className="w-full text-base font-black text-slate-700 dark:text-slate-300 py-3 px-3 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-xl focus:border-blue-500 focus:outline-none text-center shadow-inner"
+          dir="ltr"
+        />
       </div>
 
       {/* Risk Management & Portfolio */}

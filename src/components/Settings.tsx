@@ -1,3 +1,4 @@
+import ConfirmModal from './ConfirmModal';
 import { useState } from 'react';
 import { 
   Save, 
@@ -16,6 +17,7 @@ import { exportPositionsToCsv, exportPlansToCsv } from '../utils/exportCsv';
 
 export default function Settings() {
   const { capitalInvestment, capitalSpeculation, positions, plans, commissionRate, updateCommissionRate } = useTrades();
+  const [confirmReset, setConfirmReset] = useState(false);
   const [defaultRisk, setDefaultRisk] = useState('1');
   const [commission, setCommission] = useState(commissionRate.toString());
 
@@ -44,12 +46,16 @@ export default function Settings() {
     URL.revokeObjectURL(url);
   };
 
-  const handleClearData = () => {
-    if (window.confirm('تحذير خطير: هل أنت متأكد من رغبتك في حذف جميع الصفقات والبيانات الخاصة بك؟ هذا الإجراء لا يمكن التراجع عنه!')) {
-      if (window.confirm('تأكيد نهائي: اضغط موافق لتصفير السجل.')) {
-        localStorage.removeItem('egx_trades');
-        window.location.reload();
-      }
+  const handleClearData = () => setConfirmReset(true);
+
+  const executeClearData = async () => {
+    try {
+      localStorage.clear(); 
+      window.location.reload();
+    } catch (error: any) {
+      alert('حدث خطأ أثناء مسح البيانات: ' + error.message);
+    } finally {
+      setConfirmReset(false);
     }
   };
 
@@ -200,6 +206,16 @@ export default function Settings() {
         </div>
 
       </div>
+    
+      <ConfirmModal
+        isOpen={confirmReset}
+        title="مسح جميع البيانات"
+        message="تحذير: سيتم مسح جميع الصفقات والخطط والمراجعات من السحابة نهائياً. لا يمكن التراجع عن هذه الخطوة!"
+        type="danger"
+        confirmText="نعم، امسح كل شيء"
+        onConfirm={executeClearData}
+        onCancel={() => setConfirmReset(false)}
+      />
     </div>
   );
 }

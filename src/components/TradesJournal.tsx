@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from 'react';
+import { useState, useMemo, useEffect, memo } from 'react';
 import {
   Plus,
   Search,
@@ -109,11 +109,15 @@ function Modal({ isOpen, onClose, children, title, maxWidth = 'max-w-3xl' }: {
 export default memo(function TradesJournal({
   draftTrade,
   isNewTradeOpen,
-  setIsNewTradeOpen
+  setIsNewTradeOpen,
+  activeTradeIdProp,
+  onCloseActiveTrade
 }: {
   draftTrade: any;
   isNewTradeOpen: boolean;
   setIsNewTradeOpen: (v: boolean) => void;
+  activeTradeIdProp?: string | null;
+  onCloseActiveTrade?: () => void;
 }) {
   const { positions, deletePosition, deleteTransaction, capitalInvestment, capitalSpeculation } = useTrades();
 
@@ -128,7 +132,14 @@ export default memo(function TradesJournal({
 
   const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
   const [editingTrade, setEditingTrade] = useState<any>(null);
-  const [expandedPositionId, setExpandedPositionId] = useState<string | null>(null);
+  const [expandedPositionId, setExpandedPositionId] = useState<string | null>(activeTradeIdProp || null);
+
+  useEffect(() => {
+    if (activeTradeIdProp) {
+      setExpandedPositionId(activeTradeIdProp);
+    }
+  }, [activeTradeIdProp]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'won' | 'lost' | 'ruleBreaker'>('all');
   const [txModal, setTxModal] = useState<{ pos: TickerPosition; type: 'buy' | 'sell' } | null>(null);
@@ -645,7 +656,7 @@ export default memo(function TradesJournal({
                             </button>
 
                             <button
-                              onClick={() => setExpandedPositionId(isExpanded ? null : pos.id)}
+                              onClick={() => { if (isExpanded) { setExpandedPositionId(null); onCloseActiveTrade?.(); } else { setExpandedPositionId(pos.id); } }}
                               className="p-1.5 text-slate-400 hover:text-slate-800 dark:hover:text-white rounded-lg transition-colors"
                               title="تفاصيل الحركات"
                             >

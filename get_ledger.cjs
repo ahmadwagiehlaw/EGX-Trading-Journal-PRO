@@ -1,5 +1,5 @@
 ﻿const fs = require('fs');
-const content = fs.readFileSync('src/components/ActiveTrades.tsx', 'utf8');
-const lines = content.split('\n');
-const idx = lines.findIndex(l => l.includes('سجل صفقات السهم'));
-console.log(lines.slice(idx, idx + 100).join('\n'));
+let c = fs.readFileSync('src/context/TradeContext.tsx', 'utf8');
+const lines = c.split('\n');
+const idx = lines.findIndex(l => l.includes('export interface LedgerEntry'));
+console.log(lines.slice(idx, idx + 15).join('\n'));

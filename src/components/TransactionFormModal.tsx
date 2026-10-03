@@ -1,3 +1,5 @@
+import React from 'react';
+import ConfirmModal from './ConfirmModal';
 import { useState, useMemo, useEffect } from 'react';
 import { Plus, ArrowDownLeft, X, AlertCircle } from 'lucide-react';
 import { useTrades, type TickerPosition } from '../context/TradeContext';
@@ -33,6 +35,8 @@ export default function TransactionFormModal({
   const [note, setNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingSaveData, setPendingSaveData] = useState<any>(null);
+  const formRef = React.useRef<HTMLFormElement>(null);
 
   const [portfolioType, setPortfolioType] = useState<'investment' | 'speculation'>(
     transactionToEdit?.portfolioType || position?.portfolioType || 'investment'
@@ -159,7 +163,8 @@ export default function TransactionFormModal({
       }
 
       setIsSubmitting(false);
-      if (!inline) onClose();
+      if (!inline) setPendingSaveData(null);
+    onClose();
       
       if (inline) {
         setPriceStr('');
@@ -349,7 +354,21 @@ export default function TransactionFormModal({
         <button type="submit" disabled={isSubmitting} className="w-full py-3.5 rounded-xl font-black text-sm text-white shadow-md flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700">
           {isSubmitting ? 'جاري الحفظ...' : transactionToEdit ? 'حفظ التعديلات' : 'إضافة المعاملة'}
         </button>
-      </form>
+      
+      <ConfirmModal
+        isOpen={!!pendingSaveData}
+        title="تجاوز السيولة المتاحة"
+        message={pendingSaveData?.msg || ''}
+        type="warning"
+        confirmText="تأكيد الشراء"
+        onConfirm={() => {
+          if (formRef.current) {
+            formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+          }
+        }}
+        onCancel={() => setPendingSaveData(null)}
+      />
+</form>
     </div>
   );
 

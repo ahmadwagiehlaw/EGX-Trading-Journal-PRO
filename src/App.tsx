@@ -19,6 +19,8 @@ function App() {
   const [draftTrade, setDraftTrade] = useState<any>(null);
   const [isNewTradeModalOpen, setIsNewTradeModalOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  
+  const [activeTradeId, setActiveTradeId] = useState<string | null>(null);
   const [isTradingDeskOpen, setIsTradingDeskOpen] = useState(false);
   const [tradingDeskSymbol, setTradingDeskSymbol] = useState('COMI');
 
@@ -53,6 +55,8 @@ function App() {
             draftTrade={draftTrade} 
             isNewTradeOpen={isNewTradeModalOpen} 
             setIsNewTradeOpen={setIsNewTradeModalOpen} 
+            activeTradeIdProp={activeTradeId}
+            onCloseActiveTrade={() => setActiveTradeId(null)}
           />
         </div>
 

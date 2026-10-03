@@ -1,10 +1,10 @@
 ﻿const fs = require('fs');
-let c = fs.readFileSync('src/components/Analytics.tsx', 'utf8');
+let an = fs.readFileSync('src/components/Analytics.tsx', 'utf8');
 
-c = c.replace(
-  /capitalInvestment,[\s]*totalOpenCapital,/,
-  'capitalInvestment,\n      capitalSpeculation,\n      totalOpenCapital,'
-);
+const oldExp = `const expectancy = ((winRate / 100) * avgWin) - ((1 - (winRate / 100)) * avgLoss);`;
+const newExp = `const expectancy = ((parseFloat(winRate) / 100) * avgWin) - ((1 - (parseFloat(winRate) / 100)) * avgLoss);`;
 
-fs.writeFileSync('src/components/Analytics.tsx', c, 'utf8');
-console.log('Fixed analytics');
+an = an.replace(oldExp, newExp);
+
+fs.writeFileSync('src/components/Analytics.tsx', an, 'utf8');
+console.log('Fixed expectancy calc');

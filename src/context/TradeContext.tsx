@@ -16,6 +16,27 @@ import {
 
 export type { TickerPosition, Transaction };
 
+
+// Temporary getPath helper to support user isolation later
+export function getPath(collectionName: string) {
+  return collectionName;
+}
+
+export interface WeeklyReview {
+  id: string;
+  weekStartDate: number;
+  weekEndDate: number;
+  pnl: number;
+  winRate: number;
+  tradesCount: number;
+  openedCount?: number;
+  closedCount?: number;
+  whatWentWell: string;
+  whatWentWrong: string;
+  focusNextWeek: string;
+  createdAt: number;
+}
+
 export interface Plan {
   id: string;
   symbol: string;
@@ -67,6 +88,11 @@ export interface Trade extends Omit<TickerPosition, 'status'> {
 }
 
 export interface TradeContextType {
+    isSimulator: boolean;
+  toggleSimulator: () => void;
+  coreSatelliteTarget: number;
+  setCoreSatelliteTarget: (val: number) => void;
+  coreStats: { coreCapital: number; satelliteCapital: number; corePercent: number; satellitePercent: number; totalInvestmentCapital: number; isBalanced: boolean; };
   portfolioFilter: 'all' | 'investment' | 'speculation';
   setPortfolioFilter: (f: 'all' | 'investment' | 'speculation') => void;
   activeCapital: number;
@@ -74,9 +100,15 @@ export interface TradeContextType {
   activeOpenCapital: number;
   activeOpenRisk: number;
   filteredPositions: TickerPosition[];
+  // Weekly Reviews
+  weeklyReviews: WeeklyReview[];
+  addWeeklyReview: (review: Omit<WeeklyReview, 'id' | 'createdAt'>) => Promise<void>;
+  updateWeeklyReview: (id: string, data: Partial<WeeklyReview>) => Promise<void>;
+  deleteWeeklyReview: (id: string) => Promise<void>;
+
   // Positions (Primary Ticker-centric model)
   positions: TickerPosition[];
-  trades: Trade[]; // Legacy backward-compatibility alias
+
   addPosition: (pos: Omit<TickerPosition, 'id'>) => Promise<string>;
   updatePosition: (id: string, data: Partial<TickerPosition>) => Promise<void>;
   updateMarketPrice: (id: string, price: number) => Promise<void>;
@@ -185,7 +217,8 @@ function normalizePosition(raw: any, id: string): TickerPosition {
       },
       entryDate: raw.entryDate || (raw.transactions[0]?.date) || Date.now(),
       pnl: raw.pnl !== undefined ? raw.pnl : computeRealizedPnL(raw.transactions),
-      currentMarketPrice: raw.currentMarketPrice
+      currentMarketPrice: raw.currentMarketPrice,
+      coreShares: raw.coreShares
     };
   }
 
@@ -301,6 +334,28 @@ function positionToLegacyTrade(pos: TickerPosition): Trade {
 
 export function TradeProvider({ children }: { children: ReactNode }) {
   const [positions, setPositions] = useState<TickerPosition[]>([]);
+  const [isSimulator, setIsSimulator] = useState(false);
+  const toggleSimulator = () => setIsSimulator(!isSimulator);
+  const [coreSatelliteTarget, setCoreSatelliteTarget] = useState(75);
+
+  
+
+  const [weeklyReviews, setWeeklyReviews] = useState<WeeklyReview[]>([]);
+
+  const addWeeklyReview = async (review: Omit<WeeklyReview, 'id' | 'createdAt'>) => {
+    const colRef = collection(db, getPath('weekly_reviews'));
+    const docRef = doc(colRef);
+    const newReview = { ...review, createdAt: Date.now() };
+    await setDoc(docRef, newReview);
+  };
+
+    const updateWeeklyReview = async (id: string, data: Partial<WeeklyReview>) => {
+    await updateDoc(doc(db, getPath('weekly_reviews'), id), data);
+  };
+
+const deleteWeeklyReview = async (id: string) => {
+    await deleteDoc(doc(db, getPath('weekly_reviews'), id));
+  };
   const [plans, setPlans] = useState<Plan[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [legacyInvestmentCap, setLegacyInvestmentCap] = useState<number>(defaultCapital.investment);
@@ -366,10 +421,18 @@ export function TradeProvider({ children }: { children: ReactNode }) {
       setLedger(entries);
     }, handleError);
 
+    // 5. Listen to weekly reviews
+    const unsubWeekly = onSnapshot(collection(db, getPath('weekly_reviews')), (snapshot) => {
+      const reviews = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview));
+      reviews.sort((a, b) => b.weekEndDate - a.weekEndDate);
+      setWeeklyReviews(reviews);
+    }, handleError);
+
     return () => {
       unsubTrades();
       unsubPlans();
       unsubCapital();
+      unsubWeekly();
       unsubLedger();
     };
   }, []);
@@ -512,6 +575,8 @@ export function TradeProvider({ children }: { children: ReactNode }) {
     };
   }, [positions, commissionRate]);
 
+  
+
   // Compute Capital (Deposits vs Equity)
   const { depositedInvestment, depositedSpeculation, capitalInvestment, capitalSpeculation } = useMemo(() => {
     // 1. Calculate pure deposited capital from ledger
@@ -606,8 +671,14 @@ export function TradeProvider({ children }: { children: ReactNode }) {
       pnl: realizedPnL,
     };
 
+    // If this is the FIRST transaction, sync the openedDate to the transaction date
+    if ((!pos.transactions || pos.transactions.length === 0) && newTx.type === 'buy') {
+      updatePayload['journal.openedDate'] = newTx.date;
+    }
+
+    // If position closed, sync the closedDate to the transaction date
     if (newStatus === 'closed') {
-      updatePayload['journal.closedDate'] = Date.now();
+      updatePayload['journal.closedDate'] = newTx.date;
     }
 
     await updateDoc(doc(db, 'trades', positionId), updatePayload);
@@ -838,10 +909,37 @@ export function TradeProvider({ children }: { children: ReactNode }) {
     };
   }, [portfolioFilter, capitalInvestment, capitalSpeculation, depositedInvestment, depositedSpeculation, totalOpenCapital, totalOpenCapitalInvestment, totalOpenCapitalSpeculation, totalOpenRisk, positions, commissionRate]);
 
+  const coreStats = useMemo(() => {
+    const totalInvestmentCapital = capitalInvestment + depositedInvestment + totalOpenCapitalInvestment;
+    const coreCapital = positions.filter(p => p.portfolioType === 'investment' && p.plan?.strategy === 'core').reduce((acc, p) => acc + computePositionMetrics(p, commissionRate).openInvested, 0);
+    const satelliteCapital = positions.filter(p => p.portfolioType === 'investment' && p.plan?.strategy === 'satellite').reduce((acc, p) => acc + computePositionMetrics(p, commissionRate).openInvested, 0);
+    
+    const corePercent = totalInvestmentCapital > 0 ? (coreCapital / totalInvestmentCapital) * 100 : 0;
+    const satellitePercent = totalInvestmentCapital > 0 ? (satelliteCapital / totalInvestmentCapital) * 100 : 0;
+    
+    return {
+      coreCapital,
+      satelliteCapital,
+      corePercent,
+      satellitePercent,
+      totalInvestmentCapital,
+      isBalanced: corePercent >= coreSatelliteTarget - 5
+    };
+  }, [positions, capitalInvestment, depositedInvestment, totalOpenCapitalInvestment, commissionRate, coreSatelliteTarget]);
+
   const contextValue = useMemo(() => ({
+        isSimulator,
+    toggleSimulator,
+    coreSatelliteTarget,
+    setCoreSatelliteTarget,
+    coreStats,
     portfolioFilter, setPortfolioFilter,
     activeCapital, activeDeposited, activeOpenCapital, activeOpenRisk,
     filteredPositions,
+    weeklyReviews,
+    addWeeklyReview,
+    updateWeeklyReview,
+    deleteWeeklyReview,
 
     positions,
     trades,
@@ -901,7 +999,7 @@ export function TradeProvider({ children }: { children: ReactNode }) {
   }), [
     positions, trades, profitFactor, maxDrawdown, equityData, ledger,
     depositedInvestment, depositedSpeculation, plans,
-    capitalInvestment, capitalSpeculation, fixedIncome, portfolioFilter, setPortfolioFilter, activeCapital, activeDeposited, activeOpenCapital, activeOpenRisk, filteredPositions,
+    capitalInvestment, capitalSpeculation, fixedIncome, portfolioFilter, setPortfolioFilter, activeCapital, activeDeposited, activeOpenCapital, activeOpenRisk, filteredPositions, weeklyReviews,
     totalRealizedPnL, totalNetRealizedPnL, totalCommissionPaid,
     winRate, openPositionsCount, wonPositionsCount, lostPositionsCount,
     totalOpenCapital, totalOpenCapitalInvestment, totalOpenCapitalSpeculation,
@@ -929,4 +1027,4 @@ export function useTrades() {
     throw new Error('useTrades must be used within a TradeProvider');
   }
   return context;
-}
+}    // 5. Listen to weekly reviews

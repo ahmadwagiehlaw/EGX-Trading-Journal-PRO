@@ -1,36 +1,32 @@
 import { useState, memo } from 'react';
+import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
 import { Plus, Target, Clock, ArrowRight, CheckSquare, X, Save, Search, LineChart, FileText, Trash2, ArrowUpDown, HelpCircle } from 'lucide-react';
 import PlanUpdatesFeed from './PlanUpdatesFeed';
 import StockAutocomplete from './StockAutocomplete';
 import { useTrades, type Plan } from '../context/TradeContext';
 
+const CONFLUENCE_CRITERIA = [
+  { id: 'market_trend', label: 'السوق في اتجاه عام صاعد (Uptrend)', points: 1 },
+  { id: 'sector_trend', label: 'قطاع السهم إيجابي وتدخله سيولة', points: 1 },
+  { id: 'above_ma', label: 'السهم يتداول فوق المتوسطات المهمة (20/50)', points: 1 },
+  { id: 'clear_setup', label: 'نموذج فني واضح (اختراق قوي أو ارتداد من دعم)', points: 2 },
+  { id: 'volume_confirm', label: 'تأكيد بأحجام التداول (سيولة شرائية أو جفاف بيعي)', points: 2 },
+  { id: 'catalyst', label: 'وجود محفز (أخبار جوهرية إيجابية أو أرباح ممتازة)', points: 1 },
+  { id: 'rrr_ok', label: 'العائد للمخاطرة (R:R) جذاب وأكبر من 1:2', points: 2 },
+];
+
 const PLAYBOOK_TEMPLATES = [
   {
     name: 'اختراق منطقة تذبذب (VCP / Breakout)',
-    checklist: [
-      'حجم تداول أعلى من المتوسط بـ 150% عند الاختراق',
-      'تقلص التذبذب (Volatility Contraction) قبل الاختراق',
-      'السهم يتداول فوق متوسط 50 و 200 يوم',
-      'السوق في اتجاه عام صاعد (Uptrend)'
-    ]
+    checklist: []
   },
   {
     name: 'الشراء عند الارتداد (Pullback / Moving Average Bounce)',
-    checklist: [
-      'تراجع السعر نحو دعم أو متوسط (20/50) دون كسره بقوة',
-      'انخفاض حجم التداول أثناء التراجع (Dry up in volume)',
-      'ظهور شمعة انعكاسية (Hammer / Engulfing) عند الدعم',
-      'احتمالية العائد للمخاطرة (RRR) أعلى من 2:1'
-    ]
+    checklist: []
   },
   {
     name: 'استراتيجية الزخم (Momentum / Gap Up)',
-    checklist: [
-      'قفزة سعرية (Gap Up) مصحوبة بحجم تداول ضخم',
-      'القفزة ناتجة عن أخبار جوهرية أو أرباح ممتازة',
-      'السهم أغلق بالقرب من أعلى سعر في الجلسة',
-      'السهم في أعلى مستوياته (52-Week High)'
-    ]
+    checklist: []
   },
   {
     name: 'استراتيجية مخصصة (Custom)',
@@ -46,6 +42,7 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
   const [activeTab, setActiveTab] = useState<'all' | 'waiting' | 'ready'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [modalLeftTab, setModalLeftTab] = useState<'updates' | 'chart'>('updates');
   const [showPlaybookInfo, setShowPlaybookInfo] = useState(false);
 
   // Range helper
@@ -57,10 +54,13 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
 
   const calculateScore = (plan: Plan) => {
     if (!plan.checklist) return 0;
-    const items = Object.values(plan.checklist);
-    if (items.length === 0) return 0;
-    const passed = items.filter(Boolean).length;
-    return Math.round((passed / items.length) * 100);
+    let score = 0;
+    CONFLUENCE_CRITERIA.forEach(crit => {
+      if (plan.checklist?.[crit.id]) {
+        score += crit.points;
+      }
+    });
+    return score; // Max 10
   };
 
   const calculateRRR = (plan: Plan) => {
@@ -229,16 +229,19 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
           return (
             <div 
               key={item.id} 
-              className={`bg-white dark:bg-slate-900 backdrop-blur-md border rounded-3xl p-5 shadow-sm hover:shadow-xl transition-all flex flex-col relative group ${
+              onClick={() => { setSelectedPlan(item); setIsModalOpen(true); }}
+              className={`cursor-pointer bg-white dark:bg-slate-900 backdrop-blur-md border rounded-3xl p-5 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col relative group ${
                 isReady 
                   ? 'border-blue-300 dark:border-blue-700 ring-2 ring-blue-100 dark:ring-blue-950 shadow-blue-500/5' 
                   : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
               }`}
             >
               {/* Card Header */}
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex flex-col gap-1">
-                  <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight" dir="ltr">{item.symbol || '---'}</span>
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex flex-col gap-1 items-start">
+                  <div className="flex items-center gap-2">
+                    <span className="text-3xl font-black text-slate-900 dark:text-white tracking-tight" dir="ltr">{item.symbol || '---'}</span>
+                  </div>
                   <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md w-fit line-clamp-1">
                     {item.strategy || 'بدون استراتيجية'}
                   </span>
@@ -253,7 +256,7 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
                     {isReady ? 'جاهز للتنفيذ' : 'قيد المتابعة'}
                   </span>
                   <span className="text-[10px] font-mono-num font-black text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-md border border-emerald-100 dark:border-emerald-900">
-                    RR {rrr}
+                    RRR {rrr}
                   </span>
                 </div>
               </div>
@@ -263,7 +266,7 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
                     <ArrowUpDown className="w-3 h-3 text-blue-500" />
-                    نطاق الدخول (Range):
+                    نطاق الدخول:
                   </span>
                   <span className="font-black text-blue-700 dark:text-blue-400 font-mono-num" dir="ltr">
                     {entryMin === entryMax || entryMax === 0 
@@ -275,12 +278,12 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
 
                 <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60 dark:border-slate-700/60 text-center text-xs">
                   <div className="bg-emerald-50/70 dark:bg-emerald-950/40 p-1.5 rounded-lg border border-emerald-100 dark:border-emerald-900/60">
-                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500 block">الهدف</span>
-                    <span className="font-black text-emerald-700 dark:text-emerald-300" dir="ltr">{item.target?.toFixed(2) || '0.00'}</span>
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500 block">الهدف الرئيسي</span>
+                    <span className="font-black text-emerald-700 dark:text-emerald-300 text-sm" dir="ltr">{item.target?.toFixed(2) || '0.00'}</span>
                   </div>
                   <div className="bg-red-50/70 dark:bg-red-950/40 p-1.5 rounded-lg border border-red-100 dark:border-red-900/60">
-                    <span className="text-[10px] font-bold text-red-600 dark:text-red-500 block">الوقف</span>
-                    <span className="font-black text-red-700 dark:text-red-300" dir="ltr">{item.stop?.toFixed(2) || '0.00'}</span>
+                    <span className="text-[10px] font-bold text-red-600 dark:text-red-500 block">وقف الخسارة</span>
+                    <span className="font-black text-red-700 dark:text-red-300 text-sm" dir="ltr">{item.stop?.toFixed(2) || '0.00'}</span>
                   </div>
                 </div>
               </div>
@@ -295,23 +298,19 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
 
               {/* Action Buttons */}
               <div className="mt-auto flex flex-col gap-2 pt-1">
-                <button 
-                  onClick={() => { setSelectedPlan(item); setIsModalOpen(true); }}
-                  className="w-full py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black rounded-xl flex items-center justify-center gap-2 transition-colors"
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  عرض وتعديل التفاصيل
-                </button>
-                
                 {isReady && (
                   <button 
-                    onClick={() => handleConvertToTrade(item)}
+                    onClick={(e) => { e.stopPropagation(); handleConvertToTrade(item); }}
                     className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white text-xs font-black rounded-xl shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95"
                   >
                     تحويل لصفقة فعلية (تمركز)
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 )}
+                <div className="w-full py-2 bg-slate-100/50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 text-[11px] font-black rounded-xl flex items-center justify-center gap-1.5 transition-colors">
+                  <FileText className="w-3 h-3" />
+                  انقر لعرض وتعديل التفاصيل
+                </div>
               </div>
             </div>
           );
@@ -330,7 +329,7 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
       {isModalOpen && selectedPlan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-          <div className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh]">
+          <div className={`w-full bg-white dark:bg-slate-900 rounded-3xl shadow-2xl relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[95vh] transition-all duration-500 ease-out ${modalLeftTab === 'chart' ? 'max-w-[95vw] lg:max-w-7xl' : 'max-w-[95vw] lg:max-w-5xl'}`}>
             
             <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/70">
               <h2 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
@@ -376,22 +375,12 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
 
             <div className="flex-1 overflow-y-auto p-6 flex flex-col lg:flex-row gap-6 items-stretch">
               {/* Right Column: Parameters & Entry Range */}
-              <div className="w-full lg:w-[360px] space-y-4 bg-slate-50 dark:bg-slate-800/60 p-5 rounded-3xl border border-slate-100 dark:border-slate-700/60 flex flex-col shrink-0">
+              <div className="w-full lg:w-[420px] space-y-4 bg-slate-50 dark:bg-slate-800/60 p-5 rounded-3xl border border-slate-100 dark:border-slate-700/60 flex flex-col shrink-0">
                 
                 <div>
                   <div className="flex justify-between items-end mb-1.5">
                     <label className="text-xs font-black text-slate-500 dark:text-slate-400 block">السهم (ابحث بالاسم أو الرمز)</label>
-                    {selectedPlan.symbol && (
-                      <a 
-                        href={`https://www.tradingview.com/chart/?symbol=EGX:${selectedPlan.symbol}`} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 px-2 py-0.5 rounded-md flex items-center gap-1 transition-colors"
-                      >
-                        <LineChart className="w-3 h-3" />
-                        فتح الشارت
-                      </a>
-                    )}
+                    
                   </div>
                   <StockAutocomplete
                     value={selectedPlan.symbol}
@@ -455,51 +444,59 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
                   )}
 
 
-                  {/* Confluence Scoring Checklist */}
-                  {selectedPlan.strategy && PLAYBOOK_TEMPLATES.find(t => t.name === selectedPlan.strategy)?.checklist.length ? (
-                    <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-indigo-100 dark:border-indigo-900/60 shadow-inner">
-                      <div className="flex justify-between items-center mb-3">
-                        <label className="text-[11px] font-black text-indigo-800 dark:text-indigo-400">قائمة التحقق (Confluence Checklist)</label>
-                        <span className={`text-xs font-black px-2 py-0.5 rounded-md ${
-                          calculateScore(selectedPlan) >= 80 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' :
-                          calculateScore(selectedPlan) >= 50 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' :
-                          'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
-                        }`}>
-                          جودة الصفقة: {calculateScore(selectedPlan)}%
-                        </span>
-                      </div>
-                      <div className="space-y-2.5">
-                        {PLAYBOOK_TEMPLATES.find(t => t.name === selectedPlan.strategy)?.checklist.map(item => (
-                          <label key={item} className="flex items-start gap-2 cursor-pointer group">
-                            <input 
-                              type="checkbox" 
-                              checked={!!selectedPlan.checklist?.[item]}
-                              onChange={(e) => {
-                                const newChecklist = { ...selectedPlan.checklist, [item]: e.target.checked };
-                                const items = Object.values(newChecklist);
-                                const passed = items.filter(Boolean).length;
-                                const newScore = Math.round((passed / items.length) * 100);
-                                setSelectedPlan({
-                                  ...selectedPlan, 
-                                  checklist: newChecklist,
-                                  setupScore: newScore
-                                });
-                              }}
-                              className="mt-0.5 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
-                            />
-                            <span className={`text-xs font-bold leading-relaxed transition-colors ${!!selectedPlan.checklist?.[item] ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-300'}`}>
-                              {item}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
+                  {/* Confluence Matrix UI */}
+                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-indigo-100 dark:border-indigo-900/60 shadow-inner">
+                    <div className="flex justify-between items-center mb-3">
+                      <label className="text-[11px] font-black text-indigo-800 dark:text-indigo-400">نقاط قوة الصفقة (Confluence Score)</label>
+                      <span className={`text-xs font-black px-2 py-0.5 rounded-md flex items-center gap-1 ${
+                        calculateScore(selectedPlan) >= 8 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' :
+                        calculateScore(selectedPlan) >= 6 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' :
+                        'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
+                      }`}>
+                        {calculateScore(selectedPlan) < 6 && '⚠️'}
+                        جودة الصفقة: {calculateScore(selectedPlan)} / 10
+                      </span>
                     </div>
-                  ) : selectedPlan.strategy === 'استراتيجية مخصصة (Custom)' && (
+                    <div className="space-y-2.5">
+                      {CONFLUENCE_CRITERIA.map(crit => (
+                        <label key={crit.id} className="flex items-start gap-2 cursor-pointer group">
+                          <input 
+                            type="checkbox" 
+                            checked={!!selectedPlan.checklist?.[crit.id]}
+                            onChange={(e) => {
+                              const newChecklist = { ...selectedPlan.checklist };
+                              newChecklist[crit.id] = e.target.checked;
+                              
+                              let tempPlan = { ...selectedPlan, checklist: newChecklist };
+                              if (calculateScore(tempPlan) < 6 && tempPlan.status === 'ready') {
+                                tempPlan.status = 'waiting';
+                              }
+                              
+                              setSelectedPlan(tempPlan);
+                            }}
+                            className="mt-0.5 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 bg-white dark:bg-slate-800 dark:border-slate-600 transition-colors cursor-pointer"
+                          />
+                          <div className="flex flex-col">
+                            <span className={`text-[11px] font-bold leading-relaxed transition-colors ${
+                              selectedPlan.checklist?.[crit.id] 
+                                ? 'text-indigo-900 dark:text-indigo-300' 
+                                : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300'
+                            }`}>
+                              {crit.label}
+                            </span>
+                            <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold">{crit.points} {crit.points === 1 ? 'نقطة' : 'نقاط'}</span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {selectedPlan.strategy === 'استراتيجية مخصصة (Custom)' && (
                     <input 
                       type="text"
                       onChange={(e) => setSelectedPlan({...selectedPlan, strategy: e.target.value})}
                       placeholder="اكتب اسم استراتيجيتك المخصصة..."
-                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 font-bold text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none"
+                      className="w-full mt-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 font-bold text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none"
                     />
                   )}
                 </div>
@@ -601,7 +598,12 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
 
                 {/* Status Selection */}
                 <div className="pt-2 mt-auto border-t border-slate-200 dark:border-slate-700">
-                  <label className="text-xs font-black text-slate-500 dark:text-slate-400 block mb-2">حالة الخطة</label>
+                  <label className="text-xs font-black text-slate-500 dark:text-slate-400 block mb-2 flex justify-between items-center">
+                    <span>حالة الخطة</span>
+                    {calculateScore(selectedPlan) < 6 && (
+                      <span className="text-[9px] text-rose-500 font-bold bg-rose-50 dark:bg-rose-900/30 px-1.5 py-0.5 rounded">يجب أن تكون الجودة 6 فما فوق للتنفيذ</span>
+                    )}
+                  </label>
                   <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
                     <button
                       type="button"
@@ -617,26 +619,70 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSelectedPlan(prev => prev ? {...prev, status: 'ready'} : null)}
+                      onClick={() => {
+                        if (calculateScore(selectedPlan) >= 6) {
+                          setSelectedPlan(prev => prev ? {...prev, status: 'ready'} : null);
+                        }
+                      }}
+                      disabled={calculateScore(selectedPlan) < 6}
                       className={`py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
                         selectedPlan.status === 'ready'
                           ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          : calculateScore(selectedPlan) < 6 
+                            ? 'bg-slate-200/50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                       }`}
+                      title={calculateScore(selectedPlan) < 6 ? "جودة الصفقة ضعيفة (أقل من 6). لا يمكن تفعيل الخطة." : "تفعيل الخطة"}
                     >
-                      <span>🎯 جاهزة للتنفيذ</span>
+                      <span>{calculateScore(selectedPlan) < 6 ? '🔒' : '🎯'} جاهزة للتنفيذ</span>
                       <span className="text-[10px] opacity-80">(Trigger)</span>
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* Left Column: Updates Feed */}
-              <div className="flex-1 flex flex-col min-h-[400px]">
-                <PlanUpdatesFeed 
-                  updates={selectedPlan.updates || []} 
-                  onChange={(updates) => setSelectedPlan({...selectedPlan, updates})}
-                />
+              {/* Left Column: Updates Feed & Chart */}
+              <div className="flex-1 flex flex-col min-h-[400px] border-r border-slate-100 dark:border-slate-800">
+                <div className="flex bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 p-2 gap-2">
+                  <button
+                    onClick={() => setModalLeftTab('updates')}
+                    className={`flex-1 py-2 text-xs font-black rounded-lg transition-colors ${modalLeftTab === 'updates' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                  >
+                    سجل الملاحظات
+                  </button>
+                  <button
+                    onClick={() => setModalLeftTab('chart')}
+                    className={`flex-1 py-2 text-xs font-black rounded-lg transition-colors flex justify-center items-center gap-1.5 ${modalLeftTab === 'chart' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                  >
+                    <LineChart className="w-3.5 h-3.5" />
+                    الشارت المباشر
+                  </button>
+                </div>
+                
+                <div className="flex-1 relative bg-slate-50 dark:bg-slate-900">
+                  {modalLeftTab === 'updates' ? (
+                    <div className="absolute inset-0 overflow-y-auto">
+                      <PlanUpdatesFeed 
+                        updates={selectedPlan.updates || []} 
+                        onChange={(updates) => setSelectedPlan({...selectedPlan, updates})}
+                      />
+                    </div>
+                  ) : (
+                    <div className="absolute inset-0">
+                      <AdvancedRealTimeChart
+                        symbol={`EGX:${selectedPlan.symbol || 'COMI'}`}
+                        theme="dark"
+                        autosize
+                        allow_symbol_change={false}
+                        hide_top_toolbar={false}
+                        hide_legend={false}
+                        save_image={true}
+                        timezone="Africa/Cairo"
+                        locale="ar_AE"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { 
-  LayoutDashboard, 
+  Gamepad2, LayoutDashboard, 
   BookOpen, 
   BarChart2, 
   Settings, 
@@ -14,6 +14,7 @@ import {
   Landmark
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useTrades } from '../context/TradeContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -24,6 +25,7 @@ interface LayoutProps {
 export default function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const { theme, toggleTheme } = useTheme();
+  const { isSimulator, toggleSimulator } = useTrades();
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -71,6 +73,14 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
             </div>
           </div>
 
+          {/* Simulator Toggle */}
+          <button
+            onClick={toggleSimulator}
+            className={`p-2 rounded-xl transition-colors ${isSimulator ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border border-amber-300 dark:border-amber-700/50' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+            title={isSimulator ? 'إغلاق المحاكي التجريبي' : 'تفعيل المحاكي التجريبي'}
+          >
+            <Gamepad2 className="w-4 h-4" />
+          </button>
           {/* Theme Toggle Button */}
           <button
             onClick={toggleTheme}

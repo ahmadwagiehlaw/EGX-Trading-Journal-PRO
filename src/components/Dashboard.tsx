@@ -22,16 +22,19 @@ import {
 } from 'recharts';
 import { useTrades, type TickerPosition } from '../context/TradeContext';
 import { computePositionMetrics, formatEGP } from '../utils/calculations';
+import WeeklyReviewModal from './WeeklyReviewModal';
 import TransactionFormModal from './TransactionFormModal';
 import LedgerModal from './LedgerModal';
 import FixedIncomeModal from './FixedIncomeModal';
 
 export default memo(function Dashboard({ 
   onOpenTradingDesk,
-  onNavigate 
+  onNavigate,
+  onOpenTrade
 }: { 
   onOpenTradingDesk?: (symbol?: string) => void;
   onNavigate?: (tab: string) => void;
+  onOpenTrade?: (id: string) => void;
 }) {
   const { 
         positions, 
@@ -45,11 +48,15 @@ export default memo(function Dashboard({
     activeOpenCapital,
     activeOpenRisk,
     filteredPositions,
+    coreStats,
+    coreSatelliteTarget,
+    weeklyReviews,
   } = useTrades();
 
   const [selectedPosForTx, setSelectedPosForTx] = useState<{ pos: TickerPosition; type: 'buy' | 'sell' } | null>(null);
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
   const [isFixedIncomeModalOpen, setIsFixedIncomeModalOpen] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
   // Active positions
   const activePositions = filteredPositions.filter(p => {
@@ -122,8 +129,69 @@ export default memo(function Dashboard({
         </div>
       </div>
 
+            <WeeklyReviewModal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} />
+
+      {/* Quick Action Banner for Weekly Review */}
+      {(!weeklyReviews || weeklyReviews.length === 0 || (Date.now() - weeklyReviews[0].createdAt > 4 * 24 * 60 * 60 * 1000)) && (
+        <div className="bg-gradient-to-r from-indigo-900 to-indigo-800 rounded-3xl p-5 md:p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+           <div className="flex items-start gap-4">
+              <div className="p-3 bg-white/10 rounded-2xl shrink-0">
+                 <Activity className="w-6 h-6 text-indigo-100" />
+              </div>
+              <div>
+                 <h3 className="text-white font-black text-lg">حان وقت التقييم والمراجعة!</h3>
+                 <p className="text-indigo-200 text-xs font-bold mt-1 max-w-lg leading-relaxed">
+                   استمرارية النجاح تتطلب المراجعة. وثّق أداءك، صفقاتك، وأخطاءك للفترة المنقضية، وحدد نقطة تركيزك للمرحلة القادمة.
+                 </p>
+              </div>
+           </div>
+           <button 
+             onClick={() => setIsReviewModalOpen(true)}
+             className="shrink-0 w-full md:w-auto px-6 py-3 bg-white text-indigo-900 hover:bg-indigo-50 rounded-xl font-black text-sm transition-colors shadow-sm flex items-center justify-center gap-2"
+           >
+             <Layers className="w-4 h-4" />
+             إجراء المراجعة الآن
+           </button>
+        </div>
+      )}
+
+
       
+      {/* Core & Satellite Health Gauge — only shows when viewing investment portfolio */}
+      {portfolioFilter === 'investment' && coreStats.totalInvestmentCapital > 0 && (
+        <div className={`rounded-2xl p-4 border flex flex-col sm:flex-row items-center gap-4 shadow-sm transition-all ${
+          coreStats.isBalanced
+            ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/40'
+            : 'bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800/40'
+        }`}>
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${coreStats.isBalanced ? 'bg-emerald-100 dark:bg-emerald-900/40' : 'bg-amber-100 dark:bg-amber-900/40'}`}>
+            <span className="text-xl">{coreStats.isBalanced ? '⚖️' : '⚠️'}</span>
+          </div>
+          <div className="flex-1 min-w-0 w-full">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className={`text-sm font-black ${coreStats.isBalanced ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-800 dark:text-amber-300'}`}>
+                {coreStats.isBalanced
+                  ? 'توازن Core & Satellite ✓ محفظتك الاستثمارية في المسار الصحيح'
+                  : `⚠️ تنبيه: أسهم Satellite (${coreStats.satellitePercent.toFixed(1)}%) تجاوزت الحد الاستراتيجي — الهدف: Core ${coreSatelliteTarget}%`}
+              </span>
+              <div className="flex items-center gap-3 shrink-0 text-xs font-bold">
+                <span className="text-indigo-600 dark:text-indigo-400">Core {coreStats.corePercent.toFixed(1)}%</span>
+                <span className="text-slate-300 dark:text-slate-600">|</span>
+                <span className="text-amber-600 dark:text-amber-400">Satellite {coreStats.satellitePercent.toFixed(1)}%</span>
+              </div>
+            </div>
+            <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div className="h-full rounded-full flex">
+                <div className="bg-indigo-500 transition-all duration-700 ease-in-out" style={{ width: `${Math.min(100, coreStats.corePercent)}%` }} />
+                <div className="bg-amber-400 transition-all duration-700 ease-in-out" style={{ width: `${Math.min(100, coreStats.satellitePercent)}%` }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Market Heat / Ready Plans Banner */}
+
       {readyPlans.length > 0 && (
         <div className="bg-gradient-to-l from-orange-600 via-amber-600 to-red-600 rounded-2xl p-4 md:p-5 shadow-sm text-white flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -322,7 +390,8 @@ export default memo(function Dashboard({
                   return (
                     <div 
                       key={pos.id}
-                      className="p-4 bg-slate-50/80 dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-sm transition-all space-y-3"
+                      className="p-4 bg-slate-50/80 dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-sm transition-all space-y-3 cursor-pointer"
+                      onClick={() => onOpenTrade?.(pos.id)}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -505,3 +574,4 @@ export default memo(function Dashboard({
   );
 }
 )
+

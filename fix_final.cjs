@@ -1,18 +1,41 @@
 ﻿const fs = require('fs');
-let c = fs.readFileSync('src/components/ActiveTrades.tsx', 'utf8');
 
-c = c.replace(/export default function ActiveTrades\(\{ tradeId, onClose \}: \{ tradeId: string; onClose: \(\) => void \}\) \{[\s\S]*?const \{ positions, updateTrailingStop, closePosition \} = useTrades\(\);/, "export default function ActiveTrades({ tradeId }: { tradeId: string }) {\n  const { positions, updateTrailingStop, updatePosition } = useTrades();");
+let sCode = fs.readFileSync('src/components/Settings.tsx', 'utf8');
 
-// Fix TS18047 metrics is possibly null:
-c = c.replace(/const currentHighest = position.trailingStop\?\.highestReached \|\| metrics\.avgEntry;/g, "if (!position || !metrics) return null;\n\n  const currentHighest = position.trailingStop?.highestReached || metrics.avgEntry;");
+// The original handleClearData has window.confirm. Let's find it.
+const sIdx = sCode.indexOf('const handleClearData = () => {');
+if (sIdx > -1) {
+    const sEnd = sCode.indexOf('  return (', sIdx);
+    if (sEnd > -1) {
+        const sExec = `const handleClearData = () => setConfirmReset(true);
 
-// Remove Trash2 from import if it didn't work and import it
-if (!c.includes('Trash2')) {
-  c = c.replace("Target\n}", "Target,\n  Trash2\n}");
+  const executeClearData = async () => {
+    try {
+      localStorage.clear(); 
+      window.location.reload();
+    } catch (error: any) {
+      alert('حدث خطأ أثناء مسح البيانات: ' + error.message);
+    } finally {
+      setConfirmReset(false);
+    }
+  };
+
+`;
+        sCode = sCode.slice(0, sIdx) + sExec + sCode.slice(sEnd);
+        fs.writeFileSync('src/components/Settings.tsx', sCode, 'utf8');
+        console.log("Fixed Settings.tsx!");
+    } else {
+        console.log("Could not find '  return (' in Settings.tsx");
+    }
+} else {
+    console.log("Could not find 'const handleClearData = () => {' in Settings.tsx");
 }
 
-// Remove unused atr variable
-c = c.replace(/const atr = position.trailingStop\?\.atrAtEntry \|\| position.plan\?\.atr \|\| 0;\n    const calculatedNewStop = atr > 0 \? highest - \(2 \* atr\) : highest \* 0\.95;/, "const atrVal = position.trailingStop?.atrAtEntry || position.plan?.atr || 0;\n    const calculatedNewStop = atrVal > 0 ? highest - (2 * atrVal) : highest * 0.95;");
-
-fs.writeFileSync('src/components/ActiveTrades.tsx', c, 'utf8');
-console.log('Fixed destructure and null checks');
+let tCode = fs.readFileSync('src/components/TransactionFormModal.tsx', 'utf8');
+const oldBad = "addTransaction(position!.id, pendingSavePayload.type, pendingSavePayload.payload);";
+const goodNew = "addTransaction(position!.id, pendingSavePayload.payload);";
+if (tCode.includes(oldBad)) {
+    tCode = tCode.replace(oldBad, goodNew);
+    fs.writeFileSync('src/components/TransactionFormModal.tsx', tCode, 'utf8');
+    console.log("Fixed TransactionFormModal args!");
+}
