@@ -8,13 +8,11 @@ import {
   ShieldAlert, 
    
   CheckCircle, 
-  Plus,
-  ArrowDownLeft,
-  
+    
   Target
 ,
   Trash2
-, X, Pencil, Sparkles, Pin, TrendingUp
+, X, Pencil, Sparkles, Pin, TrendingUp, Zap
 } from 'lucide-react';
 import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 import { useTrades } from '../context/TradeContext';
@@ -51,6 +49,10 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
   const [atrInput, setAtrInput] = useState('');
   
   const [isEditingRsi, setIsEditingRsi] = useState(false);
+  const [fairValueInput, setFairValueInput] = useState('');
+  const [isEditingFairValue, setIsEditingFairValue] = useState(false);
+  const [analystTargetInput, setAnalystTargetInput] = useState('');
+  const [isEditingAnalystTarget, setIsEditingAnalystTarget] = useState(false);
   const [rsiInput, setRsiInput] = useState('');
 
   const [isEditingTargets, setIsEditingTargets] = useState(false);
@@ -193,6 +195,20 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     setIsEditingAtr(false);
   };
 
+  const handleUpdateFairValue = async () => {
+    if (!position) return;
+    const val = parseFloat(fairValueInput);
+    await updatePosition(position.id, { plan: { ...position.plan, fairValue: isNaN(val) ? undefined : val } } as any);
+    setIsEditingFairValue(false);
+  };
+
+  const handleUpdateAnalystTarget = async () => {
+    if (!position) return;
+    const val = parseFloat(analystTargetInput);
+    await updatePosition(position.id, { plan: { ...position.plan, analystTarget: isNaN(val) ? undefined : val } } as any);
+    setIsEditingAnalystTarget(false);
+  };
+
   const handleUpdateRsi = async () => {
     if (!position) return;
     const newRsi = parseFloat(rsiInput);
@@ -217,6 +233,36 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     setIsEditingNote(false);
   };
 
+  const handleAutoCalculate = async () => {
+    if (!position || !metrics) return;
+    const currentAtr = position.trailingStop?.atrAtEntry || position.plan?.atr || 0;
+    if (currentAtr <= 0) {
+      alert("الرجاء إدخال قيمة ATR صحيحة أولاً!");
+      return;
+    }
+    const currentPrice = metrics.currentPrice;
+    const avgEntry = metrics.avgEntry || currentPrice;
+    
+    // Calculate Supports
+    const s1 = currentPrice - (currentAtr * 1);
+    const s2 = currentPrice - (currentAtr * 2);
+    const s3 = currentPrice - (currentAtr * 3);
+    
+    // Calculate Targets
+    const t1 = avgEntry + (currentAtr * 1.5);
+    const t2 = avgEntry + (currentAtr * 3);
+    const t3 = avgEntry + (currentAtr * 5);
+    
+    await updatePosition(position.id, {
+      plan: {
+        ...position.plan,
+        target: Number(t1.toFixed(2)),
+        targets: [Number(t2.toFixed(2)), Number(t3.toFixed(2))],
+        supports: [Number(s1.toFixed(2)), Number(s2.toFixed(2)), Number(s3.toFixed(2))]
+      }
+    } as any);
+  };
+
   const handleUpdateSupports = async () => {
     if (!position) return;
     const s1 = parseFloat(s1Input) || position.plan?.supports?.[0] || 0;
@@ -231,6 +277,8 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
       if (!isEditingNote) setStockNote(position.plan?.makerPlan || '');
       if (isEditingAtr) setAtrInput((position.trailingStop?.atrAtEntry || position.plan?.atr || 0).toString());
       if (isEditingRsi) setRsiInput((position.plan?.rsi || 0).toString());
+      if (!isEditingFairValue) setFairValueInput((position.plan?.fairValue || '').toString());
+      if (!isEditingAnalystTarget) setAnalystTargetInput((position.plan?.analystTarget || '').toString());
       if (isEditingTargets) {
         setT1Input((position.plan?.target || 0).toString());
         setT2Input((position.plan?.targets?.[0] || 0).toString());
@@ -551,7 +599,14 @@ if (!position || !metrics) return null;
                              </span>
                            ) : <span className="text-slate-300 dark:text-slate-600">-</span>}
                          </td>
-                         <td className="py-4 px-2 flex justify-center">
+                         <td className="py-4 px-2 flex justify-center gap-1">
+                            <button 
+                              onClick={() => { setTxModalType('edit'); setEditingTx(tx); }}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" 
+                              title="تعديل المعاملة"
+                            >
+                              <Pencil className="w-4 h-4"/>
+                            </button>
                             <button 
                               onClick={() => setConfirmTxId(tx.id)}
                               className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors" 
@@ -583,11 +638,11 @@ if (!position || !metrics) return null;
         </div>
 
         {/* Left Column: Trailing Stop Engine & Ledger Control */}
-        <div className={`bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 flex-col justify-between space-y-6 shadow-sm ${isChartExpanded ? 'hidden' : 'flex'}`}>
+        <div className={`bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 flex-col justify-between shadow-sm ${isChartExpanded ? 'hidden' : 'flex'}`}>
 
           <div>
             {/* Header / Ticker Summary */}
-            <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-5">
+            <div className="mb-2">
               <div className="flex justify-between items-start mb-4">
                 <div>
                 <div className="flex items-center gap-2">
@@ -610,7 +665,7 @@ if (!position || !metrics) return null;
               </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 w-full">
                   {/* Market Price Pill */}
                   <div className="flex items-center bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shadow-sm">
                     <button 
@@ -765,6 +820,27 @@ if (!position || !metrics) return null;
                     )}
                   </div>
                   )}
+
+                  {/* Fair Value Pill */}
+                  <div className="flex items-center bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-800 rounded-lg overflow-hidden shadow-sm">
+                    <button onClick={() => { setIsEditingFairValue(!isEditingFairValue); setIsEditingAnalystTarget(false); setIsEditingMarketPrice(false); }} className="px-2 py-1.5 text-[10px] font-bold text-teal-700 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-colors">السعر العادل:</button>
+                    {isEditingFairValue ? (
+                      <div className="flex items-center"><input type="number" step="any" value={fairValueInput} onChange={e => setFairValueInput(e.target.value)} className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-teal-900 dark:text-teal-100" dir="ltr" autoFocus placeholder="-" /><button onClick={handleUpdateFairValue} className="bg-teal-600 hover:bg-teal-700 text-white px-2 py-1.5 text-[10px] font-bold">حفظ</button></div>
+                    ) : (
+                      <div className="px-3 py-1.5 text-xs font-black text-teal-800 dark:text-teal-200 cursor-pointer hover:text-teal-600 transition-colors font-mono-num" onClick={() => setIsEditingFairValue(true)} dir="ltr">{position!.plan?.fairValue ? position!.plan.fairValue.toFixed(2) : '-'}</div>
+                    )}
+                  </div>
+
+                  {/* Analyst Target Pill */}
+                  <div className="flex items-center bg-fuchsia-50 dark:bg-fuchsia-900/30 border border-fuchsia-200 dark:border-fuchsia-800 rounded-lg overflow-hidden shadow-sm">
+                    <button onClick={() => { setIsEditingAnalystTarget(!isEditingAnalystTarget); setIsEditingFairValue(false); setIsEditingMarketPrice(false); }} className="px-2 py-1.5 text-[10px] font-bold text-fuchsia-700 dark:text-fuchsia-400 hover:bg-fuchsia-100 dark:hover:bg-fuchsia-900/50 transition-colors">مستهدف المحللين:</button>
+                    {isEditingAnalystTarget ? (
+                      <div className="flex items-center"><input type="number" step="any" value={analystTargetInput} onChange={e => setAnalystTargetInput(e.target.value)} className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-fuchsia-900 dark:text-fuchsia-100" dir="ltr" autoFocus placeholder="-" /><button onClick={handleUpdateAnalystTarget} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white px-2 py-1.5 text-[10px] font-bold">حفظ</button></div>
+                    ) : (
+                      <div className="px-3 py-1.5 text-xs font-black text-fuchsia-800 dark:text-fuchsia-200 cursor-pointer hover:text-fuchsia-600 transition-colors font-mono-num" onClick={() => setIsEditingAnalystTarget(true)} dir="ltr">{position!.plan?.analystTarget ? position!.plan.analystTarget.toFixed(2) : '-'}</div>
+                    )}
+                  </div>
+
                 </div>
                 {error && isEditingHighestPrice && (
                   <p className="text-[10px] font-bold text-rose-600 dark:text-rose-400 mt-2 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded inline-block w-full max-w-sm">
@@ -778,17 +854,17 @@ if (!position || !metrics) return null;
             </div> {/* CLOSE INNER DIV FOR HEADER/PILLS */}
 
           {/* TABS HEADER */}
-          <div className="flex items-center gap-2 mt-8 mb-6 border-b border-slate-200 dark:border-slate-800">
-            <button onClick={() => setLeftTab('advisor')} className={`pb-3 px-4 font-black text-sm border-b-2 transition-colors ${leftTab === 'advisor' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
+          <div className="flex overflow-x-auto items-center gap-4 mt-0 mb-4 border-b border-slate-200 dark:border-slate-800 w-full [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+            <button onClick={() => setLeftTab('advisor')} className={`pb-3 px-2 md:px-4 font-black text-xs md:text-sm whitespace-nowrap border-b-2 transition-colors ${leftTab === 'advisor' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
               <Sparkles className="w-4 h-4 inline-block ml-1" /> المستشار الذكي
             </button>
-                        <button onClick={() => setLeftTab('risk')} className={`pb-3 px-4 font-black text-sm border-b-2 transition-colors ${leftTab === 'risk' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
+                        <button onClick={() => setLeftTab('risk')} className={`pb-3 px-2 md:px-4 font-black text-xs md:text-sm whitespace-nowrap border-b-2 transition-colors ${leftTab === 'risk' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
               <TrendingUp className="w-4 h-4 inline-block ml-1" /> المخاطرة والأداء
             </button>
-<button onClick={() => setLeftTab('plan')} className={`pb-3 px-4 font-black text-sm border-b-2 transition-colors ${leftTab === 'plan' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
+<button onClick={() => setLeftTab('plan')} className={`pb-3 px-2 md:px-4 font-black text-xs md:text-sm whitespace-nowrap border-b-2 transition-colors ${leftTab === 'plan' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
               <Target className="w-4 h-4 inline-block ml-1" /> إدارة الصفقة
             </button>
-            <button onClick={() => setLeftTab('notes')} className={`pb-3 px-4 font-black text-sm border-b-2 transition-colors ${leftTab === 'notes' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
+            <button onClick={() => setLeftTab('notes')} className={`pb-3 px-2 md:px-4 font-black text-xs md:text-sm whitespace-nowrap border-b-2 transition-colors ${leftTab === 'notes' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
               <Pencil className="w-4 h-4 inline-block ml-1" /> الملاحظات
             </button>
           </div>
@@ -829,6 +905,93 @@ if (!position || !metrics) return null;
              )}
 
 
+              {/* Targets and Supports */}
+                          <div className="flex justify-between items-center mb-3 mt-8 border-t border-slate-200 dark:border-slate-800 pt-6">
+                <h3 className="font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <Target className="w-5 h-5 text-indigo-500" />
+                  المستهدفات والدعوم
+                </h3>
+                <button onClick={handleAutoCalculate} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-black transition-colors border border-indigo-200 dark:border-indigo-800 shadow-sm" title="حساب ديناميكي بناءً على ATR وسعر الدخول">
+                  <Zap className="w-3.5 h-3.5" /> حساب تلقائي ⚡
+                </button>
+              </div>
+<div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-800/50">
+                <div className="flex items-center justify-between mb-3 border-b border-emerald-100 dark:border-emerald-800/50 pb-2">
+                  <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
+                    <Target className="w-4 h-4" />
+                    المستهدفات (Targets)
+                  </div>
+                  {isEditingTargets ? (
+                    <div className="flex items-center gap-1">
+                      <button onClick={handleUpdateTargets} className="text-[10px] font-black bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded">حفظ</button>
+                      <button onClick={() => setIsEditingTargets(false)} className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded">إلغاء</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setIsEditingTargets(true)} className="text-[10px] font-bold text-emerald-600 hover:underline">تعديل</button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={`t${i}`} className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-500">T{i}</span>
+                      {isEditingTargets ? (
+                        <input
+                          type="number" step="any"
+                          value={i === 1 ? t1Input : i === 2 ? t2Input : t3Input}
+                          onChange={(e) => i === 1 ? setT1Input(e.target.value) : i === 2 ? setT2Input(e.target.value) : setT3Input(e.target.value)}
+                          className="w-16 bg-white dark:bg-slate-900 border text-center font-black rounded px-1 py-0.5"
+                          dir="ltr"
+                        />
+                      ) : (
+                        <span className="font-black text-emerald-700 dark:text-emerald-300 font-mono-num">
+                          {(i === 1 ? position!.plan?.target : i === 2 ? position!.plan?.targets?.[0] : position!.plan?.targets?.[1]) || '—'}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-2xl border border-blue-100 dark:border-blue-800/50">
+                <div className="flex items-center justify-between mb-3 border-b border-blue-100 dark:border-blue-800/50 pb-2">
+                  <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold text-xs">
+                    <ArrowDownToLine className="w-4 h-4" />
+                    الدعوم (Supports)
+                  </div>
+                  {isEditingSupports ? (
+                    <div className="flex items-center gap-1">
+                      <button onClick={handleUpdateSupports} className="text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded">حفظ</button>
+                      <button onClick={() => setIsEditingSupports(false)} className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded">إلغاء</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setIsEditingSupports(true)} className="text-[10px] font-bold text-blue-600 hover:underline">تعديل</button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={`s${i}`} className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-500">S{i}</span>
+                      {isEditingSupports ? (
+                        <input
+                          type="number" step="any"
+                          value={i === 1 ? s1Input : i === 2 ? s2Input : s3Input}
+                          onChange={(e) => i === 1 ? setS1Input(e.target.value) : i === 2 ? setS2Input(e.target.value) : setS3Input(e.target.value)}
+                          className="w-16 bg-white dark:bg-slate-900 border text-center font-black rounded px-1 py-0.5"
+                          dir="ltr"
+                        />
+                      ) : (
+                        <span className="font-black text-blue-700 dark:text-blue-300 font-mono-num">
+                          {(position!.plan?.supports?.[i-1]) || '—'}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            
             </div>
           )}
 
@@ -947,6 +1110,7 @@ if (!position || !metrics) return null;
 
           
               </div>
+            
             </div>
           )}
 
@@ -995,83 +1159,6 @@ if (!position || !metrics) return null;
           {/* PLAN TAB */}
           {leftTab === 'plan' && (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
-            {/* Targets and Supports */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-800/50">
-                <div className="flex items-center justify-between mb-3 border-b border-emerald-100 dark:border-emerald-800/50 pb-2">
-                  <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
-                    <Target className="w-4 h-4" />
-                    المستهدفات (Targets)
-                  </div>
-                  {isEditingTargets ? (
-                    <div className="flex items-center gap-1">
-                      <button onClick={handleUpdateTargets} className="text-[10px] font-black bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded">حفظ</button>
-                      <button onClick={() => setIsEditingTargets(false)} className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded">إلغاء</button>
-                    </div>
-                  ) : (
-                    <button onClick={() => setIsEditingTargets(true)} className="text-[10px] font-bold text-emerald-600 hover:underline">تعديل</button>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <div key={`t${i}`} className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-500">T{i}</span>
-                      {isEditingTargets ? (
-                        <input
-                          type="number" step="any"
-                          value={i === 1 ? t1Input : i === 2 ? t2Input : t3Input}
-                          onChange={(e) => i === 1 ? setT1Input(e.target.value) : i === 2 ? setT2Input(e.target.value) : setT3Input(e.target.value)}
-                          className="w-16 bg-white dark:bg-slate-900 border text-center font-black rounded px-1 py-0.5"
-                          dir="ltr"
-                        />
-                      ) : (
-                        <span className="font-black text-emerald-700 dark:text-emerald-300 font-mono-num">
-                          {(i === 1 ? position!.plan?.target : i === 2 ? position!.plan?.targets?.[0] : position!.plan?.targets?.[1]) || '—'}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-2xl border border-blue-100 dark:border-blue-800/50">
-                <div className="flex items-center justify-between mb-3 border-b border-blue-100 dark:border-blue-800/50 pb-2">
-                  <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold text-xs">
-                    <ArrowDownToLine className="w-4 h-4" />
-                    الدعوم (Supports)
-                  </div>
-                  {isEditingSupports ? (
-                    <div className="flex items-center gap-1">
-                      <button onClick={handleUpdateSupports} className="text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded">حفظ</button>
-                      <button onClick={() => setIsEditingSupports(false)} className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded">إلغاء</button>
-                    </div>
-                  ) : (
-                    <button onClick={() => setIsEditingSupports(true)} className="text-[10px] font-bold text-blue-600 hover:underline">تعديل</button>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <div key={`s${i}`} className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-500">S{i}</span>
-                      {isEditingSupports ? (
-                        <input
-                          type="number" step="any"
-                          value={i === 1 ? s1Input : i === 2 ? s2Input : s3Input}
-                          onChange={(e) => i === 1 ? setS1Input(e.target.value) : i === 2 ? setS2Input(e.target.value) : setS3Input(e.target.value)}
-                          className="w-16 bg-white dark:bg-slate-900 border text-center font-black rounded px-1 py-0.5"
-                          dir="ltr"
-                        />
-                      ) : (
-                        <span className="font-black text-blue-700 dark:text-blue-300 font-mono-num">
-                          {(position!.plan?.supports?.[i-1]) || '—'}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
             {/* Smart Trailing Stop Tools */}
             {metrics!.isOpen && analytics && (
               <div className="bg-orange-50/60 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/40 rounded-2xl p-5 mb-6">
@@ -1216,28 +1303,9 @@ if (!position || !metrics) return null;
             </div>
           )}
 
-          {/* Quick Partial Transactions Row */}
-          {metrics!.isOpen && (
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => setTxModalType('buy')}
-                className="flex-1 py-3 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-black rounded-2xl border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 text-xs transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                شراء إضافي (تمركز)
-              </button>
-              <button
-                onClick={() => setTxModalType('sell')}
-                className="flex-1 py-3 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-black rounded-2xl border border-emerald-200 dark:border-emerald-800 flex items-center justify-center gap-1.5 text-xs transition-colors"
-              >
-                <ArrowDownLeft className="w-4 h-4" />
-                بيع جزئي (جني ربح)
-              </button>
-            </div>
-          )}
-
+          
           {/* Close Position (Full Exit) Section */}
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+          <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800">
             {metrics!.isOpen && (
               <button 
                 onClick={() => setTxModalType('sellAll')}

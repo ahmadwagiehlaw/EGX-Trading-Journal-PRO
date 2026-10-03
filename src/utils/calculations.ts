@@ -53,6 +53,8 @@ export interface TickerPosition {
     checklist?: { majorSR: boolean; bos: boolean; retest: boolean };
     images?: string[];
     makerPlan?: string;
+    fairValue?: number;
+    analystTarget?: number;
   };
 
   // Execution (Ledger of buys & sells)

@@ -1,142 +1,160 @@
 ﻿# -*- coding: utf-8 -*-
-import sys
-import re
-
 with open('src/components/ActiveTrades.tsx', 'r', encoding='utf-8') as f:
     content = f.read()
 
-# 1. Add states
-state_old = "  const [rightPaneView, setRightPaneView] = useState<'ledger' | 'chart'>('ledger');"
-state_new = """  const [rightPaneView, setRightPaneView] = useState<'ledger' | 'chart'>('ledger');
-  const [leftTab, setLeftTab] = useState<'advisor' | 'plan' | 'notes'>('advisor');
-  const [stockNote, setStockNote] = useState('');
-  const [isEditingNote, setIsEditingNote] = useState(false);"""
-content = content.replace(state_old, state_new)
+# 1. State for Fair Value and Analyst Target
+if "const [fairValueInput," not in content:
+    content = content.replace(
+        "const [isEditingRsi, setIsEditingRsi] = useState(false);",
+        "const [isEditingRsi, setIsEditingRsi] = useState(false);\n  const [fairValueInput, setFairValueInput] = useState('');\n  const [isEditingFairValue, setIsEditingFairValue] = useState(false);\n  const [analystTargetInput, setAnalystTargetInput] = useState('');\n  const [isEditingAnalystTarget, setIsEditingAnalystTarget] = useState(false);"
+    )
 
-# 2. Add handleUpdateNote
-handler_old = "  const handleUpdateSupports = async () => {"
-handler_new = """  const handleUpdateNote = async () => {
-    if (!position) return;
-    await updatePosition(position.id, { plan: { ...position.plan, makerPlan: stockNote } } as any);
-    setIsEditingNote(false);
+# 2. Effects for Fair Value and Analyst Target
+if "setFairValueInput(" not in content:
+    content = content.replace(
+        "if (isEditingRsi) setRsiInput((position.plan?.rsi || 0).toString());",
+        "if (isEditingRsi) setRsiInput((position.plan?.rsi || 0).toString());\n      if (!isEditingFairValue) setFairValueInput((position.plan?.fairValue || '').toString());\n      if (!isEditingAnalystTarget) setAnalystTargetInput((position.plan?.analystTarget || '').toString());"
+    )
+
+# 3. Handlers for Fair Value and Analyst Target
+if "handleUpdateFairValue" not in content:
+    content = content.replace(
+        "const handleUpdateRsi = async () => {",
+        "const handleUpdateFairValue = async () => {\n    if (!position) return;\n    const val = parseFloat(fairValueInput);\n    await updatePosition(position.id, { plan: { ...position.plan, fairValue: isNaN(val) ? undefined : val } } as any);\n    setIsEditingFairValue(false);\n  };\n\n  const handleUpdateAnalystTarget = async () => {\n    if (!position) return;\n    const val = parseFloat(analystTargetInput);\n    await updatePosition(position.id, { plan: { ...position.plan, analystTarget: isNaN(val) ? undefined : val } } as any);\n    setIsEditingAnalystTarget(false);\n  };\n\n  const handleUpdateRsi = async () => {"
+    )
+
+# 4. Adding Pills to the Header Grid
+# Replace grid classes
+content = content.replace(
+    'className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full"',
+    'className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 w-full"'
+)
+
+# Add Pills HTML after RSI Pill
+# We find RSI Pill end.
+rsi_end = """                  </div>
+                  )}"""
+
+idx_rsi_end = content.find(rsi_end, content.find("RSI Pill"))
+if idx_rsi_end != -1:
+    idx_rsi_end += len(rsi_end)
+    
+    fundamentals_pills = """
+
+                  {/* Fair Value Pill */}
+                  <div className="flex items-center bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-800 rounded-lg overflow-hidden shadow-sm">
+                    <button onClick={() => { setIsEditingFairValue(!isEditingFairValue); setIsEditingAnalystTarget(false); setIsEditingMarketPrice(false); }} className="px-2 py-1.5 text-[10px] font-bold text-teal-700 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-colors">السعر العادل:</button>
+                    {isEditingFairValue ? (
+                      <div className="flex items-center"><input type="number" step="any" value={fairValueInput} onChange={e => setFairValueInput(e.target.value)} className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-teal-900 dark:text-teal-100" dir="ltr" autoFocus placeholder="-" /><button onClick={handleUpdateFairValue} className="bg-teal-600 hover:bg-teal-700 text-white px-2 py-1.5 text-[10px] font-bold">حفظ</button></div>
+                    ) : (
+                      <div className="px-3 py-1.5 text-xs font-black text-teal-800 dark:text-teal-200 cursor-pointer hover:text-teal-600 transition-colors font-mono-num" onClick={() => setIsEditingFairValue(true)} dir="ltr">{position!.plan?.fairValue ? position!.plan.fairValue.toFixed(2) : '-'}</div>
+                    )}
+                  </div>
+
+                  {/* Analyst Target Pill */}
+                  <div className="flex items-center bg-fuchsia-50 dark:bg-fuchsia-900/30 border border-fuchsia-200 dark:border-fuchsia-800 rounded-lg overflow-hidden shadow-sm">
+                    <button onClick={() => { setIsEditingAnalystTarget(!isEditingAnalystTarget); setIsEditingFairValue(false); setIsEditingMarketPrice(false); }} className="px-2 py-1.5 text-[10px] font-bold text-fuchsia-700 dark:text-fuchsia-400 hover:bg-fuchsia-100 dark:hover:bg-fuchsia-900/50 transition-colors">مستهدف المحللين:</button>
+                    {isEditingAnalystTarget ? (
+                      <div className="flex items-center"><input type="number" step="any" value={analystTargetInput} onChange={e => setAnalystTargetInput(e.target.value)} className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-fuchsia-900 dark:text-fuchsia-100" dir="ltr" autoFocus placeholder="-" /><button onClick={handleUpdateAnalystTarget} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white px-2 py-1.5 text-[10px] font-bold">حفظ</button></div>
+                    ) : (
+                      <div className="px-3 py-1.5 text-xs font-black text-fuchsia-800 dark:text-fuchsia-200 cursor-pointer hover:text-fuchsia-600 transition-colors font-mono-num" onClick={() => setIsEditingAnalystTarget(true)} dir="ltr">{position!.plan?.analystTarget ? position!.plan.analystTarget.toFixed(2) : '-'}</div>
+                    )}
+                  </div>
+"""
+    content = content[:idx_rsi_end] + fundamentals_pills + content[idx_rsi_end:]
+
+
+# 5. Add Auto-Calculate Button to Targets and Supports
+if "handleAutoCalculate" not in content:
+    # We add the handler
+    content = content.replace(
+        "const handleUpdateSupports = async () => {",
+        """const handleAutoCalculate = async () => {
+    if (!position || !metrics) return;
+    const currentAtr = position.trailingStop?.atrAtEntry || position.plan?.atr || 0;
+    if (currentAtr <= 0) {
+      alert("الرجاء إدخال قيمة ATR صحيحة أولاً!");
+      return;
+    }
+    const currentPrice = metrics.currentPrice;
+    const avgEntry = metrics.avgEntry || currentPrice;
+    
+    // Calculate Supports
+    const s1 = currentPrice - (currentAtr * 1);
+    const s2 = currentPrice - (currentAtr * 2);
+    const s3 = currentPrice - (currentAtr * 3);
+    
+    // Calculate Targets
+    const t1 = avgEntry + (currentAtr * 1.5);
+    const t2 = avgEntry + (currentAtr * 3);
+    const t3 = avgEntry + (currentAtr * 5);
+    
+    await updatePosition(position.id, {
+      plan: {
+        ...position.plan,
+        target: Number(t1.toFixed(2)),
+        targets: [Number(t2.toFixed(2)), Number(t3.toFixed(2))],
+        supports: [Number(s1.toFixed(2)), Number(s2.toFixed(2)), Number(s3.toFixed(2))]
+      }
+    } as any);
   };
 
   const handleUpdateSupports = async () => {"""
-content = content.replace(handler_old, handler_new)
-
-# 3. Add to useEffect
-effect_old = "      if (isEditingSupports) {"
-effect_new = """      if (!isEditingNote) setStockNote(position.plan?.makerPlan || '');
-      if (isEditingSupports) {"""
-content = content.replace(effect_old, effect_new)
-
-# 4. Extract Smart Insights Panel from Right Pane
-smart_insights_start = "{/* Smart Insights Panel (AI Advisor) */}"
-action_buttons_start = "<div className=\"flex flex-wrap gap-2 mb-8\">"
-idx1 = content.find(smart_insights_start)
-idx2 = content.find(action_buttons_start)
-if idx1 == -1 or idx2 == -1:
-    print("Could not find smart insights block")
-    sys.exit(1)
-
-smart_insights_block = content[idx1:idx2]
-# Remove from Right pane
-content = content[:idx1] + content[idx2:]
-
-# 5. Extract Targets and Supports, Core & Satellite, Smart Trailing
-targets_start = "{/* Targets and Supports */}"
-idx_raw_start = content.find("{analytics && metrics!.isOpen && (analytics.status === 'broken' || analytics.status === 'raise' || analytics.status === 'near' || analytics.planIssue) && (")
-
-idx_pills = content.find("{/* Top Metrics Pills */}")
-if idx_raw_start != -1 and idx_pills != -1:
-    content = content[:idx_raw_start] + content[idx_pills:]
-
-
-idx_t = content.find(targets_start)
-if idx_t != -1:
-    before_targets = content[:idx_t]
-    after_targets = content[idx_t:]
+    )
     
-    tabs_html = """{/* TABS HEADER */}
-            <div className="flex items-center gap-4 mt-8 mb-6 border-b border-slate-200 dark:border-slate-800">
-              <button onClick={() => setLeftTab('advisor')} className={`pb-3 px-1 font-black text-sm border-b-2 transition-colors ${leftTab === 'advisor' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
-                المستشار الذكي
-              </button>
-              <button onClick={() => setLeftTab('plan')} className={`pb-3 px-1 font-black text-sm border-b-2 transition-colors ${leftTab === 'plan' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
-                إدارة الصفقة
-              </button>
-              <button onClick={() => setLeftTab('notes')} className={`pb-3 px-1 font-black text-sm border-b-2 transition-colors ${leftTab === 'notes' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
-                ملاحظات السهم
-              </button>
-            </div>
+    # We add the button HTML right above "Targets and Supports" container.
+    # Wait, they are in the Advisor tab now!
+    targets_marker = '<div className="grid grid-cols-2 gap-4 mb-6">'
+    idx_targets_html = content.find(targets_marker)
+    if idx_targets_html != -1:
+        auto_calc_html = """              <div className="flex justify-between items-center mb-3 mt-8 border-t border-slate-200 dark:border-slate-800 pt-6">
+                <h3 className="font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <Target className="w-5 h-5 text-indigo-500" />
+                  المستهدفات والدعوم
+                </h3>
+                <button onClick={handleAutoCalculate} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-black transition-colors border border-indigo-200 dark:border-indigo-800 shadow-sm" title="حساب ديناميكي بناءً على ATR وسعر الدخول">
+                  <Zap className="w-3.5 h-3.5" /> حساب تلقائي ⚡
+                </button>
+              </div>\n"""
+        content = content[:idx_targets_html] + auto_calc_html + content[idx_targets_html:]
 
-            {/* ADVISOR TAB */}
-            {leftTab === 'advisor' && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                {insights.length === 0 && (
-                  <div className="text-center py-10 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
-                    <Sparkles className="w-8 h-8 text-slate-400 mx-auto mb-3" />
-                    <p className="font-bold text-slate-500 text-sm">لا توجد توصيات حالياً من المستشار الذكي.</p>
-                  </div>
-                )}
-""" + smart_insights_block.replace('mb-8', 'mb-2') + """
-              </div>
-            )}
 
-            {/* NOTES TAB */}
-            {leftTab === 'notes' && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="bg-yellow-50/50 dark:bg-yellow-900/10 border border-yellow-200/50 dark:border-yellow-800/30 rounded-2xl p-5 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-black text-yellow-900 dark:text-yellow-500 text-sm flex items-center gap-2">
-                      <Pencil className="w-4 h-4" />
-                      ملاحظات حول السهم
-                    </h3>
-                    {isEditingNote ? (
-                      <div className="flex items-center gap-2">
-                        <button onClick={handleUpdateNote} className="px-3 py-1.5 bg-yellow-600 text-white rounded-lg text-xs font-black hover:bg-yellow-700 transition-colors shadow-sm">حفظ</button>
-                        <button onClick={() => { setIsEditingNote(false); setStockNote(position!.plan?.makerPlan || ''); }} className="px-3 py-1.5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 transition-colors">إلغاء</button>
-                      </div>
-                    ) : (
-                      <button onClick={() => setIsEditingNote(true)} className="px-3 py-1.5 bg-white dark:bg-slate-800 text-yellow-700 dark:text-yellow-500 border border-yellow-200 dark:border-yellow-800/50 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 rounded-lg text-xs font-black transition-colors shadow-sm">تعديل الملاحظات</button>
-                    )}
-                  </div>
-                  
-                  {isEditingNote ? (
-                    <textarea
-                      value={stockNote}
-                      onChange={(e) => setStockNote(e.target.value)}
-                      placeholder="اكتب أفكارك وملاحظاتك الفنية أو الأخبار الخاصة بهذا السهم هنا..."
-                      className="w-full bg-white dark:bg-slate-900 border border-yellow-200 dark:border-yellow-800/50 rounded-xl p-4 text-sm font-bold text-slate-700 dark:text-slate-300 min-h-[200px] focus:ring-2 focus:ring-yellow-500 outline-none leading-relaxed resize-none"
-                    />
-                  ) : (
-                    <div className="bg-white/60 dark:bg-slate-900/60 border border-white dark:border-slate-800 rounded-xl p-4 min-h-[200px]">
-                      {stockNote ? (
-                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{stockNote}</p>
-                      ) : (
-                        <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60 pt-10">
-                          <Pin className="w-8 h-8 mb-3" />
-                          <p className="text-xs font-bold">لا توجد ملاحظات مسجلة.</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* PLAN TAB */}
-            {leftTab === 'plan' && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
+# 6. Add Smart Advisor Rules for Fair Value & Analyst Target
+# We find where insights are generated.
+# insights.push({ type: 'info', text: '...' });
+insights_marker = "if (analytics.status === 'trailing' && analytics.stopDistancePct > 15) {"
+idx_insights = content.find(insights_marker)
+if idx_insights != -1:
+    fundamental_rules = """
+        // Fundamental Advisor Rules
+        if (position.plan?.fairValue && metrics.currentPrice) {
+          const discount = ((position.plan.fairValue - metrics.currentPrice) / position.plan.fairValue) * 100;
+          if (discount > 15) {
+            insights.push({
+              type: 'success',
+              text: `السهم يتداول بخصم ${discount.toFixed(0)}% عن سعره العادل (${position.plan.fairValue}). هامش أمان ممتاز وفرصة رائعة لزيادة التمركز الأساسي (Core).`
+            });
+          } else if (discount < -15) {
+            insights.push({
+              type: 'warning',
+              text: `تضخم سعري! السهم يتداول بأعلى من سعره العادل بنسبة ${Math.abs(discount).toFixed(0)}%. يُنصح بجني الأرباح جزئياً أو تحويل الكمية إلى مضاربة وتفعيل الوقف بشدة.`
+            });
+          }
+        }
+        
+        if (position.plan?.analystTarget && metrics.currentPrice) {
+          const potential = ((position.plan.analystTarget - metrics.currentPrice) / metrics.currentPrice) * 100;
+          if (potential > 20) {
+            insights.push({
+              type: 'info',
+              text: `السهم يستهدف مستويات المحللين عند ${position.plan.analystTarget}، بفرصة صعود متبقية ${potential.toFixed(0)}%. احتفظ بالسهم كاستثمار مدعوم بالبيانات.`
+            });
+          }
+        }
 """
-    
-    idx_end = after_targets.rfind("  );\n}")
-    if idx_end != -1:
-        divs = after_targets[:idx_end].rsplit('</div>', 3)
-        plan_content = '</div>'.join(divs[:-1])
-        rest = '</div>' + divs[-1] + "  );\n}"
-        content = before_targets + tabs_html + plan_content + "\n              </div>\n            )}\n" + rest
-            
+    content = content[:idx_insights] + fundamental_rules + content[idx_insights:]
+
+
 with open('src/components/ActiveTrades.tsx', 'w', encoding='utf-8') as f:
     f.write(content)
-print("Done")
+print("Updated ActiveTrades")
