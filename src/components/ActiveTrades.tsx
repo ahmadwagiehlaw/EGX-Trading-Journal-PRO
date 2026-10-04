@@ -54,6 +54,10 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
   const [analystTargetInput, setAnalystTargetInput] = useState('');
   const [isEditingAnalystTarget, setIsEditingAnalystTarget] = useState(false);
   const [rsiInput, setRsiInput] = useState('');
+  const [isEditingBeta, setIsEditingBeta] = useState(false);
+  const [betaInput, setBetaInput] = useState('');
+  const [isEditingEma50, setIsEditingEma50] = useState(false);
+  const [ema50Input, setEma50Input] = useState('');
 
   const [isEditingTargets, setIsEditingTargets] = useState(false);
   const [t1Input, setT1Input] = useState('');
@@ -200,6 +204,24 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     const val = parseFloat(fairValueInput);
     await updatePosition(position.id, { plan: { ...position.plan, fairValue: isNaN(val) ? undefined : val } } as any);
     setIsEditingFairValue(false);
+  };
+
+  const handleUpdateBeta = async () => {
+    if (!position) return;
+    const val = parseFloat(betaInput);
+    if (!isNaN(val) && val > 0) {
+      await updatePosition(position.id, { plan: { ...position.plan, beta: val } } as any);
+    }
+    setIsEditingBeta(false);
+  };
+
+  const handleUpdateEma50 = async () => {
+    if (!position) return;
+    const val = parseFloat(ema50Input);
+    if (!isNaN(val) && val > 0) {
+      await updatePosition(position.id, { plan: { ...position.plan, ema50: val } } as any);
+    }
+    setIsEditingEma50(false);
   };
 
   const handleUpdateAnalystTarget = async () => {
@@ -665,11 +687,11 @@ if (!position || !metrics) return null;
               </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 w-full">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 w-full">
                     {/* Market Price Pill */}
                     <div 
                       className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
-                      onClick={() => { setIsEditingMarketPrice(true); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); }}
+                      onClick={() => { setIsEditingMarketPrice(true); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); setIsEditingBeta(false); setIsEditingEma50(false); }}
                     >
                       <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">السوق:</span>
                       {isEditingMarketPrice ? (
@@ -694,7 +716,7 @@ if (!position || !metrics) return null;
                     {metrics!.isOpen && (
                     <div 
                       className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
-                      onClick={() => { setIsEditingHighestPrice(true); setIsEditingMarketPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); }}
+                      onClick={() => { setIsEditingHighestPrice(true); setIsEditingMarketPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); setIsEditingBeta(false); setIsEditingEma50(false); }}
                     >
                       <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 whitespace-nowrap flex items-center gap-1">
                         <Lock className="w-3 h-3" /> القمة:
@@ -722,7 +744,7 @@ if (!position || !metrics) return null;
                     {metrics!.isOpen && (
                     <div 
                       className="flex items-center justify-between bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-purple-300 dark:hover:border-purple-700 transition-colors"
-                      onClick={() => { setIsEditingAtr(true); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingRsi(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); }}
+                      onClick={() => { setIsEditingAtr(true); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingRsi(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); setIsEditingBeta(false); setIsEditingEma50(false); }}
                     >
                       <span className="text-[10px] font-bold text-purple-700 dark:text-purple-400 whitespace-nowrap">ATR:</span>
                       {isEditingAtr ? (
@@ -748,7 +770,7 @@ if (!position || !metrics) return null;
                     {metrics!.isOpen && (
                     <div 
                       className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors"
-                      onClick={() => { setIsEditingRsi(true); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); }}
+                      onClick={() => { setIsEditingRsi(true); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); setIsEditingBeta(false); setIsEditingEma50(false); }}
                     >
                       <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 whitespace-nowrap">RSI:</span>
                       {isEditingRsi ? (
@@ -773,7 +795,7 @@ if (!position || !metrics) return null;
                   {/* Fair Value Pill */}
                   <div 
                     className="flex items-center justify-between bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-teal-300 dark:hover:border-teal-700 transition-colors"
-                    onClick={() => { setIsEditingFairValue(true); setIsEditingAnalystTarget(false); setIsEditingMarketPrice(false); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); }}
+                    onClick={() => { setIsEditingFairValue(true); setIsEditingAnalystTarget(false); setIsEditingMarketPrice(false); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false);  setIsEditingBeta(false); setIsEditingEma50(false); }}
                   >
                     <span className="text-[10px] font-bold text-teal-700 dark:text-teal-400 whitespace-nowrap">العادل:</span>
                     {isEditingFairValue ? (
@@ -791,10 +813,62 @@ if (!position || !metrics) return null;
                     )}
                   </div>
 
+                  {/* Beta Pill */}
+                  {metrics!.isOpen && (
+                  <div 
+                    className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-amber-300 dark:hover:border-amber-700 transition-colors"
+                    onClick={() => { setIsEditingBeta(true); setIsEditingEma50(false); setIsEditingRsi(false); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); }}
+                  >
+                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 whitespace-nowrap">بيتا:</span>
+                    {isEditingBeta ? (
+                        <input 
+                          type="number" step="any"
+                          value={betaInput}
+                          onChange={(e) => setBetaInput(e.target.value)}
+                          onBlur={handleUpdateBeta}
+                          onKeyDown={e => e.key === 'Enter' && handleUpdateBeta()}
+                          className="w-14 bg-transparent text-xs font-black outline-none text-left text-amber-900 dark:text-amber-100 font-mono-num"
+                          dir="ltr" autoFocus
+                          placeholder={((position!.plan?.beta || 0)).toFixed(2)}
+                        />
+                    ) : (
+                      <span className="text-xs font-black text-amber-800 dark:text-amber-200 font-mono-num" dir="ltr">
+                        {position!.plan?.beta ? position!.plan.beta.toFixed(2) : '-'}
+                      </span>
+                    )}
+                  </div>
+                  )}
+
+                  {/* EMA 50 Pill */}
+                  {metrics!.isOpen && (
+                  <div 
+                    className="flex items-center justify-between bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-orange-300 dark:hover:border-orange-700 transition-colors"
+                    onClick={() => { setIsEditingEma50(true); setIsEditingBeta(false); setIsEditingRsi(false); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); }}
+                  >
+                    <span className="text-[10px] font-bold text-orange-700 dark:text-orange-400 whitespace-nowrap">متوسط50:</span>
+                    {isEditingEma50 ? (
+                        <input 
+                          type="number" step="any"
+                          value={ema50Input}
+                          onChange={(e) => setEma50Input(e.target.value)}
+                          onBlur={handleUpdateEma50}
+                          onKeyDown={e => e.key === 'Enter' && handleUpdateEma50()}
+                          className="w-14 bg-transparent text-xs font-black outline-none text-left text-orange-900 dark:text-orange-100 font-mono-num"
+                          dir="ltr" autoFocus
+                          placeholder={((position!.plan?.ema50 || 0)).toFixed(2)}
+                        />
+                    ) : (
+                      <span className="text-xs font-black text-orange-800 dark:text-orange-200 font-mono-num" dir="ltr">
+                        {position!.plan?.ema50 ? position!.plan.ema50.toFixed(2) : '-'}
+                      </span>
+                    )}
+                  </div>
+                  )}
+
                   {/* Analyst Target Pill */}
                   <div 
                     className="flex items-center justify-between bg-fuchsia-50 dark:bg-fuchsia-900/30 border border-fuchsia-200 dark:border-fuchsia-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-fuchsia-300 dark:hover:border-fuchsia-700 transition-colors"
-                    onClick={() => { setIsEditingAnalystTarget(true); setIsEditingFairValue(false); setIsEditingMarketPrice(false); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); }}
+                    onClick={() => { setIsEditingAnalystTarget(true); setIsEditingFairValue(false); setIsEditingMarketPrice(false); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false);  setIsEditingBeta(false); setIsEditingEma50(false); }}
                   >
                     <span className="text-[10px] font-bold text-fuchsia-700 dark:text-fuchsia-400 whitespace-nowrap">المحللين:</span>
                     {isEditingAnalystTarget ? (

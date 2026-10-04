@@ -55,6 +55,8 @@ export interface TickerPosition {
     makerPlan?: string;
     fairValue?: number;
     analystTarget?: number;
+    beta?: number;
+    ema50?: number;
   };
 
   // Execution (Ledger of buys & sells)

@@ -44,6 +44,8 @@ export interface WeeklyReview {
   whatWentWell: string;
   whatWentWrong: string;
   focusNextWeek: string;
+  disciplineScore?: number;
+  marketCondition?: 'bull' | 'bear' | 'sideways' | 'volatile';
   createdAt: number;
 }
 
