@@ -1041,11 +1041,11 @@ const deleteWeeklyReview = async (id: string) => {
   }), [
     positions, trades, profitFactor, maxDrawdown, equityData, ledger,
     depositedInvestment, depositedSpeculation, plans,
-    capitalInvestment, capitalSpeculation, fixedIncome, portfolioFilter, setPortfolioFilter, activeCapital, activeDeposited, activeOpenCapital, activeOpenRisk, filteredPositions, weeklyReviews,
+    capitalInvestment, capitalSpeculation, fixedIncome, portfolioFilter, setPortfolioFilter, activeCapital, activeDeposited, activeOpenCapital, activeOpenRisk, filteredPositions, weeklyReviews, stickyNotes,
     totalRealizedPnL, totalNetRealizedPnL, totalCommissionPaid,
     winRate, openPositionsCount, wonPositionsCount, lostPositionsCount,
     totalOpenCapital, totalOpenCapitalInvestment, totalOpenCapitalSpeculation,
-    totalOpenRisk, disciplineScore, loading, commissionRate
+    totalOpenRisk, disciplineScore, loading, commissionRate, isSimulator, coreStats, coreSatelliteTarget
   ]);
 
   if (loading) {

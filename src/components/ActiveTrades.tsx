@@ -666,178 +666,149 @@ if (!position || !metrics) return null;
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 w-full">
-                  {/* Market Price Pill */}
-                  <div className="flex items-center bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shadow-sm">
-                    <button 
-                      onClick={() => { setIsEditingMarketPrice(!isEditingMarketPrice); setIsEditingHighestPrice(false); setIsEditingAtr(false); }}
-                      className="px-2 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                      title="تعديل سعر السوق يدوياً"
+                    {/* Market Price Pill */}
+                    <div 
+                      className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+                      onClick={() => { setIsEditingMarketPrice(true); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); }}
                     >
-                      سعر السوق:
-                    </button>
-                    {isEditingMarketPrice ? (
-                      <div className="flex items-center">
-                        <input 
-                          type="number" step="any"
-                          value={marketPriceInput}
-                          onChange={(e) => setMarketPriceInput(e.target.value)}
-                          className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-slate-900 dark:text-white"
-                          dir="ltr"
-                          autoFocus
-                          placeholder={metrics!.currentPrice.toFixed(2)}
-                        />
-                        <button 
-                          onClick={handleUpdateMarketPrice}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1.5 text-[10px] font-bold transition-colors"
-                        >حفظ</button>
-                      </div>
-                    ) : (
-                      <div 
-                        className="px-3 py-1.5 text-xs font-black text-slate-800 dark:text-slate-200 cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors font-mono-num"
-                        onClick={() => { setIsEditingMarketPrice(true); setIsEditingHighestPrice(false); setIsEditingAtr(false); }}
-                        dir="ltr"
-                        title="انقر لتعديل السعر"
-                      >
-                        {metrics!.currentPrice.toFixed(2)}
-                      </div>
+                      <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">السوق:</span>
+                      {isEditingMarketPrice ? (
+                          <input 
+                            type="number" step="any"
+                            value={marketPriceInput}
+                            onChange={(e) => setMarketPriceInput(e.target.value)}
+                            onBlur={handleUpdateMarketPrice}
+                            onKeyDown={e => e.key === 'Enter' && handleUpdateMarketPrice()}
+                            className="w-14 bg-transparent text-xs font-black outline-none text-left text-slate-900 dark:text-white font-mono-num"
+                            dir="ltr" autoFocus
+                            placeholder={metrics!.currentPrice.toFixed(2)}
+                          />
+                      ) : (
+                        <span className="text-xs font-black text-slate-800 dark:text-slate-200 font-mono-num" dir="ltr">
+                          {metrics!.currentPrice.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+  
+                    {/* Highest Price Pill (Trailing Stop) */}
+                    {metrics!.isOpen && (
+                    <div 
+                      className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
+                      onClick={() => { setIsEditingHighestPrice(true); setIsEditingMarketPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); }}
+                    >
+                      <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 whitespace-nowrap flex items-center gap-1">
+                        <Lock className="w-3 h-3" /> القمة:
+                      </span>
+                      {isEditingHighestPrice ? (
+                          <input 
+                            type="number" step="any"
+                            value={newHighestPrice}
+                            onChange={(e) => { setNewHighestPrice(e.target.value); setError(null); }}
+                            onBlur={handleUpdateTrailingStop}
+                            onKeyDown={e => e.key === 'Enter' && handleUpdateTrailingStop()}
+                            className="w-14 bg-transparent text-xs font-black outline-none text-left text-blue-900 dark:text-blue-100 font-mono-num"
+                            dir="ltr" autoFocus
+                            placeholder={currentHighest.toFixed(2)}
+                          />
+                      ) : (
+                        <span className="text-xs font-black text-blue-800 dark:text-blue-200 font-mono-num" dir="ltr">
+                          {currentHighest.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
                     )}
-                  </div>
+  
+                    {/* ATR Pill */}
+                    {metrics!.isOpen && (
+                    <div 
+                      className="flex items-center justify-between bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-purple-300 dark:hover:border-purple-700 transition-colors"
+                      onClick={() => { setIsEditingAtr(true); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingRsi(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); }}
+                    >
+                      <span className="text-[10px] font-bold text-purple-700 dark:text-purple-400 whitespace-nowrap">ATR:</span>
+                      {isEditingAtr ? (
+                          <input 
+                            type="number" step="any"
+                            value={atrInput}
+                            onChange={(e) => setAtrInput(e.target.value)}
+                            onBlur={handleUpdateAtr}
+                            onKeyDown={e => e.key === 'Enter' && handleUpdateAtr()}
+                            className="w-14 bg-transparent text-xs font-black outline-none text-left text-purple-900 dark:text-purple-100 font-mono-num"
+                            dir="ltr" autoFocus
+                            placeholder={((position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0)).toFixed(2)}
+                          />
+                      ) : (
+                        <span className="text-xs font-black text-purple-800 dark:text-purple-200 font-mono-num" dir="ltr">
+                          {((position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0)).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                    )}
 
-                  {/* Highest Price Pill (Trailing Stop) */}
-                  {metrics!.isOpen && (
-                  <div className="flex items-center bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg overflow-hidden shadow-sm">
-                    <button 
-                      onClick={() => { setIsEditingHighestPrice(!isEditingHighestPrice); setIsEditingMarketPrice(false); setIsEditingAtr(false); }}
-                      className="px-2 py-1.5 text-[10px] font-bold text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-1"
-                      title="تحديث أعلى سعر لتفعيل الوقف المتحرك"
+                    {/* RSI Pill */}
+                    {metrics!.isOpen && (
+                    <div 
+                      className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors"
+                      onClick={() => { setIsEditingRsi(true); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); }}
                     >
-                      <Lock className="w-3 h-3" />
-                      أقصى سعر:
-                    </button>
-                    {isEditingHighestPrice ? (
-                      <div className="flex items-center">
-                        <input 
-                          type="number" step="any"
-                          value={newHighestPrice}
-                          onChange={(e) => { setNewHighestPrice(e.target.value); setError(null); }}
-                          className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-blue-900 dark:text-blue-100"
-                          dir="ltr"
-                          autoFocus
-                          placeholder={currentHighest.toFixed(2)}
-                        />
-                        <button 
-                          onClick={handleUpdateTrailingStop}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1.5 text-[10px] font-bold transition-colors"
-                        >حفظ</button>
-                      </div>
-                    ) : (
-                      <div 
-                        className="px-3 py-1.5 text-xs font-black text-blue-800 dark:text-blue-200 cursor-pointer hover:text-blue-600 dark:hover:text-blue-300 transition-colors font-mono-num"
-                        onClick={() => { setIsEditingHighestPrice(true); setIsEditingMarketPrice(false); setIsEditingAtr(false); }}
-                        dir="ltr"
-                        title="انقر لتعديل أقصى سعر"
-                      >
-                        {currentHighest.toFixed(2)}
-                      </div>
+                      <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 whitespace-nowrap">RSI:</span>
+                      {isEditingRsi ? (
+                          <input 
+                            type="number" step="any"
+                            value={rsiInput}
+                            onChange={(e) => setRsiInput(e.target.value)}
+                            onBlur={handleUpdateRsi}
+                            onKeyDown={e => e.key === 'Enter' && handleUpdateRsi()}
+                            className="w-14 bg-transparent text-xs font-black outline-none text-left text-indigo-900 dark:text-indigo-100 font-mono-num"
+                            dir="ltr" autoFocus
+                            placeholder={((position!.plan?.rsi || 0)).toFixed(1)}
+                          />
+                      ) : (
+                        <span className="text-xs font-black text-indigo-800 dark:text-indigo-200 font-mono-num" dir="ltr">
+                          {((position!.plan?.rsi || 0)).toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
                     )}
-                  </div>
-                  )}
-
-                  {/* ATR Pill */}
-                  {metrics!.isOpen && (
-                  <div className="flex items-center bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-lg overflow-hidden shadow-sm">
-                    <button 
-                      onClick={() => { setIsEditingAtr(!isEditingAtr); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingRsi(false); }}
-                      className="px-2 py-1.5 text-[10px] font-bold text-purple-700 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors flex items-center gap-1"
-                      title="تعديل قيمة ATR لحساب الوقف الميكانيكي"
-                    >
-                      ATR:
-                    </button>
-                    {isEditingAtr ? (
-                      <div className="flex items-center">
-                        <input 
-                          type="number" step="any"
-                          value={atrInput}
-                          onChange={(e) => setAtrInput(e.target.value)}
-                          className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-purple-900 dark:text-purple-100"
-                          dir="ltr"
-                          autoFocus
-                          placeholder={((position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0)).toFixed(2)}
-                        />
-                        <button 
-                          onClick={handleUpdateAtr}
-                          className="bg-purple-600 hover:bg-purple-700 text-white px-2 py-1.5 text-[10px] font-bold transition-colors"
-                        >حفظ</button>
-                      </div>
-                    ) : (
-                      <div 
-                        className="px-3 py-1.5 text-xs font-black text-purple-800 dark:text-purple-200 cursor-pointer hover:text-purple-600 dark:hover:text-purple-300 transition-colors font-mono-num"
-                        onClick={() => { setIsEditingAtr(true); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingRsi(false); }}
-                        dir="ltr"
-                        title="انقر لتعديل ATR"
-                      >
-                        {((position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0)).toFixed(2)}
-                      </div>
-                    )}
-                  </div>
-                  )}
-
-                  {/* RSI Pill */}
-                  {metrics!.isOpen && (
-                  <div className="flex items-center bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-lg overflow-hidden shadow-sm">
-                    <button 
-                      onClick={() => { setIsEditingRsi(!isEditingRsi); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); }}
-                      className="px-2 py-1.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors flex items-center gap-1"
-                      title="تعديل قيمة RSI"
-                    >
-                      RSI:
-                    </button>
-                    {isEditingRsi ? (
-                      <div className="flex items-center">
-                        <input 
-                          type="number" step="any"
-                          value={rsiInput}
-                          onChange={(e) => setRsiInput(e.target.value)}
-                          className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-indigo-900 dark:text-indigo-100"
-                          dir="ltr"
-                          autoFocus
-                          placeholder={((position!.plan?.rsi || 0)).toFixed(1)}
-                        />
-                        <button 
-                          onClick={handleUpdateRsi}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1.5 text-[10px] font-bold transition-colors"
-                        >حفظ</button>
-                      </div>
-                    ) : (
-                      <div 
-                        className="px-3 py-1.5 text-xs font-black text-indigo-800 dark:text-indigo-200 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors font-mono-num"
-                        onClick={() => { setIsEditingRsi(true); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); }}
-                        dir="ltr"
-                        title="انقر لتعديل RSI"
-                      >
-                        {((position!.plan?.rsi || 0)).toFixed(1)}%
-                      </div>
-                    )}
-                  </div>
-                  )}
 
                   {/* Fair Value Pill */}
-                  <div className="flex items-center bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-800 rounded-lg overflow-hidden shadow-sm">
-                    <button onClick={() => { setIsEditingFairValue(!isEditingFairValue); setIsEditingAnalystTarget(false); setIsEditingMarketPrice(false); }} className="px-2 py-1.5 text-[10px] font-bold text-teal-700 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-colors">السعر العادل:</button>
+                  <div 
+                    className="flex items-center justify-between bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-teal-300 dark:hover:border-teal-700 transition-colors"
+                    onClick={() => { setIsEditingFairValue(true); setIsEditingAnalystTarget(false); setIsEditingMarketPrice(false); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); }}
+                  >
+                    <span className="text-[10px] font-bold text-teal-700 dark:text-teal-400 whitespace-nowrap">العادل:</span>
                     {isEditingFairValue ? (
-                      <div className="flex items-center"><input type="number" step="any" value={fairValueInput} onChange={e => setFairValueInput(e.target.value)} className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-teal-900 dark:text-teal-100" dir="ltr" autoFocus placeholder="-" /><button onClick={handleUpdateFairValue} className="bg-teal-600 hover:bg-teal-700 text-white px-2 py-1.5 text-[10px] font-bold">حفظ</button></div>
+                        <input 
+                          type="number" step="any" 
+                          value={fairValueInput} onChange={e => setFairValueInput(e.target.value)} 
+                          onBlur={handleUpdateFairValue}
+                          onKeyDown={e => e.key === 'Enter' && handleUpdateFairValue()}
+                          className="w-14 bg-transparent text-xs font-black outline-none text-left text-teal-900 dark:text-teal-100 font-mono-num" dir="ltr" autoFocus placeholder="-" 
+                        />
                     ) : (
-                      <div className="px-3 py-1.5 text-xs font-black text-teal-800 dark:text-teal-200 cursor-pointer hover:text-teal-600 transition-colors font-mono-num" onClick={() => setIsEditingFairValue(true)} dir="ltr">{position!.plan?.fairValue ? position!.plan.fairValue.toFixed(2) : '-'}</div>
+                      <span className="text-xs font-black text-teal-800 dark:text-teal-200 font-mono-num" dir="ltr">
+                        {position!.plan?.fairValue ? position!.plan.fairValue.toFixed(2) : '-'}
+                      </span>
                     )}
                   </div>
 
                   {/* Analyst Target Pill */}
-                  <div className="flex items-center bg-fuchsia-50 dark:bg-fuchsia-900/30 border border-fuchsia-200 dark:border-fuchsia-800 rounded-lg overflow-hidden shadow-sm">
-                    <button onClick={() => { setIsEditingAnalystTarget(!isEditingAnalystTarget); setIsEditingFairValue(false); setIsEditingMarketPrice(false); }} className="px-2 py-1.5 text-[10px] font-bold text-fuchsia-700 dark:text-fuchsia-400 hover:bg-fuchsia-100 dark:hover:bg-fuchsia-900/50 transition-colors">مستهدف المحللين:</button>
+                  <div 
+                    className="flex items-center justify-between bg-fuchsia-50 dark:bg-fuchsia-900/30 border border-fuchsia-200 dark:border-fuchsia-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-fuchsia-300 dark:hover:border-fuchsia-700 transition-colors"
+                    onClick={() => { setIsEditingAnalystTarget(true); setIsEditingFairValue(false); setIsEditingMarketPrice(false); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); }}
+                  >
+                    <span className="text-[10px] font-bold text-fuchsia-700 dark:text-fuchsia-400 whitespace-nowrap">المحللين:</span>
                     {isEditingAnalystTarget ? (
-                      <div className="flex items-center"><input type="number" step="any" value={analystTargetInput} onChange={e => setAnalystTargetInput(e.target.value)} className="w-16 bg-white dark:bg-slate-900 text-xs font-black px-2 py-1 outline-none text-center text-fuchsia-900 dark:text-fuchsia-100" dir="ltr" autoFocus placeholder="-" /><button onClick={handleUpdateAnalystTarget} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white px-2 py-1.5 text-[10px] font-bold">حفظ</button></div>
+                        <input 
+                          type="number" step="any" 
+                          value={analystTargetInput} onChange={e => setAnalystTargetInput(e.target.value)} 
+                          onBlur={handleUpdateAnalystTarget}
+                          onKeyDown={e => e.key === 'Enter' && handleUpdateAnalystTarget()}
+                          className="w-14 bg-transparent text-xs font-black outline-none text-left text-fuchsia-900 dark:text-fuchsia-100 font-mono-num" dir="ltr" autoFocus placeholder="-" 
+                        />
                     ) : (
-                      <div className="px-3 py-1.5 text-xs font-black text-fuchsia-800 dark:text-fuchsia-200 cursor-pointer hover:text-fuchsia-600 transition-colors font-mono-num" onClick={() => setIsEditingAnalystTarget(true)} dir="ltr">{position!.plan?.analystTarget ? position!.plan.analystTarget.toFixed(2) : '-'}</div>
+                      <span className="text-xs font-black text-fuchsia-800 dark:text-fuchsia-200 font-mono-num" dir="ltr">
+                        {position!.plan?.analystTarget ? position!.plan.analystTarget.toFixed(2) : '-'}
+                      </span>
                     )}
                   </div>
 
@@ -1053,13 +1024,13 @@ if (!position || !metrics) return null;
             {/* Plan vs Reality Visual Chart */}
             <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-10 rounded-3xl border border-slate-200 dark:border-slate-700/60 mb-2 relative mt-6 shadow-inner">
               <div className={`absolute -top-4 left-4 z-10 px-3 py-1.5 rounded-xl text-sm font-black flex items-center gap-1.5 border shadow-sm ${
-                metrics!.realizedPnL > 0 
+                metrics!.netRealizedPnL > 0 
                   ? 'bg-emerald-100 border-emerald-300 text-emerald-800 dark:bg-emerald-900/60 dark:border-emerald-700 dark:text-emerald-300' 
-                  : metrics!.realizedPnL < 0 
+                  : metrics!.netRealizedPnL < 0 
                     ? 'bg-rose-100 border-rose-300 text-rose-800 dark:bg-rose-900/60 dark:border-rose-700 dark:text-rose-300' 
                     : 'bg-white border-slate-200 text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
               }`}>
-                صافي الأرباح المحققة: {metrics!.realizedPnL > 0 ? '+' : ''}{metrics!.realizedPnL.toFixed(2)} EGP
+                صافي الأرباح المحققة: {metrics!.netRealizedPnL > 0 ? '+' : ''}{metrics!.netRealizedPnL.toFixed(2)} EGP
               </div>
               
               <div className="relative h-16 w-full flex items-center" style={{ marginTop: gauge.mt, marginBottom: gauge.mb }}>

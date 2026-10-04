@@ -111,7 +111,7 @@ export default function App() {
       <ReloadPrompt />
       <button 
         onClick={() => setIsNotesOpen(true)}
-        className="fixed bottom-6 right-6 z-40 p-4 bg-amber-500 hover:bg-amber-600 text-white rounded-full shadow-2xl hover:shadow-amber-500/50 transition-all transform hover:scale-110 flex items-center justify-center"
+        className="fixed bottom-40 left-4 md:bottom-28 md:left-8 z-40 p-3.5 md:p-4 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center"
         title="ملاحظات وأفكار"
       >
         <Pin className="w-6 h-6" />
