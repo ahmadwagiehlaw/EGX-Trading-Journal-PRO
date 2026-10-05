@@ -231,11 +231,11 @@ export default memo(function Dashboard({
           </div>
         </div>
         <button 
-          onClick={() => setIsLedgerOpen(true)}
+          onClick={() => onNavigate?.('الخزينة')}
           className="w-full md:w-auto bg-slate-800 hover:bg-slate-700 text-white px-5 py-3 rounded-xl font-black text-xs transition-colors flex items-center justify-center gap-2 border border-slate-700"
         >
           <Activity className="w-4 h-4" />
-          سجل السحب والإيداع
+          إدارة الخزينة
         </button>
       </div>
 

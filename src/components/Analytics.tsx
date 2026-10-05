@@ -39,7 +39,7 @@ export default function Analytics() {
   const positionsWithRealizedPnL = useMemo(() => {
     return filteredPositions.filter(pos => {
       const metrics = computePositionMetrics(pos, commissionRate);
-      return pos.status === 'closed' || metrics.isFullyClosed;
+      return pos.status === 'closed' || metrics.isFullyClosed || metrics.netRealizedPnL !== 0;
     });
   }, [positions, commissionRate]);
 
@@ -279,7 +279,7 @@ export default function Analytics() {
               </div>
               <p className="text-slate-500 dark:text-slate-400 font-bold text-[11px]">معامل الربح (Profit Factor)</p>
               <h3 className={`text-xl font-black font-mono-num mt-1 ${profitFactor >= 2 ? 'text-emerald-600 dark:text-emerald-500' : profitFactor >= 1 ? 'text-amber-600 dark:text-amber-500' : 'text-red-600 dark:text-red-500'}`} dir="ltr">
-                {typeof profitFactor === 'number' ? profitFactor.toFixed(2) : profitFactor}
+                {profitFactor > 90 ? 'بلا خسارة' : profitFactor.toFixed(2)}
               </h3>
               <span className="text-[10px] text-slate-400 font-bold mt-0.5">إجمالي الأرباح / إجمالي الخسائر</span>
             </div>

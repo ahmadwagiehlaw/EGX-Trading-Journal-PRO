@@ -50,7 +50,7 @@ export default function PortfolioSummary() {
       const m = computePositionMetrics(p, commissionRate);
       rPnL += m.netRealizedPnL;
       
-      if (p.status === 'closed') {
+      if (p.status === 'closed' || m.netRealizedPnL !== 0) {
         if (m.netRealizedPnL > 0) {
           totalWinAmt += m.netRealizedPnL;
           winCount++;
@@ -301,7 +301,7 @@ export default function PortfolioSummary() {
             </div>
             <div className="flex justify-between text-[10px] font-black text-slate-300">
                <span className="text-rose-400">1</span>
-               <span className="text-emerald-400">{stats.riskReward > 90 ? '∞' : stats.riskReward.toFixed(1)}</span>
+               <span className="text-emerald-400">{stats.riskReward > 90 ? <span className="text-[9px]">بلا خسارة</span> : stats.riskReward.toFixed(1)}</span>
             </div>
           </div>
 
@@ -309,7 +309,7 @@ export default function PortfolioSummary() {
             <span className="text-xs font-bold text-slate-400 block mb-2 flex items-center gap-1.5"><InfinityIcon className="w-3.5 h-3.5 text-purple-400" />معامل الربحية</span>
             <div className="flex justify-between items-end">
               <div className={`text-2xl font-black ${pfLabel.color}`} dir="ltr">
-                {profitFactor > 90 ? '∞' : profitFactor.toFixed(2)}
+                {profitFactor > 90 ? <span className="text-lg">بلا خسارة</span> : profitFactor.toFixed(2)}
               </div>
               <span className={`text-[10px] font-bold ${pfLabel.color} bg-white/5 px-2 py-1 rounded-md`}>{pfLabel.text}</span>
             </div>
