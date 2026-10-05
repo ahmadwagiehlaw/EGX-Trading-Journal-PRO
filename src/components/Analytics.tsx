@@ -63,27 +63,36 @@ export default function Analytics() {
     })).sort((a, b) => b.pnl - a.pnl);
   }, [positionsWithRealizedPnL, commissionRate]);
 
-  const wonPositions = filteredPositions.filter(p => computePositionMetrics(p, commissionRate).netRealizedPnL > 0);
-  const lostPositions = filteredPositions.filter(p => computePositionMetrics(p, commissionRate).netRealizedPnL < 0);
+  const allRealizedEvents = useMemo(() => {
+    const list: any[] = [];
+    filteredPositions.forEach(p => {
+      const m = computePositionMetrics(p, commissionRate);
+      if (m.realizedEvents) list.push(...m.realizedEvents);
+    });
+    return list;
+  }, [filteredPositions, commissionRate]);
 
-  const winRate = positionsWithRealizedPnL.length > 0 
-    ? ((wonPositions.length / positionsWithRealizedPnL.length) * 100).toFixed(1) 
+  const wonEvents = allRealizedEvents.filter(e => e.netPnL > 0);
+  const lostEvents = allRealizedEvents.filter(e => e.netPnL < 0);
+
+  const winRate = allRealizedEvents.length > 0 
+    ? ((wonEvents.length / allRealizedEvents.length) * 100).toFixed(1) 
     : '0.0';
 
   const totalGrossPnL = filteredPositions.reduce((sum, p) => sum + computePositionMetrics(p, commissionRate).realizedPnL, 0);
   const totalCommissionPaid = filteredPositions.reduce((sum, p) => sum + computePositionMetrics(p, commissionRate).totalCommission, 0);
   const totalNetPnL = filteredPositions.reduce((sum, p) => sum + computePositionMetrics(p, commissionRate).netRealizedPnL, 0);
 
-  const totalGain = wonPositions.reduce((sum, p) => sum + computePositionMetrics(p, commissionRate).netRealizedPnL, 0);
-  const totalLoss = lostPositions.reduce((sum, p) => sum + Math.abs(computePositionMetrics(p, commissionRate).netRealizedPnL), 0);
+  const totalGain = wonEvents.reduce((sum, e) => sum + e.netPnL, 0);
+  const totalLoss = lostEvents.reduce((sum, e) => sum + Math.abs(e.netPnL), 0);
 
-  const avgWin = wonPositions.length > 0 ? totalGain / wonPositions.length : 0;
-  const avgLoss = lostPositions.length > 0 ? totalLoss / lostPositions.length : 0;
+  const avgWin = wonEvents.length > 0 ? totalGain / wonEvents.length : 0;
+  const avgLoss = lostEvents.length > 0 ? totalLoss / lostEvents.length : 0;
   const realRR = avgLoss > 0 ? (avgWin / avgLoss).toFixed(2) : (avgWin > 0 ? '∞' : '0.00');
   const expectancy = ((parseFloat(winRate) / 100) * avgWin) - ((1 - (parseFloat(winRate) / 100)) * avgLoss);
 
-  const ruleBreakerCount = positionsWithRealizedPnL.filter(p => p.journal?.isRuleBreaker).length;
-  const disciplineScore = positionsWithRealizedPnL.length > 0 ? Math.max(0, 100 - (ruleBreakerCount * 12)) : 100;
+  const ruleBreakerCount = filteredPositions.filter(p => p.journal?.isRuleBreaker).length;
+  const disciplineScore = filteredPositions.length > 0 ? Math.max(0, 100 - (ruleBreakerCount * 12)) : 100;
 
   // Emotion Performance Analysis
   const behavioralDeviations = useMemo(() => {
@@ -261,7 +270,7 @@ export default function Analytics() {
               </div>
               <p className="text-slate-500 dark:text-slate-400 font-bold text-[11px]">نسبة النجاح (Win Rate)</p>
               <h3 className="text-xl font-black text-blue-700 dark:text-blue-400 font-mono-num mt-1" dir="ltr">{winRate}%</h3>
-              <span className="text-[10px] text-slate-400 font-bold mt-0.5">{wonPositions.length} من {positionsWithRealizedPnL.length} صفقات</span>
+              <span className="text-[10px] text-slate-400 font-bold mt-0.5">{wonEvents.length} من {allRealizedEvents.length} صفقات</span>
             </div>
 
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">

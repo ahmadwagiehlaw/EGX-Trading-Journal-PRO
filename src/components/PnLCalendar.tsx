@@ -5,13 +5,21 @@ import {
   Calendar as CalendarIcon, 
   X
 } from 'lucide-react';
-import { useTrades, type TickerPosition } from '../context/TradeContext';
+import { useTrades } from '../context/TradeContext';
 import { computePositionMetrics, formatEGP } from '../utils/calculations';
 
-interface DayTradeSummary {
+interface DayEventSummary {
   dateStr: string;
   dayNumber: number;
-  positions: TickerPosition[];
+  events: {
+    symbol: string;
+    type: 'sell' | 'dividend';
+    shares: number;
+    price: number;
+    netPnL: number;
+    strategy?: string;
+    lessonLearned?: string;
+  }[];
   netPnL: number;
   tradesCount: number;
   wonCount: number;
@@ -19,10 +27,10 @@ interface DayTradeSummary {
 }
 
 export default function PnLCalendar() {
-  const { positions } = useTrades();
+  const { positions, commissionRate } = useTrades();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
-  const [selectedDay, setSelectedDay] = useState<DayTradeSummary | null>(null);
+  const [selectedDay, setSelectedDay] = useState<DayEventSummary | null>(null);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth(); // 0-indexed
@@ -32,32 +40,39 @@ export default function PnLCalendar() {
     'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
   ];
 
-  // Group closed positions by date string (YYYY-MM-DD)
-  const tradesByDay = useMemo(() => {
-    const map: Record<string, TickerPosition[]> = {};
+  // Group all realized events (sells, dividends) by date string (YYYY-MM-DD)
+  const eventsByDay = useMemo(() => {
+    const map: Record<string, DayEventSummary['events']> = {};
 
     positions.forEach((pos) => {
-      const metrics = computePositionMetrics(pos);
-      if (pos.status === 'closed' || metrics.isFullyClosed) {
-        const closeDate = pos.journal?.closedDate || pos.journal?.openedDate || pos.entryDate;
-        if (closeDate) {
-          const d = new Date(closeDate);
+      const metrics = computePositionMetrics(pos, commissionRate);
+      metrics.realizedEvents.forEach(evt => {
+        if (evt.date) {
+          const d = new Date(evt.date);
           const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
           if (!map[key]) map[key] = [];
-          map[key].push(pos);
+          map[key].push({
+            symbol: pos.symbol,
+            type: evt.type,
+            shares: evt.shares,
+            price: evt.price,
+            netPnL: evt.netPnL,
+            strategy: pos.plan?.strategy,
+            lessonLearned: pos.journal?.lessonLearned || pos.journal?.lessonsLearned
+          });
         }
-      }
+      });
     });
 
     return map;
-  }, [positions]);
+  }, [positions, commissionRate]);
 
   // Calendar matrix calculation
   const calendarData = useMemo(() => {
     const firstDayIndex = new Date(year, month, 1).getDay(); // 0 = Sunday
     const totalDaysInMonth = new Date(year, month + 1, 0).getDate();
 
-    const days: (DayTradeSummary | null)[] = [];
+    const days: (DayEventSummary | null)[] = [];
 
     // Prepend empty slots before 1st of month
     for (let i = 0; i < firstDayIndex; i++) {
@@ -71,22 +86,21 @@ export default function PnLCalendar() {
 
     for (let day = 1; day <= totalDaysInMonth; day++) {
       const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const dayPositions = tradesByDay[dateKey] || [];
+      const dayEvents = eventsByDay[dateKey] || [];
       
       let dayPnL = 0;
       let wonCount = 0;
       let lostCount = 0;
 
-      dayPositions.forEach(p => {
-        const pnl = computePositionMetrics(p).realizedPnL;
-        dayPnL += pnl;
-        if (pnl > 0) wonCount++;
-        else if (pnl < 0) lostCount++;
+      dayEvents.forEach(e => {
+        dayPnL += e.netPnL;
+        if (e.netPnL > 0) wonCount++;
+        else if (e.netPnL < 0) lostCount++;
       });
 
-      if (dayPositions.length > 0) {
+      if (dayEvents.length > 0) {
         monthlyTotalPnL += dayPnL;
-        monthlyTradesCount += dayPositions.length;
+        monthlyTradesCount += dayEvents.length;
         if (dayPnL > 0) greenDaysCount++;
         else if (dayPnL < 0) redDaysCount++;
       }
@@ -94,9 +108,9 @@ export default function PnLCalendar() {
       days.push({
         dateStr: dateKey,
         dayNumber: day,
-        positions: dayPositions,
+        events: dayEvents,
         netPnL: dayPnL,
-        tradesCount: dayPositions.length,
+        tradesCount: dayEvents.length,
         wonCount,
         lostCount,
       });
@@ -109,7 +123,7 @@ export default function PnLCalendar() {
       greenDaysCount,
       redDaysCount,
     };
-  }, [year, month, tradesByDay]);
+  }, [year, month, eventsByDay]);
 
   const handlePrevMonth = () => {
     setCurrentDate(new Date(year, month - 1, 1));
@@ -286,24 +300,28 @@ export default function PnLCalendar() {
             </div>
 
             <div className="space-y-2.5 max-h-80 overflow-y-auto">
-              {selectedDay.positions.map(pos => {
-                const metrics = computePositionMetrics(pos);
+              {selectedDay.events.map((evt, idx) => {
                 return (
-                  <div key={pos.id} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                  <div key={idx} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-black text-sm text-slate-900 dark:text-white" dir="ltr">{pos.symbol}</span>
-                        <span className="text-[11px] text-slate-500">{pos.plan?.strategy || 'صفقة'}</span>
+                        <span className="font-black text-sm text-slate-900 dark:text-white" dir="ltr">{evt.symbol}</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${evt.type === 'dividend' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'}`}>
+                          {evt.type === 'dividend' ? 'كوبون نقدي' : `بيع ${evt.shares.toLocaleString()} سهم`}
+                        </span>
+                        {evt.strategy && (
+                          <span className="text-[11px] text-slate-500">{evt.strategy}</span>
+                        )}
                       </div>
-                      {pos.journal?.lessonLearned && (
+                      {evt.lessonLearned && (
                         <p className="text-[11px] text-slate-400 font-handwriting mt-0.5">
-                          "{pos.journal.lessonLearned}"
+                          "{evt.lessonLearned}"
                         </p>
                       )}
                     </div>
                     <div className="text-left font-mono-num">
-                      <span className={`text-sm font-black ${metrics.realizedPnL >= 0 ? 'text-emerald-600' : 'text-red-600'}`} dir="ltr">
-                        {metrics.realizedPnL > 0 ? '+' : ''}{formatEGP(metrics.realizedPnL)}
+                      <span className={`text-sm font-black ${evt.netPnL >= 0 ? 'text-emerald-600' : 'text-red-600'}`} dir="ltr">
+                        {evt.netPnL > 0 ? '+' : ''}{formatEGP(evt.netPnL)}
                       </span>
                     </div>
                   </div>

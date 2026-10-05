@@ -6,6 +6,7 @@ import { type PlanUpdate } from '../components/PlanUpdatesFeed';
 import { 
   type TickerPosition, 
   type Transaction, 
+  type RealizedEvent,
   computePositionMetrics, 
   computeWeightedAvgEntry, 
   computeOpenShares, 
@@ -14,7 +15,7 @@ import {
   computeOpenInvestedCapitalByPortfolio
 } from '../utils/calculations';
 
-export type { TickerPosition, Transaction };
+export type { TickerPosition, Transaction, RealizedEvent };
 
 
 // Temporary getPath helper to support user isolation later
@@ -513,11 +514,18 @@ const deleteWeeklyReview = async (id: string) => {
     let openRisk = 0;
     let ruleBreakerCount = 0;
 
+    let allRealizedEvents: RealizedEvent[] = [];
+    
     positions.forEach(pos => {
       const metrics = computePositionMetrics(pos, commissionRate);
       
-      // Commission applies to ALL transactions, even if position is still active
       sumCommission += metrics.totalCommission;
+      sumPnL += metrics.realizedPnL;
+      sumNetPnL += metrics.netRealizedPnL;
+
+      if (metrics.realizedEvents && metrics.realizedEvents.length > 0) {
+        allRealizedEvents.push(...metrics.realizedEvents);
+      }
 
       if (pos.status === 'active' && metrics.openShares > 0) {
         openCount++;
@@ -530,71 +538,56 @@ const deleteWeeklyReview = async (id: string) => {
 
       if (pos.status === 'closed' || metrics.isFullyClosed) {
         closedCount++;
-        sumPnL += metrics.realizedPnL;
-        sumNetPnL += metrics.netRealizedPnL;
-        
-        // Decide win/loss based on Net PnL is more accurate
-        if (metrics.netRealizedPnL > 0) wonCount++;
-        else if (metrics.netRealizedPnL < 0) lostCount++;
-        
         if (pos.journal?.isRuleBreaker) ruleBreakerCount++;
-      } else if (metrics.realizedPnL !== 0) {
-        // If partially closed, add its realized PnL too!
-        sumPnL += metrics.realizedPnL;
-        sumNetPnL += metrics.netRealizedPnL;
       }
     });
+
+    // Realized events win/loss counts (accurate for partial sells & fully closed)
+    allRealizedEvents.forEach(evt => {
+      if (evt.netPnL > 0) wonCount++;
+      else if (evt.netPnL < 0) lostCount++;
+    });
+
+    const totalRealizedDecisions = wonCount + lostCount;
+    const calculatedWinRate = totalRealizedDecisions > 0 ? (wonCount / totalRealizedDecisions) * 100 : 0;
 
     // Compute Profit Factor
     let grossProfit = 0;
     let grossLoss = 0;
-    positions.forEach(pos => {
-      const metrics = computePositionMetrics(pos, commissionRate);
-      if (metrics.netRealizedPnL > 0) grossProfit += metrics.netRealizedPnL;
-      else if (metrics.netRealizedPnL < 0) grossLoss += Math.abs(metrics.netRealizedPnL);
+    allRealizedEvents.forEach(evt => {
+      if (evt.netPnL > 0) grossProfit += evt.netPnL;
+      else if (evt.netPnL < 0) grossLoss += Math.abs(evt.netPnL);
     });
     const computedProfitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 999 : 0);
 
-    const calculatedWinRate = closedCount > 0 ? (wonCount / closedCount) * 100 : 0;
-    const score = closedCount > 0 ? Math.max(0, 100 - (ruleBreakerCount * 12)) : 100;
+    const score = (closedCount + openCount) > 0 ? Math.max(0, 100 - (ruleBreakerCount * 12)) : 100;
 
-    // Compute Equity Curve & Max Drawdown
-    let allTx: { trade: string, pnl: number, date: number }[] = [];
-    positions.forEach(pos => {
-      // Very rough timeline using the sell dates. 
-      // A more exact simulation would reconstruct the exact net PnL event by event.
-      // But for a fast equity curve, we just record the PnL at the time of each 'sell' or 'dividend'
-      if (!pos.transactions) return;
-      const metrics = computePositionMetrics(pos, commissionRate);
-      // Fallback: just put the whole position PnL on its last transaction date
-      if (metrics.netRealizedPnL !== 0 && pos.transactions.length > 0) {
-        const lastTxDate = pos.transactions[pos.transactions.length - 1].date;
-        allTx.push({ trade: pos.symbol, pnl: metrics.netRealizedPnL, date: lastTxDate });
-      }
-    });
+    // Compute Equity Curve & Max Drawdown based on exact chronological RealizedEvents
+    allRealizedEvents.sort((a, b) => a.date - b.date);
 
-    allTx.sort((a, b) => a.date - b.date);
-
-    let currentEquity = 100000; // Starting baseline just for charting % changes
+    let currentEquity = 100000;
     let peakEquity = currentEquity;
     let maxDD = 0;
-    
-    // Mock EGX30 start
-    let currentEGX30 = 100000; 
+    let currentEGX30 = 100000;
 
-    const computedEquityData = allTx.map((tx, i) => {
-      currentEquity += tx.pnl;
+    const computedEquityData = allRealizedEvents.map((evt, i) => {
+      currentEquity += evt.netPnL;
       if (currentEquity > peakEquity) peakEquity = currentEquity;
       const drawdown = peakEquity > 0 ? ((peakEquity - currentEquity) / peakEquity) * 100 : 0;
       if (drawdown > maxDD) maxDD = drawdown;
-      
-      // Simulate random market movement for EGX30 benchamrk (between -1.5% and +2%)
+
       const marketMove = (Math.random() * 0.035) - 0.015;
       if (i > 0) {
         currentEGX30 = currentEGX30 * (1 + marketMove);
       }
 
-      return { trade: tx.trade, equity: currentEquity, egx30: currentEGX30, pnl: tx.pnl, date: tx.date };
+      return { 
+        trade: evt.symbol || 'صفقة', 
+        equity: currentEquity, 
+        egx30: currentEGX30, 
+        pnl: evt.netPnL, 
+        date: evt.date 
+      };
     });
 
     return {
@@ -620,15 +613,18 @@ const deleteWeeklyReview = async (id: string) => {
 
   // Compute Capital (Deposits vs Equity)
   const { depositedInvestment, depositedSpeculation, capitalInvestment, capitalSpeculation } = useMemo(() => {
-    // 1. Calculate pure deposited capital from ledger
+    // 1. Calculate pure deposited capital and dynamic fixed income from ledger
     let depInv = 0;
     let depSpec = 0;
+    let dynamicFixedIncome = 0;
     
     if (ledger.length > 0) {
       ledger.forEach(entry => {
         if (entry.portfolioType === 'investment') {
           if (entry.type === 'deposit') depInv += entry.amount;
           if (entry.type === 'withdrawal') depInv -= entry.amount;
+          if (entry.type === 'fixed_income_buy') dynamicFixedIncome += entry.amount;
+          if (entry.type === 'fixed_income_sell') dynamicFixedIncome -= entry.amount;
         } else {
           if (entry.type === 'deposit') depSpec += entry.amount;
           if (entry.type === 'withdrawal') depSpec -= entry.amount;
@@ -638,13 +634,13 @@ const deleteWeeklyReview = async (id: string) => {
       // Fallback to legacy if ledger is empty
       depInv = legacyInvestmentCap;
       depSpec = legacySpeculationCap;
+      dynamicFixedIncome = fixedIncome;
     }
 
     // 2. Calculate PnL per portfolio
     let pnlInv = 0;
     let pnlSpec = 0;
     positions.forEach(pos => {
-      // Aggregate Realized PnL based on transaction-level portfolio attribution
       const pnlSplit = computeRealizedPnLByPortfolio(pos.transactions || [], pos.portfolioType, commissionRate);
       pnlInv += pnlSplit.investment;
       pnlSpec += pnlSplit.speculation;
@@ -656,8 +652,9 @@ const deleteWeeklyReview = async (id: string) => {
       depositedSpeculation: depSpec,
       capitalInvestment: depInv + pnlInv,
       capitalSpeculation: depSpec + pnlSpec,
+      calculatedFixedIncome: dynamicFixedIncome > 0 ? dynamicFixedIncome : fixedIncome
     };
-  }, [ledger, positions, legacyInvestmentCap, legacySpeculationCap]);
+  }, [ledger, positions, legacyInvestmentCap, legacySpeculationCap, fixedIncome]);
 
   // CRUD for Positions
   const addPosition = async (posData: Omit<TickerPosition, 'id'>): Promise<string> => {

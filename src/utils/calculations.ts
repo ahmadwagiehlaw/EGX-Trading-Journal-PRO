@@ -97,7 +97,23 @@ export interface TickerPosition {
 
 
 
-export function simulatePositionMetrics(transactions: Transaction[] = [], commissionRate: number = 0.003) {
+export interface RealizedEvent {
+  txId: string;
+  date: number;
+  symbol?: string;
+  type: 'sell' | 'dividend';
+  shares: number;
+  price: number;
+  grossAmount: number;
+  commission: number;
+  grossPnL: number;
+  netPnL: number;
+  portfolioType: 'investment' | 'speculation';
+  isWin: boolean;
+  lotsClosed: { buyTxId: string; buyPrice: number; shares: number }[];
+}
+
+export function simulatePositionMetrics(transactions: Transaction[] = [], commissionRate: number = 0.003, symbol: string = '') {
   const sortedTxs = [...transactions].sort((a, b) => a.date - b.date);
   let openLots: { shares: number; price: number; amount: number; txId: string; date: number; pType: 'investment' | 'speculation' }[] = [];
   
@@ -108,7 +124,9 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
   let totalSold = 0;
   let totalRevenue = 0;
   let totalCommissionPaid = 0;
+  let totalBuyCost = 0;
   const txPnL: Record<string, number> = {};
+  const realizedEvents: RealizedEvent[] = [];
 
   for (const tx of sortedTxs) {
     const txCommission = tx.amount * commissionRate;
@@ -117,6 +135,7 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
     if (tx.type === 'buy') {
       openLots.push({ shares: tx.shares, price: tx.price, amount: tx.amount, txId: tx.id, date: tx.date, pType: tx.portfolioType || 'investment' });
       totalBought += tx.shares;
+      totalBuyCost += tx.amount + txCommission;
     } else if (tx.type === 'sell') {
       let sharesToSell = tx.shares;
       const netProceeds = tx.amount - txCommission;
@@ -127,6 +146,7 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
 
       let txRealizedPnL = 0;
       let txNetRealizedPnL = 0;
+      const lotsClosed: { buyTxId: string; buyPrice: number; shares: number }[] = [];
 
       while (sharesToSell > 0 && openLots.length > 0) {
         const lot = openLots[0];
@@ -143,6 +163,12 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
         
         txRealizedPnL += (grossProceedsFromLot - costOfSharesFromLot);
         txNetRealizedPnL += (netProceedsFromLot - totalCostOfSharesFromLot);
+
+        lotsClosed.push({
+          buyTxId: lot.txId,
+          buyPrice: lot.price,
+          shares: sharesFromLot
+        });
         
         sharesToSell -= sharesFromLot;
         lot.shares -= sharesFromLot;
@@ -156,6 +182,22 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
       totalRealizedPnL += txRealizedPnL;
       totalNetRealizedPnL += txNetRealizedPnL;
       if (tx.id) txPnL[tx.id] = txNetRealizedPnL;
+
+      realizedEvents.push({
+        txId: tx.id,
+        date: tx.date,
+        symbol,
+        type: 'sell',
+        shares: tx.shares,
+        price: tx.price,
+        grossAmount: tx.amount,
+        commission: txCommission,
+        grossPnL: txRealizedPnL,
+        netPnL: txNetRealizedPnL,
+        portfolioType: tx.portfolioType || 'investment',
+        isWin: txNetRealizedPnL > 0,
+        lotsClosed
+      });
       
       totalSold += tx.shares;
       totalRevenue += tx.amount;
@@ -172,6 +214,22 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
       totalRealizedPnL += tx.amount;
       totalNetRealizedPnL += tx.amount;
       if (tx.id) txPnL[tx.id] = tx.amount;
+
+      realizedEvents.push({
+        txId: tx.id,
+        date: tx.date,
+        symbol,
+        type: 'dividend',
+        shares: 0,
+        price: tx.price || 0,
+        grossAmount: tx.amount,
+        commission: 0,
+        grossPnL: tx.amount,
+        netPnL: tx.amount,
+        portfolioType: tx.portfolioType || 'investment',
+        isWin: true,
+        lotsClosed: []
+      });
     }
   }
 
@@ -180,12 +238,28 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
   const avgEntry = currentShares > 0 ? openLots.reduce((sum, lot) => sum + lot.amount, 0) / currentShares : 0;
   const avgExit = totalSold > 0 ? totalRevenue / totalSold : 0;
 
-  return { openShares: currentShares, avgEntry, avgExit, totalBought, totalSold, totalCost, totalRealizedPnL, totalNetRealizedPnL, totalDividends, totalCommissionPaid, txPnL, openLots };
+  return { 
+    openShares: currentShares, 
+    avgEntry, 
+    avgExit, 
+    totalBought, 
+    totalSold, 
+    totalCost, 
+    totalBuyCost,
+    totalRevenue,
+    totalRealizedPnL, 
+    totalNetRealizedPnL, 
+    totalDividends, 
+    totalCommissionPaid, 
+    txPnL, 
+    openLots,
+    realizedEvents
+  };
 }
 
 export function computePositionMetrics(position: TickerPosition, commissionRate: number = 0.003) {
   const transactions = position.transactions || [];
-  const sim = simulatePositionMetrics(transactions, commissionRate);
+  const sim = simulatePositionMetrics(transactions, commissionRate, position.symbol);
   
   const currentStop = position.trailingStop?.current || position.plan?.stop || 0;
   const openRisk = computeOpenRisk(currentStop, sim.avgEntry, sim.openShares);
@@ -205,6 +279,8 @@ export function computePositionMetrics(position: TickerPosition, commissionRate:
     totalCommission: sim.totalCommissionPaid,
     netRealizedPnL: sim.totalNetRealizedPnL,
     openInvested: sim.totalCost,
+    totalBuyCost: sim.totalBuyCost,
+    totalRevenue: sim.totalRevenue,
     currentStop,
     openRisk,
     isOpen,
@@ -213,7 +289,8 @@ export function computePositionMetrics(position: TickerPosition, commissionRate:
     unrealizedPnL,
     netUnrealizedPnL,
     txPnL: sim.txPnL || {},
-    openLots: sim.openLots || []
+    openLots: sim.openLots || [],
+    realizedEvents: sim.realizedEvents || []
   };
 }
 

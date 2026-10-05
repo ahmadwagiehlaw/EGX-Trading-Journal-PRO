@@ -1,5 +1,5 @@
 import ConfirmModal from './ConfirmModal';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Save, 
   Download, 
@@ -10,7 +10,9 @@ import {
   Info, 
   CheckCircle,
   FileSpreadsheet,
-  FileJson
+  FileJson,
+  ImageIcon,
+  Lock
 } from 'lucide-react';
 import { useTrades } from '../context/TradeContext';
 import { exportPositionsToCsv, exportPlansToCsv } from '../utils/exportCsv';
@@ -18,13 +20,35 @@ import { exportPositionsToCsv, exportPlansToCsv } from '../utils/exportCsv';
 export default function Settings() {
   const { capitalInvestment, capitalSpeculation, positions, plans, commissionRate, updateCommissionRate } = useTrades();
   const [confirmReset, setConfirmReset] = useState(false);
-  const [defaultRisk, setDefaultRisk] = useState('1');
-  const [commission, setCommission] = useState(commissionRate.toString());
+  
+  // Local state initialized with fallbacks
+  const [defaultRisk, setDefaultRisk] = useState(() => localStorage.getItem('egx_risk_per_trade_pct') || '1');
+  const [commission, setCommission] = useState(() => (commissionRate !== undefined && commissionRate !== null ? commissionRate.toString() : '0.003'));
+  const [imageProvider, setImageProvider] = useState(() => localStorage.getItem('egx_image_provider') || 'imgbb');
+  const [imageKey, setImageKey] = useState(() => localStorage.getItem('egx_image_key') || '');
+  const [imageEndpoint, setImageEndpoint] = useState(() => localStorage.getItem('egx_image_endpoint') || '');
+  const [privacyPin, setPrivacyPin] = useState(() => localStorage.getItem('egx_privacy_pin') || '');
 
   const [savedMessage, setSavedMessage] = useState(false);
 
+  useEffect(() => {
+    if (commissionRate !== undefined && commissionRate !== null) {
+      setCommission(commissionRate.toString());
+    }
+  }, [commissionRate]);
+
   const handleSave = async () => {
-    await updateCommissionRate(parseFloat(commission) || 0);
+    const commVal = parseFloat(commission);
+    if (!isNaN(commVal) && updateCommissionRate) {
+      await updateCommissionRate(commVal);
+    }
+    
+    localStorage.setItem('egx_risk_per_trade_pct', defaultRisk);
+    localStorage.setItem('egx_image_provider', imageProvider);
+    localStorage.setItem('egx_image_key', imageKey.trim());
+    localStorage.setItem('egx_image_endpoint', imageEndpoint.trim());
+    localStorage.setItem('egx_privacy_pin', privacyPin.trim());
+
     setSavedMessage(true);
     setTimeout(() => setSavedMessage(false), 3000);
   };
@@ -142,6 +166,93 @@ export default function Settings() {
             <p className="text-xs font-bold text-emerald-800 dark:text-emerald-300 leading-relaxed">
               تُحسب العمولات والدمغة تلقائياً لحساب صافي الأرباح المحققة بعد المصاريف (Net P&L).
             </p>
+          </div>
+        </div>
+
+        {/* Image Storage & Cloud Settings */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+          <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <ImageIcon className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+            <h3 className="text-lg font-black text-slate-900 dark:text-white">تخزين صور الشارتات والتحليلات</h3>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5">مزود تخزين الصور المفضل</label>
+              <select
+                value={imageProvider}
+                onChange={(e) => setImageProvider(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-4 text-slate-900 dark:text-white font-black text-sm focus:border-indigo-500 outline-none"
+              >
+                <option value="imgbb">ImgBB السحابي (تلقائي وسريع)</option>
+                <option value="cloudflare">Cloudflare R2 / Custom Endpoint</option>
+                <option value="local">تخزين محلي فائق السرعة على الجهاز (IndexedDB)</option>
+              </select>
+            </div>
+
+            {imageProvider === 'cloudflare' && (
+              <div className="space-y-3 p-4 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-2xl border border-indigo-100 dark:border-indigo-900/40">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">رابط الرفع (Worker / API Endpoint)</label>
+                  <input 
+                    type="url"
+                    placeholder="https://your-worker.yourname.workers.dev"
+                    value={imageEndpoint}
+                    onChange={(e) => setImageEndpoint(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-xs font-mono-num font-bold text-slate-900 dark:text-white outline-none"
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">مفتاح الحماية / Token (اختياري)</label>
+                  <input 
+                    type="password"
+                    placeholder="API Token..."
+                    value={imageKey}
+                    onChange={(e) => setImageKey(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-xs font-mono-num font-bold text-slate-900 dark:text-white outline-none"
+                    dir="ltr"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="bg-indigo-50 dark:bg-indigo-950/40 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-900/60 flex items-start gap-3">
+              <Info className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+              <p className="text-xs font-bold text-indigo-900 dark:text-indigo-300 leading-relaxed">
+                يتم ضغط جميع الصور محلياً بصيغة WebP خفيفة للغاية، مما يحافظ على سرعة التطبيق ويوفر استهلاك البيانات.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Privacy & Security PIN */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+          <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <Lock className="w-6 h-6 text-amber-600 dark:text-amber-500" />
+            <h3 className="text-lg font-black text-slate-900 dark:text-white">قفل الخصوصية الشخصي (PIN Lock)</h3>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5">رمز PIN المكون من 4 أرقام (اتركه فارغاً لإلغاء القفل)</label>
+              <input 
+                type="password" 
+                maxLength={4}
+                placeholder="مثال: 1234"
+                value={privacyPin}
+                onChange={(e) => setPrivacyPin(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 px-4 text-slate-900 dark:text-white font-mono-num font-black text-sm tracking-widest text-center focus:border-amber-500 outline-none"
+                dir="ltr"
+              />
+            </div>
+            
+            <div className="bg-amber-50 dark:bg-amber-950/40 p-4 rounded-2xl border border-amber-100 dark:border-amber-900/60 flex items-start gap-3">
+              <Lock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs font-bold text-amber-900 dark:text-amber-300 leading-relaxed">
+                رمز الحماية يُحفظ بأمان في متصفحك لمنع أي شخص متطفل على جهازك من الاطلاع على أرقام محفظتك وصفقاتك.
+              </p>
+            </div>
           </div>
         </div>
 
