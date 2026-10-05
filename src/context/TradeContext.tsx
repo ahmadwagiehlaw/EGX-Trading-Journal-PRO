@@ -119,7 +119,7 @@ export interface TradeContextType {
   deleteWeeklyReview: (id: string) => Promise<void>;
   
   stickyNotes: StickyNote[];
-  addStickyNote: (note: Omit<StickyNote, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  addStickyNote: (note: Omit<StickyNote, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
   updateStickyNote: (id: string, data: Partial<StickyNote>) => Promise<void>;
   deleteStickyNote: (id: string) => Promise<void>;
 
@@ -380,6 +380,7 @@ const deleteWeeklyReview = async (id: string) => {
     const docRef = doc(colRef);
     const newNote = { ...note, createdAt: Date.now(), updatedAt: Date.now() };
     await setDoc(docRef, newNote);
+    return docRef.id;
   };
   
   const updateStickyNote = async (id: string, data: Partial<StickyNote>) => {
