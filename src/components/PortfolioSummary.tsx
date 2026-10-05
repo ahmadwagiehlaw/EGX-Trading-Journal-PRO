@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { useTrades } from '../context/TradeContext';
 import { computePositionMetrics } from '../utils/calculations';
-import { Wallet, Clock, AlertTriangle, ShieldAlert, BarChart2, PieChart, TrendingUp, TrendingDown, Target, Activity, Infinity as InfinityIcon } from 'lucide-react';
+import { getStockBySymbol } from '../data/egxStocks';
+import { Wallet, Clock, AlertTriangle, ShieldAlert, BarChart2, PieChart, TrendingUp, TrendingDown, Target, Activity, Infinity as InfinityIcon, LayoutTemplate } from 'lucide-react';
 import { AreaChart, Area, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
 const fmtCompact = (n: number): [string, string] => {
@@ -24,6 +25,8 @@ const Amt = ({ v, plus = false, className = '' }: { v: number; plus?: boolean, c
 export default function PortfolioSummary() {
   const { positions, commissionRate, activeCapital, fixedIncome, equityData, winRate, profitFactor, maxDrawdown, wonPositionsCount, lostPositionsCount } = useTrades();
 
+  const [allocTab, setAllocTab] = useState<'stocks' | 'sectors' | 'strategy'>('stocks');
+
   const stats = useMemo(() => {
     let cost = 0;
     let mv = 0;
@@ -39,6 +42,8 @@ export default function PortfolioSummary() {
     let lossCount = 0;
 
     const tickerAlloc: Record<string, number> = {};
+    const sectorAlloc: Record<string, number> = {};
+    const strategyAlloc: Record<string, number> = {};
     const stockPnL: { sym: string, uPnL: number, uPct: number }[] = [];
 
     positions.forEach(p => {
@@ -64,6 +69,15 @@ export default function PortfolioSummary() {
         risk += m.openRisk;
         tickerAlloc[p.symbol] = val;
         
+        // Sector Allocation
+        const stockInfo = getStockBySymbol(p.symbol);
+        const sector = stockInfo?.sector || (p.plan as any)?.sector || 'أخرى';
+        sectorAlloc[sector] = (sectorAlloc[sector] || 0) + val;
+        
+        // Strategy Allocation
+        const strategy = p.portfolioType === 'speculation' ? 'مضاربة' : 'استثمار';
+        strategyAlloc[strategy] = (strategyAlloc[strategy] || 0) + val;
+
         stockPnL.push({
           sym: p.symbol,
           uPnL: m.netUnrealizedPnL,
@@ -72,7 +86,7 @@ export default function PortfolioSummary() {
         
         if (p.journal?.openedDate) {
            const days = (Date.now() - p.journal.openedDate) / 86400000;
-           holdDaysWeightedSum += days * m.openInvested; // weight by invested amount
+           holdDaysWeightedSum += days * m.openInvested;
         }
       }
     });
@@ -87,17 +101,18 @@ export default function PortfolioSummary() {
     const avgLoss = lossCount > 0 ? totalLossAmt / lossCount : 0;
     const riskReward = avgLoss > 0 ? avgWin / avgLoss : (avgWin > 0 ? 99 : 0);
     
-    // Sort allocation
-    const allocList = Object.entries(tickerAlloc)
-      .map(([sym, val]) => ({ sym, val, pct: activeCapital > 0 ? (val / activeCapital) * 100 : 0 }))
+    const mapAlloc = (record: Record<string, number>) => Object.entries(record)
+      .map(([name, val]) => ({ name, val, pct: activeCapital > 0 ? (val / activeCapital) * 100 : 0 }))
       .sort((a, b) => b.val - a.val);
-      
-    // Sort stock PnL
-    stockPnL.sort((a, b) => b.uPct - a.uPct);
 
+    const allocList = mapAlloc(tickerAlloc);
+    const sectorAllocList = mapAlloc(sectorAlloc);
+    const strategyAllocList = mapAlloc(strategyAlloc);
+      
+    stockPnL.sort((a, b) => b.uPct - a.uPct);
     const largest = allocList[0];
 
-    return { cost, mv, rPnL, uPnL, netTotal, exposurePct, cash, freeCash, fixedIncome, avgHold, risk, openCount, allocList, largest, riskReward, stockPnL };
+    return { cost, mv, rPnL, uPnL, netTotal, exposurePct, cash, freeCash, fixedIncome, avgHold, risk, openCount, allocList, sectorAllocList, strategyAllocList, largest, riskReward, stockPnL };
   }, [positions, commissionRate, activeCapital, fixedIncome]);
 
   if (stats.openCount === 0 && stats.rPnL === 0 && stats.uPnL === 0) return null;
@@ -111,6 +126,37 @@ export default function PortfolioSummary() {
   };
 
   const pfLabel = getProfitFactorLabel(profitFactor);
+  
+  const renderAllocationBar = (list: { name: string, val: number, pct: number }[]) => {
+    const colors = ['bg-indigo-500', 'bg-blue-500', 'bg-amber-500', 'bg-rose-500', 'bg-purple-500', 'bg-emerald-500', 'bg-cyan-500', 'bg-fuchsia-500'];
+    const textColors = ['text-indigo-400', 'text-blue-400', 'text-amber-400', 'text-rose-400', 'text-purple-400', 'text-emerald-400', 'text-cyan-400', 'text-fuchsia-400'];
+    
+    return (
+      <>
+        <div className="w-full h-3.5 rounded-full flex overflow-hidden bg-slate-900 mb-4 shadow-inner">
+           <div style={{ width: `${activeCapital > 0 ? (stats.freeCash/activeCapital)*100 : 0}%` }} className="bg-slate-600 border-r border-slate-900 hover:opacity-80 transition-opacity" title={`سيولة حرة: ${activeCapital > 0 ? (stats.freeCash/activeCapital)*100 : 0}%`} />
+           <div style={{ width: `${activeCapital > 0 ? (stats.fixedIncome/activeCapital)*100 : 0}%` }} className="bg-teal-500 border-r border-slate-900 hover:opacity-80 transition-opacity" title={`دخل ثابت: ${activeCapital > 0 ? (stats.fixedIncome/activeCapital)*100 : 0}%`} />
+           {list.map((a, i) => (
+             <div key={a.name} style={{ width: `${a.pct}%` }} className={`${colors[i%colors.length]} border-r border-slate-900 last:border-0 hover:opacity-80 transition-opacity`} title={`${a.name}: ${a.pct.toFixed(1)}%`} />
+           ))}
+        </div>
+        
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] font-bold text-slate-400">
+           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-600"></span>سيولة حرة <span dir="ltr">{(activeCapital > 0 ? (stats.freeCash/activeCapital)*100 : 0).toFixed(1)}%</span></span>
+           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-teal-500"></span>دخل ثابت <span dir="ltr">{(activeCapital > 0 ? (stats.fixedIncome/activeCapital)*100 : 0).toFixed(1)}%</span></span>
+           
+           {list.slice(0,5).map((a, i) => (
+             <span key={a.name} className="flex items-center gap-1">
+               <span className={`w-2 h-2 rounded-full ${colors[i%colors.length]}`}></span>
+               <span className="max-w-[80px] truncate" title={a.name}>{a.name}</span> 
+               <span dir="ltr" className={textColors[i%colors.length]}>{a.pct.toFixed(1)}%</span>
+             </span>
+           ))}
+           {list.length > 5 && <span className="flex items-center gap-1 text-slate-500">+{list.length - 5} أخرى</span>}
+        </div>
+      </>
+    );
+  };
 
   return (
     <div className="w-full bg-slate-900/95 text-white rounded-3xl p-6 shadow-2xl border border-slate-800 relative overflow-hidden" dir="rtl">
@@ -135,11 +181,6 @@ export default function PortfolioSummary() {
       </div>
 
       <div className="flex flex-col xl:flex-row gap-4 relative z-10">
-        
-        {/* Left Side (9 Grid Cards) -> in RTL, Left is physically on the right, wait, no. We use flex-row-reverse or just standard flow. In RTL, xl:flex-row puts the first item on the right. The mockup has 9 grid cards on the left, Net Total on the right. 
-        So first item should be Net Total, second item should be the 9 Grid cards! */}
-        
-        {/* RIGHT SIDE: Net Total Card (First in flex, so appears on Right in RTL) */}
         <div className="w-full xl:w-1/3 flex flex-col gap-4">
           <div className="flex-1 bg-slate-800/50 rounded-2xl p-5 border border-slate-700/50 flex flex-col hover:border-slate-600 transition-colors">
             <div className="flex justify-between items-start mb-6">
@@ -200,10 +241,7 @@ export default function PortfolioSummary() {
           </div>
         </div>
 
-        {/* LEFT SIDE: 9 Grid Cards */}
         <div className="w-full xl:w-2/3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          
-          {/* Row 1: Exposure, Cash, Hold */}
           <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700/50 hover:border-slate-600 transition-colors">
             <span className="text-xs font-bold text-slate-400 block mb-2 flex items-center gap-1.5"><PieChart className="w-3.5 h-3.5 text-indigo-400" />التعرض للسوق (أسهم)</span>
             <div className="flex items-end justify-between">
@@ -225,8 +263,8 @@ export default function PortfolioSummary() {
             <span className="text-xs font-bold text-slate-400 block mb-2 flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5 text-emerald-400" />الكاش الهجومي</span>
             <div className="text-2xl font-black text-emerald-400"><Amt v={stats.cash} /></div>
             <div className="text-[10px] text-slate-500 font-bold mt-1.5 flex items-center gap-2">
-               <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-700"></span>دخل ثابت <Amt v={stats.fixedIncome}/></span>
-               <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>حر <Amt v={stats.freeCash}/></span>
+               <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>دخل ثابت <Amt v={stats.fixedIncome}/></span>
+               <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>حر <Amt v={stats.freeCash}/></span>
             </div>
           </div>
 
@@ -238,7 +276,6 @@ export default function PortfolioSummary() {
             <div className="text-[10px] text-slate-500 font-bold mt-1">مرجح بحجم كل مركز</div>
           </div>
 
-          {/* Row 2: Win Rate, Risk/Reward, Profit Factor */}
           <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700/50 hover:border-slate-600 transition-colors">
             <span className="text-xs font-bold text-slate-400 block mb-2 flex items-center gap-1.5"><Target className="w-3.5 h-3.5 text-yellow-500" />نسبة النجاح</span>
             <div className="flex items-center justify-between">
@@ -278,7 +315,6 @@ export default function PortfolioSummary() {
             </div>
           </div>
 
-          {/* Row 3: Open Risk, Max DD, Largest Concentration */}
           <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700/50 hover:border-slate-600 transition-colors">
             <span className="text-xs font-bold text-slate-400 block mb-2 flex items-center gap-1.5"><ShieldAlert className="w-3.5 h-3.5 text-orange-400" />المخاطرة المفتوحة</span>
             <div className="text-2xl font-black text-slate-100" dir="ltr">
@@ -303,7 +339,7 @@ export default function PortfolioSummary() {
                   {stats.largest.pct.toFixed(1)}%
                 </div>
                 <div className="text-[10px] font-bold mt-1 flex items-center justify-between">
-                  <span className="text-slate-400">{stats.largest.sym}</span>
+                  <span className="text-slate-400">{stats.largest.name}</span>
                   {stats.largest.pct > 25 && <span className="text-rose-400 bg-rose-500/10 px-1.5 rounded">خطر</span>}
                 </div>
               </>
@@ -313,10 +349,8 @@ export default function PortfolioSummary() {
         </div>
       </div>
 
-      {/* Bottom Row: Profitability per stock & Portfolio Allocation */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4 relative z-10">
         
-        {/* Profitability per stock */}
         <div className="bg-slate-800/50 rounded-2xl p-5 border border-slate-700/50 hover:border-slate-600 transition-colors">
           <span className="text-xs font-bold text-slate-400 block mb-4 flex items-center justify-between">
             <div className="flex items-center gap-1.5"><BarChart2 className="w-4 h-4 text-emerald-400" />ربحية كل سهم (غير محقق)</div>
@@ -328,7 +362,6 @@ export default function PortfolioSummary() {
                    {s.uPct > 0 ? '+' : ''}{s.uPct.toFixed(1)}%
                  </span>
                  <div className="flex-1 h-2 bg-slate-900 rounded-full overflow-hidden flex items-center">
-                    {/* Render bar based on positive/negative */}
                     <div className="w-full flex h-full">
                        <div className="flex-1 flex justify-end">
                          {s.uPct < 0 && <div className="h-full bg-rose-500 rounded-l-full" style={{ width: `${Math.min(Math.abs(s.uPct)*2, 100)}%` }}></div>}
@@ -347,33 +380,35 @@ export default function PortfolioSummary() {
           </div>
         </div>
 
-        {/* Portfolio Allocation */}
-        <div className="bg-slate-800/50 rounded-2xl p-5 border border-slate-700/50 hover:border-slate-600 transition-colors flex flex-col justify-center">
-          <span className="text-xs font-bold text-slate-400 block mb-4 flex items-center gap-1.5"><PieChart className="w-4 h-4 text-indigo-400" />توزيع المحفظة</span>
-          
-          <div className="w-full h-3.5 rounded-full flex overflow-hidden bg-slate-900 mb-4 shadow-inner">
-             {/* Render free cash */}
-             <div style={{ width: `${activeCapital > 0 ? (stats.freeCash/activeCapital)*100 : 0}%` }} className="bg-slate-600 border-r border-slate-900 hover:opacity-80 transition-opacity" title={`سيولة: ${activeCapital > 0 ? (stats.freeCash/activeCapital)*100 : 0}%`} />
-             {/* Render fixed income */}
-             <div style={{ width: `${activeCapital > 0 ? (stats.fixedIncome/activeCapital)*100 : 0}%` }} className="bg-teal-500 border-r border-slate-900 hover:opacity-80 transition-opacity" title={`دخل ثابت: ${activeCapital > 0 ? (stats.fixedIncome/activeCapital)*100 : 0}%`} />
-             {/* Render stocks */}
-             {stats.allocList.map((a, i) => {
-               const colors = ['bg-indigo-500', 'bg-blue-500', 'bg-amber-500', 'bg-rose-500', 'bg-purple-500', 'bg-emerald-500'];
-               return <div key={a.sym} style={{ width: `${a.pct}%` }} className={`${colors[i%colors.length]} border-r border-slate-900 last:border-0 hover:opacity-80 transition-opacity`} title={`${a.sym}: ${a.pct.toFixed(1)}%`} />
-             })}
+        <div className="bg-slate-800/50 rounded-2xl p-5 border border-slate-700/50 hover:border-slate-600 transition-colors flex flex-col justify-start">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-xs font-bold text-slate-400 flex items-center gap-1.5"><LayoutTemplate className="w-4 h-4 text-indigo-400" />توزيع المحفظة</span>
+            <div className="flex items-center gap-1 bg-slate-900/50 p-1 rounded-lg border border-slate-700/50">
+              <button 
+                onClick={() => setAllocTab('stocks')} 
+                className={`px-3 py-1 rounded-md text-[10px] font-bold transition-colors ${allocTab === 'stocks' ? 'bg-indigo-500 text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}`}
+              >
+                الأسهم
+              </button>
+              <button 
+                onClick={() => setAllocTab('sectors')} 
+                className={`px-3 py-1 rounded-md text-[10px] font-bold transition-colors ${allocTab === 'sectors' ? 'bg-indigo-500 text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}`}
+              >
+                القطاعات
+              </button>
+              <button 
+                onClick={() => setAllocTab('strategy')} 
+                className={`px-3 py-1 rounded-md text-[10px] font-bold transition-colors ${allocTab === 'strategy' ? 'bg-indigo-500 text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}`}
+              >
+                الاستراتيجية
+              </button>
+            </div>
           </div>
           
-          <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] font-bold text-slate-400">
-             {/* Cash legends */}
-             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-600"></span>سيولة <span dir="ltr">{(activeCapital > 0 ? (stats.freeCash/activeCapital)*100 : 0).toFixed(1)}%</span></span>
-             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-teal-500"></span>دخل ثابت <span dir="ltr">{(activeCapital > 0 ? (stats.fixedIncome/activeCapital)*100 : 0).toFixed(1)}%</span></span>
-             
-             {/* Stock legends */}
-             {stats.allocList.slice(0,5).map((a, i) => {
-               const colors = ['bg-indigo-500', 'bg-blue-500', 'bg-amber-500', 'bg-rose-500', 'bg-purple-500', 'bg-emerald-500'];
-               return <span key={a.sym} className="flex items-center gap-1"><span className={`w-2 h-2 rounded-full ${colors[i%colors.length]}`}></span>{a.sym} <span dir="ltr">{a.pct.toFixed(1)}%</span></span>
-             })}
-             {stats.allocList.length > 5 && <span className="flex items-center gap-1 text-slate-500">+{stats.allocList.length - 5} أخرى</span>}
+          <div className="flex flex-col justify-center flex-1">
+             {allocTab === 'stocks' && renderAllocationBar(stats.allocList)}
+             {allocTab === 'sectors' && renderAllocationBar(stats.sectorAllocList)}
+             {allocTab === 'strategy' && renderAllocationBar(stats.strategyAllocList)}
           </div>
         </div>
 
