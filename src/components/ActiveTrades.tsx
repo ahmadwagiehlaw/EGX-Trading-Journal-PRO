@@ -12,8 +12,26 @@ import {
   Target
 ,
   Trash2
-, X, Pencil, Sparkles, Pin, TrendingUp, Zap
+, X, Pencil, Sparkles, Pin, TrendingUp, TrendingDown, Zap, Wallet, Landmark, Banknote, Clock
 } from 'lucide-react';
+
+// Compact Arabic number format: 371,505 -> ["371.5", "ألف"], 2,400,000 -> ["2.40", "مليون"]
+const fmtParts = (n: number): [string, string] => {
+  const a = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (a >= 1_000_000) return [sign + (a / 1_000_000).toFixed(2), 'مليون'];
+  if (a >= 10_000) return [sign + (a / 1_000).toFixed(1), 'ألف'];
+  return [sign + a.toLocaleString(undefined, { maximumFractionDigits: 0 }), ''];
+};
+const Amt = ({ v, plus = false }: { v: number; plus?: boolean }) => {
+  const [num, unit] = fmtParts(v);
+  return (
+    <span className="whitespace-nowrap">
+      <span dir="ltr" className="inline-block">{plus && v > 0 ? '+' : ''}{num}</span>{unit && <span className="mr-1">{unit}</span>}
+    </span>
+  );
+};
+
 import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 import { useTrades } from '../context/TradeContext';
 import { useTheme } from '../context/ThemeContext';
@@ -23,7 +41,7 @@ import TransactionFormModal from './TransactionFormModal';
 export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: () => void }) {
 
 
-  const { positions, updateTrailingStop, updatePosition, deleteTransaction, coreStats, capitalInvestment, capitalSpeculation, commissionRate } = useTrades();
+  const { positions, updateTrailingStop, updatePosition, deleteTransaction, coreStats, capitalInvestment, capitalSpeculation, commissionRate, activeCapital } = useTrades();
   const { theme } = useTheme();
   
   const position = positions.find(p => p.id === tradeId);
@@ -49,15 +67,15 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
   const [atrInput, setAtrInput] = useState('');
   
   const [isEditingRsi, setIsEditingRsi] = useState(false);
-  const [fairValueInput, setFairValueInput] = useState('');
-  const [isEditingFairValue, setIsEditingFairValue] = useState(false);
-  const [analystTargetInput, setAnalystTargetInput] = useState('');
-  const [isEditingAnalystTarget, setIsEditingAnalystTarget] = useState(false);
+  
+  
+  
+  
   const [rsiInput, setRsiInput] = useState('');
-  const [isEditingBeta, setIsEditingBeta] = useState(false);
-  const [betaInput, setBetaInput] = useState('');
-  const [isEditingEma50, setIsEditingEma50] = useState(false);
-  const [ema50Input, setEma50Input] = useState('');
+  
+  
+  
+  
 
   const [isEditingTargets, setIsEditingTargets] = useState(false);
   const [t1Input, setT1Input] = useState('');
@@ -160,7 +178,7 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     const p = parseFloat(marketPriceInput);
     if (isNaN(p) || p <= 0) return;
     const data: any = { currentMarketPrice: p };
-    // Auto-trail: a new peak raises the stop (Chandelier) — never lowers it
+    // Auto-trail: a new peak raises the stop (Chandelier) â€” never lowers it
     if (metrics.isOpen) {
       const peak = position.trailingStop?.highestReached || metrics.avgEntry;
       if (p > peak) {
@@ -199,37 +217,9 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     setIsEditingAtr(false);
   };
 
-  const handleUpdateFairValue = async () => {
-    if (!position) return;
-    const val = parseFloat(fairValueInput);
-    await updatePosition(position.id, { plan: { ...position.plan, fairValue: isNaN(val) ? undefined : val } } as any);
-    setIsEditingFairValue(false);
-  };
 
-  const handleUpdateBeta = async () => {
-    if (!position) return;
-    const val = parseFloat(betaInput);
-    if (!isNaN(val) && val > 0) {
-      await updatePosition(position.id, { plan: { ...position.plan, beta: val } } as any);
-    }
-    setIsEditingBeta(false);
-  };
 
-  const handleUpdateEma50 = async () => {
-    if (!position) return;
-    const val = parseFloat(ema50Input);
-    if (!isNaN(val) && val > 0) {
-      await updatePosition(position.id, { plan: { ...position.plan, ema50: val } } as any);
-    }
-    setIsEditingEma50(false);
-  };
 
-  const handleUpdateAnalystTarget = async () => {
-    if (!position) return;
-    const val = parseFloat(analystTargetInput);
-    await updatePosition(position.id, { plan: { ...position.plan, analystTarget: isNaN(val) ? undefined : val } } as any);
-    setIsEditingAnalystTarget(false);
-  };
 
   const handleUpdateRsi = async () => {
     if (!position) return;
@@ -299,8 +289,6 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
       if (!isEditingNote) setStockNote(position.plan?.makerPlan || '');
       if (isEditingAtr) setAtrInput((position.trailingStop?.atrAtEntry || position.plan?.atr || 0).toString());
       if (isEditingRsi) setRsiInput((position.plan?.rsi || 0).toString());
-      if (!isEditingFairValue) setFairValueInput((position.plan?.fairValue || '').toString());
-      if (!isEditingAnalystTarget) setAnalystTargetInput((position.plan?.analystTarget || '').toString());
       if (isEditingTargets) {
         setT1Input((position.plan?.target || 0).toString());
         setT2Input((position.plan?.targets?.[0] || 0).toString());
@@ -408,10 +396,70 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
       }
     }
 
-    if (insights.length === 0) {
-      insights.push({ type: 'info', text: 'التمركز مستقر ضمن النطاق الآمن حالياً. حافظ على التزامك بالخطة المحددة وراقب مستويات الدعم والمقاومة.' });
+    // --- Technical rules driven by the values the user updates (price / RSI / targets / supports) ---
+    const px = metrics.currentPrice;
+    const rsiVal = position.plan?.rsi || 0;
+    if (rsiVal > 0) {
+      if (rsiVal >= 70) {
+        insights.push({ type: pnlPercent > 0 ? 'success' : 'warning', text: 'مؤشر القوة النسبية RSI عند ' + rsiVal.toFixed(1) + ' (تشبع شرائي فوق 70): احتمال تصحيح قريب — لا تضف كمية جديدة، وفكّر في جني جزء من الربح وشدّ الوقف المتحرك.', action: pnlPercent > 0 ? 'بيع جزئي' : undefined });
+      } else if (rsiVal <= 30) {
+        insights.push({ type: 'info', text: 'مؤشر القوة النسبية RSI عند ' + rsiVal.toFixed(1) + ' (تشبع بيعي تحت 30): قد يقترب ارتداد، لكن لا تتخذ قرار البيع بدافع الذعر ولا تعزز المركز إلا إذا كانت الخطة تسمح وبقي الوقف سليماً.' });
+      } else if (rsiVal >= 60 && (analytics?.rMultiple ?? 0) >= 1) {
+        insights.push({ type: 'info', text: 'الزخم قوي (RSI ' + rsiVal.toFixed(1) + ') مع ربح يتجاوز 1R — الاتجاه في صالحك، ارفع الوقف تدريجياً ولا تسبق السعر بالبيع.' });
+      }
     }
-    return insights;
+
+    // Targets: T1 = plan.target, T2/T3 = plan.targets[0/1]
+    const tList = [position.plan?.target || 0, position.plan?.targets?.[0] || 0, position.plan?.targets?.[1] || 0];
+    if (px > 0 && metrics.isOpen) {
+      let hit = -1;
+      tList.forEach((t, i) => { if (t > 0 && px >= t) hit = i; });
+      if (hit >= 0) {
+        insights.push({ type: 'success', text: 'السعر (' + px.toFixed(2) + ') بلغ الهدف T' + (hit + 1) + ' (' + tList[hit].toFixed(2) + '): نفّذ جني الأرباح المخطط له وارفع الوقف إلى مستوى الهدف السابق أو نقطة التعادل.', action: 'بيع جزئي' });
+      } else {
+        const nextIdx = tList.findIndex(t => t > px);
+        if (nextIdx >= 0) {
+          const dist = ((tList[nextIdx] - px) / px) * 100;
+          if (dist <= 2) insights.push({ type: 'info', text: 'السعر قريب من الهدف T' + (nextIdx + 1) + ' (' + tList[nextIdx].toFixed(2) + ') — يبعد ' + dist.toFixed(1) + '% فقط. جهّز أمر البيع الجزئي.' });
+        }
+      }
+    }
+
+    // Supports: S1..S3 = plan.supports[0..2]
+    const sList = [position.plan?.supports?.[0] || 0, position.plan?.supports?.[1] || 0, position.plan?.supports?.[2] || 0];
+    if (px > 0 && metrics.isOpen && analytics?.status !== 'broken') {
+      let lost = -1;
+      sList.forEach((s, i) => { if (s > 0 && px < s) lost = i; });
+      if (lost >= 0) {
+        insights.push({ type: 'warning', text: 'السعر (' + px.toFixed(2) + ') كسر الدعم S' + (lost + 1) + ' (' + sList[lost].toFixed(2) + '): الدعم المكسور يتحول لمقاومة — راجع الوقف وتأكد أن الاتجاه ما زال سليماً.' });
+      } else {
+        const nearIdx = sList.findIndex(s => s > 0 && ((px - s) / px) * 100 <= 1.5);
+        if (nearIdx >= 0) insights.push({ type: 'info', text: 'السعر يختبر الدعم S' + (nearIdx + 1) + ' (' + sList[nearIdx].toFixed(2) + ') — راقب رد فعل السعر هنا: الارتداد يدعم الاحتفاظ والكسر يستدعي الحذر.' });
+      }
+    }
+
+    // Stop proximity (status 'near' previously had no message)
+    if (analytics && analytics.status === 'near') {
+      insights.push({ type: 'warning', text: 'السعر قريب جداً من الوقف (' + analytics.stopDistancePct.toFixed(1) + '% فقط' + (analytics.stopDistanceAtr !== null ? '، ' + analytics.stopDistanceAtr.toFixed(1) + ' ATR' : '') + '). جهّز نفسك للتنفيذ ولا تحرّك الوقف للأسفل.' });
+    }
+    if (analytics && analytics.status === 'locked' && metrics.isOpen) {
+      insights.push({ type: 'success', text: 'الوقف أعلى من سعر الدخول: الربح المحمي ' + formatEGP(analytics.lockedProfit) + ' — صفقة بلا مخاطرة على رأس المال.' });
+    }
+    if (analytics && analytics.status === 'none' && metrics.isOpen) {
+      insights.push({ type: 'warning', text: 'لا يوجد وقف خسارة محدد لهذا المركز. حدد الوقف الآن قبل أي قرار آخر.' });
+    }
+
+    // If the stop is broken, drop optimistic tips so the exit signal is the only message that matters
+    let result: any[] = insights;
+    if (analytics?.status === 'broken') {
+      result = insights.filter((i: any) => i.type === 'warning');
+    }
+    if (result.length === 0) {
+      result.push({ type: 'info', text: 'التمركز مستقر ضمن النطاق الآمن حالياً. حافظ على التزامك بالخطة المحددة وراقب مستويات الدعم والمقاومة.' });
+    }
+    // Severity order: warnings first, then success, then info
+    const order: Record<string, number> = { warning: 0, success: 1, info: 2 };
+    return result.sort((a: any, b: any) => (order[a.type] ?? 3) - (order[b.type] ?? 3));
   };
   const insights = generateInsights();
 
@@ -664,34 +712,124 @@ if (!position || !metrics) return null;
 
           <div>
             {/* Header / Ticker Summary */}
-            <div className="mb-2">
+            <div className="mb-4">
               <div className="flex justify-between items-start mb-4">
                 <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight" dir="ltr">{position!.symbol}</h3>
-                  <span className={`px-2.5 py-0.5 rounded-lg text-xs font-black border ${
-                    metrics!.isOpen 
-                      ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' 
-                      : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                  }`}>
-                    {metrics!.isOpen ? 'مركز مفتوح' : 'مغلق'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight" dir="ltr">{position!.symbol}</h3>
+                    <span className={`px-2.5 py-0.5 rounded-lg text-xs font-black border ${
+                      metrics!.isOpen 
+                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' 
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                    }`}>
+                      {metrics!.isOpen ? 'مركز مفتوح' : 'مغلق'}
+                    </span>
+                  </div>
+                  <p className="text-slate-500 dark:text-slate-400 font-bold text-sm mt-1">
+                    متوسط سعر الدخول: <span className="text-blue-600 dark:text-blue-400 font-black">{metrics!.avgEntry.toFixed(2)} EGP</span>
+                  </p>
+                  {metrics!.isOpen && analytics && (() => {
+                    const days = analytics.daysHeld;
+                    const cost = metrics!.openShares * metrics!.avgEntry;
+                    const uPct = cost > 0 ? (metrics!.netUnrealizedPnL / cost) * 100 : 0;
+                    const perDay = days && days > 0 ? uPct / days : null;
+                    const R = analytics.rMultiple;
+                    const chip = 'inline-flex items-center gap-1 whitespace-nowrap rounded-lg border px-2 py-1 text-[11px] font-black';
+                    const tone = (good: boolean | null) => good === null ? 'bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
+                      : good ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-400'
+                      : 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-400';
+                    const overTime = position!.plan?.timeStopDays && days !== null && days > position!.plan.timeStopDays;
+                    return (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {days !== null && (
+                          <span className={`${chip} ${overTime ? tone(false) : tone(null)}`} title="مدة الاحتفاظ ومتوسط العائد غير المحقق لكل يوم">
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>{days === 0 ? 'اليوم' : days + ' يوم'}</span>
+                            {perDay !== null && <span dir="ltr" className={perDay >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>({perDay > 0 ? '+' : ''}{perDay.toFixed(2)}%/يوم)</span>}
+                          </span>
+                        )}
+                        {R !== null && (
+                          <span className={`${chip} ${tone(R >= 0)}`} title="الربح أو الخسارة مقاسة بوحدات المخاطرة الأولية (R)">
+                            <Target className="w-3.5 h-3.5" />
+                            <span dir="ltr">{R > 0 ? '+' : ''}{R.toFixed(2)}R</span>
+                          </span>
+                        )}
+                        {analytics.stopDistancePct > 0 && (
+                          <span className={`${chip} ${tone(analytics.status === 'near' ? false : null)}`} title="المسافة بين السعر الحالي والوقف">
+                            <ShieldAlert className="w-3.5 h-3.5" />
+                            <span>الوقف يبعد</span>
+                            <span dir="ltr">{analytics.stopDistancePct.toFixed(1)}%</span>
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
-                <p className="text-slate-500 dark:text-slate-400 font-bold text-xs mt-1 mb-2">
-                  متوسط سعر الدخول: <span className="text-blue-600 dark:text-blue-400 font-mono-num font-black">{metrics!.avgEntry.toFixed(2)} EGP</span>
-                </p>
+                <div className="text-left flex flex-col items-start">
+                  <p className="text-slate-400 font-bold text-xs mb-0.5">الكمية المفتوحة</p>
+                  <p className="text-3xl font-black text-indigo-600 dark:text-indigo-400 drop-shadow-sm">{metrics!.openShares.toLocaleString()} <span className="text-lg">سهم</span></p>
+                  {metrics!.isOpen && (() => {
+                    const u = metrics!.netUnrealizedPnL;
+                    const cost = metrics!.openShares * metrics!.avgEntry;
+                    const uPct = cost > 0 ? (u / cost) * 100 : 0;
+                    const tone = u > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-400'
+                      : u < 0 ? 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-400'
+                      : 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400';
+                    return (
+                      <div className={`mt-1.5 inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-2 py-1 text-[11px] font-black ${tone}`} title={u < 0 ? 'خسارة غير محققة (صافي بعد العمولات)' : 'ربح غير محقق (صافي بعد العمولات)'}>
+                        {u < 0 ? <TrendingDown className="w-3.5 h-3.5" /> : <TrendingUp className="w-3.5 h-3.5" />}
+                        <span className="font-bold opacity-80">{u < 0 ? 'خسارة غير محققة' : 'ربح غير محقق'}</span>
+                        <span className="inline-flex items-center gap-1"><Amt v={u} plus /><span dir="ltr">({u > 0 ? '+' : ''}{uPct.toFixed(1)}%)</span></span>
+                      </div>
+                    );
+                  })()}
                 </div>
-              <div className="text-left">
-                <p className="text-slate-400 font-bold text-xs">الكمية المفتوحة</p>
-                <p className="text-xl font-black text-slate-900 dark:text-white font-mono-num">{metrics!.openShares.toLocaleString()} سهم</p>
-              </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 w-full">
+              {/* Key Financial Metrics Strip */}
+              {metrics!.isOpen && (() => {
+                const totalCost = metrics!.openShares * metrics!.avgEntry;
+                const marketValue = metrics!.openShares * metrics!.currentPrice;
+                const costPct = activeCapital > 0 ? (totalCost / activeCapital) * 100 : 0;
+                let realizedPct = 0;
+                if ((metrics! as any).totalSold > 0) {
+                  const revenue = (metrics! as any).totalSold * (metrics! as any).avgExit;
+                  const costOfSold = revenue - metrics!.realizedPnL;
+                  if (costOfSold > 0) realizedPct = (metrics!.netRealizedPnL / costOfSold) * 100;
+                }
+                const rp = metrics!.netRealizedPnL;
+                const rTone = rp > 0 ? 'text-emerald-600 dark:text-emerald-400' : rp < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300';
+                return (
+                  <div className="grid grid-cols-3 gap-2 mb-4 bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60">
+                    <div className="flex flex-col gap-1 min-w-0 border-l border-slate-200 dark:border-slate-700 pl-2">
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500 whitespace-nowrap"><Wallet className="w-3 h-3 text-slate-400" />التكلفة</span>
+                      <div className="flex items-baseline gap-1 whitespace-nowrap">
+                        <span className="text-sm font-black text-slate-800 dark:text-slate-100"><Amt v={totalCost} /></span>
+                        {costPct > 0 && <span className="text-[10px] font-bold text-slate-400" dir="ltr">({costPct.toFixed(1)}%)</span>}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1 min-w-0 border-l border-slate-200 dark:border-slate-700 pl-2">
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500 whitespace-nowrap"><Landmark className="w-3 h-3 text-blue-400" />القيمة السوقية</span>
+                      <div className="flex items-baseline gap-1 whitespace-nowrap">
+                        <span className="text-sm font-black text-slate-800 dark:text-slate-100"><Amt v={marketValue} /></span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500 whitespace-nowrap"><Banknote className="w-3 h-3 text-emerald-400" />الربح المحقق</span>
+                      <div className="flex items-baseline gap-1 whitespace-nowrap">
+                        <span className={`text-sm font-black ${rTone}`}><Amt v={rp} plus /></span>
+                        {(metrics! as any).totalSold > 0 && <span className={`text-[10px] font-bold ${rTone} opacity-80`} dir="ltr">({realizedPct > 0 ? '+' : ''}{realizedPct.toFixed(1)}%)</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full">
                     {/* Market Price Pill */}
                     <div 
                       className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
-                      onClick={() => { setIsEditingMarketPrice(true); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); setIsEditingBeta(false); setIsEditingEma50(false); }}
+                      onClick={() => { setIsEditingMarketPrice(true); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); }}
                     >
                       <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">السوق:</span>
                       {isEditingMarketPrice ? (
@@ -716,7 +854,7 @@ if (!position || !metrics) return null;
                     {metrics!.isOpen && (
                     <div 
                       className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
-                      onClick={() => { setIsEditingHighestPrice(true); setIsEditingMarketPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); setIsEditingBeta(false); setIsEditingEma50(false); }}
+                      onClick={() => { setIsEditingHighestPrice(true); setIsEditingMarketPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); }}
                     >
                       <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 whitespace-nowrap flex items-center gap-1">
                         <Lock className="w-3 h-3" /> القمة:
@@ -744,7 +882,7 @@ if (!position || !metrics) return null;
                     {metrics!.isOpen && (
                     <div 
                       className="flex items-center justify-between bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-purple-300 dark:hover:border-purple-700 transition-colors"
-                      onClick={() => { setIsEditingAtr(true); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingRsi(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); setIsEditingBeta(false); setIsEditingEma50(false); }}
+                      onClick={() => { setIsEditingAtr(true); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingRsi(false); }}
                     >
                       <span className="text-[10px] font-bold text-purple-700 dark:text-purple-400 whitespace-nowrap">ATR:</span>
                       {isEditingAtr ? (
@@ -770,7 +908,7 @@ if (!position || !metrics) return null;
                     {metrics!.isOpen && (
                     <div 
                       className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors"
-                      onClick={() => { setIsEditingRsi(true); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); setIsEditingBeta(false); setIsEditingEma50(false); }}
+                      onClick={() => { setIsEditingRsi(true); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); }}
                     >
                       <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 whitespace-nowrap">RSI:</span>
                       {isEditingRsi ? (
@@ -786,108 +924,14 @@ if (!position || !metrics) return null;
                           />
                       ) : (
                         <span className="text-xs font-black text-indigo-800 dark:text-indigo-200 font-mono-num" dir="ltr">
-                          {((position!.plan?.rsi || 0)).toFixed(1)}%
+                          {((position!.plan?.rsi || 0)).toFixed(1)}
                         </span>
                       )}
                     </div>
                     )}
 
-                  {/* Fair Value Pill */}
-                  <div 
-                    className="flex items-center justify-between bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-teal-300 dark:hover:border-teal-700 transition-colors"
-                    onClick={() => { setIsEditingFairValue(true); setIsEditingAnalystTarget(false); setIsEditingMarketPrice(false); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false);  setIsEditingBeta(false); setIsEditingEma50(false); }}
-                  >
-                    <span className="text-[10px] font-bold text-teal-700 dark:text-teal-400 whitespace-nowrap">العادل:</span>
-                    {isEditingFairValue ? (
-                        <input 
-                          type="number" step="any" 
-                          value={fairValueInput} onChange={e => setFairValueInput(e.target.value)} 
-                          onBlur={handleUpdateFairValue}
-                          onKeyDown={e => e.key === 'Enter' && handleUpdateFairValue()}
-                          className="w-14 bg-transparent text-xs font-black outline-none text-left text-teal-900 dark:text-teal-100 font-mono-num" dir="ltr" autoFocus placeholder="-" 
-                        />
-                    ) : (
-                      <span className="text-xs font-black text-teal-800 dark:text-teal-200 font-mono-num" dir="ltr">
-                        {position!.plan?.fairValue ? position!.plan.fairValue.toFixed(2) : '-'}
-                      </span>
-                    )}
                   </div>
-
-                  {/* Beta Pill */}
-                  {metrics!.isOpen && (
-                  <div 
-                    className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-amber-300 dark:hover:border-amber-700 transition-colors"
-                    onClick={() => { setIsEditingBeta(true); setIsEditingEma50(false); setIsEditingRsi(false); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); }}
-                  >
-                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 whitespace-nowrap">بيتا:</span>
-                    {isEditingBeta ? (
-                        <input 
-                          type="number" step="any"
-                          value={betaInput}
-                          onChange={(e) => setBetaInput(e.target.value)}
-                          onBlur={handleUpdateBeta}
-                          onKeyDown={e => e.key === 'Enter' && handleUpdateBeta()}
-                          className="w-14 bg-transparent text-xs font-black outline-none text-left text-amber-900 dark:text-amber-100 font-mono-num"
-                          dir="ltr" autoFocus
-                          placeholder={((position!.plan?.beta || 0)).toFixed(2)}
-                        />
-                    ) : (
-                      <span className="text-xs font-black text-amber-800 dark:text-amber-200 font-mono-num" dir="ltr">
-                        {position!.plan?.beta ? position!.plan.beta.toFixed(2) : '-'}
-                      </span>
-                    )}
-                  </div>
-                  )}
-
-                  {/* EMA 50 Pill */}
-                  {metrics!.isOpen && (
-                  <div 
-                    className="flex items-center justify-between bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-orange-300 dark:hover:border-orange-700 transition-colors"
-                    onClick={() => { setIsEditingEma50(true); setIsEditingBeta(false); setIsEditingRsi(false); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingFairValue(false); setIsEditingAnalystTarget(false); }}
-                  >
-                    <span className="text-[10px] font-bold text-orange-700 dark:text-orange-400 whitespace-nowrap">متوسط50:</span>
-                    {isEditingEma50 ? (
-                        <input 
-                          type="number" step="any"
-                          value={ema50Input}
-                          onChange={(e) => setEma50Input(e.target.value)}
-                          onBlur={handleUpdateEma50}
-                          onKeyDown={e => e.key === 'Enter' && handleUpdateEma50()}
-                          className="w-14 bg-transparent text-xs font-black outline-none text-left text-orange-900 dark:text-orange-100 font-mono-num"
-                          dir="ltr" autoFocus
-                          placeholder={((position!.plan?.ema50 || 0)).toFixed(2)}
-                        />
-                    ) : (
-                      <span className="text-xs font-black text-orange-800 dark:text-orange-200 font-mono-num" dir="ltr">
-                        {position!.plan?.ema50 ? position!.plan.ema50.toFixed(2) : '-'}
-                      </span>
-                    )}
-                  </div>
-                  )}
-
-                  {/* Analyst Target Pill */}
-                  <div 
-                    className="flex items-center justify-between bg-fuchsia-50 dark:bg-fuchsia-900/30 border border-fuchsia-200 dark:border-fuchsia-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-fuchsia-300 dark:hover:border-fuchsia-700 transition-colors"
-                    onClick={() => { setIsEditingAnalystTarget(true); setIsEditingFairValue(false); setIsEditingMarketPrice(false); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false);  setIsEditingBeta(false); setIsEditingEma50(false); }}
-                  >
-                    <span className="text-[10px] font-bold text-fuchsia-700 dark:text-fuchsia-400 whitespace-nowrap">المحللين:</span>
-                    {isEditingAnalystTarget ? (
-                        <input 
-                          type="number" step="any" 
-                          value={analystTargetInput} onChange={e => setAnalystTargetInput(e.target.value)} 
-                          onBlur={handleUpdateAnalystTarget}
-                          onKeyDown={e => e.key === 'Enter' && handleUpdateAnalystTarget()}
-                          className="w-14 bg-transparent text-xs font-black outline-none text-left text-fuchsia-900 dark:text-fuchsia-100 font-mono-num" dir="ltr" autoFocus placeholder="-" 
-                        />
-                    ) : (
-                      <span className="text-xs font-black text-fuchsia-800 dark:text-fuchsia-200 font-mono-num" dir="ltr">
-                        {position!.plan?.analystTarget ? position!.plan.analystTarget.toFixed(2) : '-'}
-                      </span>
-                    )}
-                  </div>
-
-                </div>
-                {error && isEditingHighestPrice && (
+                  {error && isEditingHighestPrice && (
                   <p className="text-[10px] font-bold text-rose-600 dark:text-rose-400 mt-2 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded inline-block w-full max-w-sm">
                     {error}
                   </p>
@@ -990,7 +1034,7 @@ if (!position || !metrics) return null;
                         />
                       ) : (
                         <span className="font-black text-emerald-700 dark:text-emerald-300 font-mono-num">
-                          {(i === 1 ? position!.plan?.target : i === 2 ? position!.plan?.targets?.[0] : position!.plan?.targets?.[1]) || '—'}
+                          {(i === 1 ? position!.plan?.target : i === 2 ? position!.plan?.targets?.[0] : position!.plan?.targets?.[1]) || 'â€”'}
                         </span>
                       )}
                     </div>
@@ -1027,7 +1071,7 @@ if (!position || !metrics) return null;
                         />
                       ) : (
                         <span className="font-black text-blue-700 dark:text-blue-300 font-mono-num">
-                          {(position!.plan?.supports?.[i-1]) || '—'}
+                          {(position!.plan?.supports?.[i-1]) || 'â€”'}
                         </span>
                       )}
                     </div>
@@ -1075,7 +1119,7 @@ if (!position || !metrics) return null;
                     {cards.map(c => (
                       <div key={c.label} className={`rounded-xl border px-3 py-2 text-center ${tone[c.tone]}`} title={c.hint}>
                         <div className="text-[10px] font-bold opacity-70">{c.label}</div>
-                        <div className="text-sm font-black font-mono-num mt-0.5" dir="ltr">{c.value}</div>
+                        <div className="text-sm font-black tracking-tight mt-0.5" dir="ltr">{c.value}</div>
                       </div>
                     ))}
                   </div>
@@ -1228,7 +1272,7 @@ if (!position || !metrics) return null;
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   <div className="bg-white dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-center">
                     <div className="text-[10px] font-bold text-slate-500 mb-0.5">وقف القمة − {analytics.atrMultiplier}×ATR</div>
-                    <div className="text-base font-black font-mono-num text-orange-600 dark:text-orange-400" dir="ltr">{analytics.chandelierStop !== null ? analytics.chandelierStop.toFixed(2) : '—'}</div>
+                    <div className="text-base font-black tracking-tight text-orange-600 dark:text-orange-400" dir="ltr">{analytics.chandelierStop !== null ? analytics.chandelierStop.toFixed(2) : 'â€”'}</div>
                     <button
                       disabled={analytics.chandelierStop === null || analytics.chandelierStop <= metrics!.currentStop || analytics.chandelierStop >= metrics!.currentPrice}
                       onClick={() => analytics.chandelierStop !== null && handleApplyStop(analytics.chandelierStop, 'وقف Chandelier')}
@@ -1239,7 +1283,7 @@ if (!position || !metrics) return null;
                   </div>
                   <div className="bg-white dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-center">
                     <div className="text-[10px] font-bold text-slate-500 mb-0.5">وقف التعادل (شامل العمولة)</div>
-                    <div className="text-base font-black font-mono-num text-emerald-600 dark:text-emerald-400" dir="ltr">{analytics.breakevenStop.toFixed(2)}</div>
+                    <div className="text-base font-black tracking-tight text-emerald-600 dark:text-emerald-400" dir="ltr">{analytics.breakevenStop.toFixed(2)}</div>
                     <button
                       disabled={analytics.breakevenStop <= metrics!.currentStop || analytics.breakevenStop >= metrics!.currentPrice}
                       onClick={() => handleApplyStop(analytics.breakevenStop, 'وقف التعادل')}
@@ -1393,3 +1437,4 @@ if (!position || !metrics) return null;
     </div>
   );
 }
+
