@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import NewTradeForm from './NewTradeForm';
 import ActiveTrades from './ActiveTrades';
+import PortfolioSummary from './PortfolioSummary';
 import TransactionFormModal from './TransactionFormModal';
 import { useTrades, type TickerPosition } from '../context/TradeContext';
 import { computePositionMetrics, formatEGP, computeDominantPortfolio } from '../utils/calculations';
@@ -213,6 +214,9 @@ export default memo(function TradesJournal({
 
   return (
     <div className="w-full space-y-5" dir="rtl">
+
+      {/* Aggregated portfolio performance */}
+      <PortfolioSummary />
 
       {/* Header Controls & Filters */}
       <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-800 p-4 rounded-3xl shadow-sm">
