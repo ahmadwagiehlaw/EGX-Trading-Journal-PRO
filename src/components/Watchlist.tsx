@@ -1,6 +1,6 @@
 import { useState, memo } from 'react';
 import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
-import { Plus, Target, Clock, ArrowRight, CheckSquare, X, Save, Search, LineChart, FileText, Trash2, ArrowUpDown, HelpCircle } from 'lucide-react';
+import { Plus, Target, Clock, CheckSquare, X, Save, Search, LineChart, FileText, Trash2, ArrowUpDown, HelpCircle, Zap } from 'lucide-react';
 import PlanUpdatesFeed from './PlanUpdatesFeed';
 import StockAutocomplete from './StockAutocomplete';
 import { useTrades, type Plan } from '../context/TradeContext';
@@ -44,6 +44,12 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [modalLeftTab, setModalLeftTab] = useState<'updates' | 'chart'>('updates');
   const [showPlaybookInfo, setShowPlaybookInfo] = useState(false);
+
+  // Quick Instant Buy Modal State
+  const [quickBuyPlan, setQuickBuyPlan] = useState<Plan | null>(null);
+  const [quickBuyPrice, setQuickBuyPrice] = useState<string>('');
+  const [quickBuyShares, setQuickBuyShares] = useState<string>('100');
+  const [isExecutingBuy, setIsExecutingBuy] = useState(false);
 
   // Range helper
   const getEntryRange = (plan: Plan) => {
@@ -122,14 +128,28 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
     }
   };
 
-  const handleConvertToTrade = async (plan: Plan) => {
+  const openQuickBuyModal = (plan: Plan) => {
+    const { min } = getEntryRange(plan);
+    setQuickBuyPlan(plan);
+    setQuickBuyPrice(min > 0 ? min.toString() : '');
+    setQuickBuyShares('100');
+  };
+
+  const handleConfirmQuickBuy = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickBuyPlan || !quickBuyPrice || !quickBuyShares) return;
+
+    setIsExecutingBuy(true);
     try {
-      const { min } = getEntryRange(plan);
-      const defaultPrice = min > 0 ? min : 0;
-      await convertPlanToPosition(plan, defaultPrice, 100);
-      onMoveToJournal(plan);
+      const price = Number(quickBuyPrice);
+      const shares = Number(quickBuyShares);
+      await convertPlanToPosition(quickBuyPlan, price, shares);
+      setQuickBuyPlan(null);
+      onMoveToJournal(quickBuyPlan);
     } catch (err) {
       console.error("Error converting plan to position:", err);
+    } finally {
+      setIsExecutingBuy(false);
     }
   };
 
@@ -298,18 +318,16 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
 
               {/* Action Buttons */}
               <div className="mt-auto flex flex-col gap-2 pt-1">
-                {isReady && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleConvertToTrade(item); }}
-                    className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white text-xs font-black rounded-xl shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95"
-                  >
-                    تحويل لصفقة فعلية (تمركز)
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                <button 
+                  onClick={(e) => { e.stopPropagation(); openQuickBuyModal(item); }}
+                  className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-transform active:scale-95"
+                >
+                  <Zap className="w-3.5 h-3.5 fill-current" />
+                  ⚡ تنفيذ شراء فوري
+                </button>
                 <div className="w-full py-2 bg-slate-100/50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 text-[11px] font-black rounded-xl flex items-center justify-center gap-1.5 transition-colors">
                   <FileText className="w-3 h-3" />
-                  انقر لعرض وتعديل التفاصيل
+                  انقر لعرض وتعديل الخطة
                 </div>
               </div>
             </div>
@@ -702,6 +720,93 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
                 حفظ الخطة
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Buy Execution Modal */}
+      {quickBuyPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setQuickBuyPlan(null)}></div>
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col p-6">
+            
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                  <Zap className="w-5 h-5 fill-current" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg text-slate-900 dark:text-white">
+                    تنفيذ شراء فوري
+                  </h3>
+                  <span className="text-xs font-black text-blue-600 dark:text-blue-400 font-mono-num" dir="ltr">
+                    {quickBuyPlan.symbol}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setQuickBuyPlan(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmQuickBuy} className="space-y-4 mt-5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700 dark:text-slate-300">سعر التنفيذ الفعلي (EGP)</label>
+                <input 
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={quickBuyPrice}
+                  onChange={e => setQuickBuyPrice(e.target.value)}
+                  required
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-mono-num font-black focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-left"
+                  dir="ltr"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700 dark:text-slate-300">عدد الأسهم المشتراة</label>
+                <input 
+                  type="number"
+                  step="1"
+                  min="1"
+                  value={quickBuyShares}
+                  onChange={e => setQuickBuyShares(e.target.value)}
+                  required
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-mono-num font-black focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-left"
+                  dir="ltr"
+                  placeholder="100"
+                />
+              </div>
+
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-700/80 flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-500 dark:text-slate-400">إجمالي قيمة الصفقة:</span>
+                <span className="font-black text-slate-900 dark:text-white font-mono-num" dir="ltr">
+                  {(Number(quickBuyPrice || 0) * Number(quickBuyShares || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EGP
+                </span>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setQuickBuyPlan(null)} 
+                  className="flex-1 py-3 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-xs"
+                >
+                  إلغاء
+                </button>
+                <button 
+                  type="submit"
+                  disabled={isExecutingBuy || !quickBuyPrice || !quickBuyShares}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3 rounded-xl shadow-md shadow-emerald-500/20 transition-all text-xs disabled:opacity-50"
+                >
+                  {isExecutingBuy ? 'جاري التنفيذ...' : 'تأكيد الشراء والتمركز'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

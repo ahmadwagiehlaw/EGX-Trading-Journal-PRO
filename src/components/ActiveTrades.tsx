@@ -719,7 +719,7 @@ if (!position || !metrics) return null;
                     <h3 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight" dir="ltr">{position!.symbol}</h3>
                     <span className={`px-2.5 py-0.5 rounded-lg text-xs font-black border ${
                       metrics!.isOpen 
-                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' 
+                        ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' 
                         : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                     }`}>
                       {metrics!.isOpen ? 'مركز مفتوح' : 'مغلق'}

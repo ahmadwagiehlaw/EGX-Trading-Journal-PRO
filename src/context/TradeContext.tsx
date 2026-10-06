@@ -612,7 +612,7 @@ const deleteWeeklyReview = async (id: string) => {
   
 
   // Compute Capital (Deposits vs Equity)
-  const { depositedInvestment, depositedSpeculation, capitalInvestment, capitalSpeculation } = useMemo(() => {
+  const { depositedInvestment, depositedSpeculation, capitalInvestment, capitalSpeculation, calculatedFixedIncome } = useMemo(() => {
     // 1. Calculate pure deposited capital and dynamic fixed income from ledger
     let depInv = 0;
     let depSpec = 0;
@@ -1019,7 +1019,7 @@ const deleteWeeklyReview = async (id: string) => {
     
     capitalInvestment,
     capitalSpeculation,
-    fixedIncome,
+    fixedIncome: calculatedFixedIncome,
     updateFixedIncome,
     updateCapital,
     
