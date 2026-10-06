@@ -8,6 +8,8 @@ import {
   LineChart,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   ArrowDownLeft,
   Trash2,
   Layers,
@@ -131,13 +133,13 @@ export default memo(function TradesJournal({
     localStorage.setItem('egx_trades_view', mode);
   };
 
-  const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
+  const [selectedTradeId, setSelectedTradeId] = useState<string | null>(activeTradeIdProp || null);
   const [editingTrade, setEditingTrade] = useState<any>(null);
-  const [expandedPositionId, setExpandedPositionId] = useState<string | null>(activeTradeIdProp || null);
+  const [expandedPositionId, setExpandedPositionId] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeTradeIdProp) {
-      setExpandedPositionId(activeTradeIdProp);
+      setSelectedTradeId(activeTradeIdProp);
     }
   }, [activeTradeIdProp]);
 
@@ -179,27 +181,108 @@ export default memo(function TradesJournal({
     });
   }, [positions, statusFilter, searchQuery]);
 
+  // If a stock is currently open for detail management
   if (selectedTradeId) {
+    const activeOpenPositions = positions.filter(p => computePositionMetrics(p).openShares > 0 && p.status === 'active');
+    const availablePositionsToSwitch = activeOpenPositions.length > 0 ? activeOpenPositions : positions;
+    const currentIndex = availablePositionsToSwitch.findIndex(p => p.id === selectedTradeId);
+    
+    const handlePrev = () => {
+      if (currentIndex > 0) {
+        setSelectedTradeId(availablePositionsToSwitch[currentIndex - 1].id);
+      } else if (availablePositionsToSwitch.length > 0) {
+        setSelectedTradeId(availablePositionsToSwitch[availablePositionsToSwitch.length - 1].id);
+      }
+    };
+
+    const handleNext = () => {
+      if (currentIndex < availablePositionsToSwitch.length - 1) {
+        setSelectedTradeId(availablePositionsToSwitch[currentIndex + 1].id);
+      } else if (availablePositionsToSwitch.length > 0) {
+        setSelectedTradeId(availablePositionsToSwitch[0].id);
+      }
+    };
+
     return (
-      <div className="w-full space-y-5 animate-in slide-in-from-right-4 duration-300" dir="rtl">
-        {/* Header with back button */}
-        <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-            <LineChart className="w-6 h-6 text-blue-500" />
-            تفاصيل الصفقة وإدارة المركز المالي
-          </h2>
-          <button
-            onClick={() => setSelectedTradeId(null)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold transition-all shadow-sm"
-          >
-            <ArrowRight className="w-4 h-4" />
-            العودة للسجل
-          </button>
+      <div className="w-full space-y-4 animate-in slide-in-from-right-4 duration-300" dir="rtl">
+        {/* Modern Header with Stock Switcher Bar & Back Button */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          
+          {/* Right: Title & Back Button */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setSelectedTradeId(null);
+                onCloseActiveTrade?.();
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-black transition-all shadow-sm shrink-0"
+              title="العودة لقائمة الصفقات"
+            >
+              <ArrowRight className="w-4 h-4" />
+              العودة للسجل
+            </button>
+
+            <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block"></div>
+
+            <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2 truncate">
+              <LineChart className="w-5 h-5 text-blue-600 dark:text-blue-500 shrink-0" />
+              تفاصيل الصفقة وإدارة المركز المالي
+            </h2>
+          </div>
+
+          {/* Left: Quick Stock Switcher Pills & Arrows */}
+          {availablePositionsToSwitch.length > 1 && (
+            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 overflow-x-auto self-stretch sm:self-auto justify-between sm:justify-start">
+              {/* Prev Arrow */}
+              <button
+                onClick={handlePrev}
+                className="p-1.5 hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl transition-all shadow-xs shrink-0"
+                title="السهم السابق"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              {/* Stock Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-[260px] sm:max-w-md scrollbar-none">
+                {availablePositionsToSwitch.map(pos => {
+                  const isCurrent = pos.id === selectedTradeId;
+                  const m = computePositionMetrics(pos);
+                  const isProfit = m.netUnrealizedPnL >= 0;
+                  return (
+                    <button
+                      key={pos.id}
+                      onClick={() => setSelectedTradeId(pos.id)}
+                      className={`px-3 py-1 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                        isCurrent
+                          ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30'
+                          : 'bg-white dark:bg-slate-900/90 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200/60 dark:border-slate-700/50'
+                      }`}
+                    >
+                      <span dir="ltr">{pos.symbol}</span>
+                      <span className={`w-2 h-2 rounded-full ${isProfit ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Next Arrow */}
+              <button
+                onClick={handleNext}
+                className="p-1.5 hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl transition-all shadow-xs shrink-0"
+                title="السهم التالي"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
 
         <ActiveTrades
           tradeId={selectedTradeId}
-          onClose={() => setSelectedTradeId(null)}
+          onClose={() => {
+            setSelectedTradeId(null);
+            onCloseActiveTrade?.();
+          }}
         />
 
         <TransactionFormModal

@@ -693,7 +693,10 @@ export default memo(function Dashboard({
                         {/* Quick Partial Actions */}
                         <div className="flex items-center gap-1.5">
                           <button
-                            onClick={() => setSelectedPosForTx({ pos, type: 'buy' })}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedPosForTx({ pos, type: 'buy' });
+                            }}
                             className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm"
                             title="شراء إضافي"
                           >
@@ -701,7 +704,10 @@ export default memo(function Dashboard({
                             تعزيز
                           </button>
                           <button
-                            onClick={() => setSelectedPosForTx({ pos, type: 'sell' })}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedPosForTx({ pos, type: 'sell' });
+                            }}
                             className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm"
                             title="بيع جزئي"
                           >

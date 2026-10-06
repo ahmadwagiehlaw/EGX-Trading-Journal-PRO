@@ -39,6 +39,11 @@ export default function App() {
     setIsTradingDeskOpen(true);
   }, []);
 
+  const handleOpenTrade = useCallback((tradeId: string) => {
+    setActiveTradeId(tradeId);
+    setActiveTab('سجل الصفقات');
+  }, []);
+
   return (
     <>
       <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
@@ -46,6 +51,7 @@ export default function App() {
           <Dashboard 
             onOpenTradingDesk={handleOpenTradingDesk} 
             onNavigate={setActiveTab}
+            onOpenTrade={handleOpenTrade}
           />
         </div>
         
