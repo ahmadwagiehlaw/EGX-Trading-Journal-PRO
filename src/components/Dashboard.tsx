@@ -11,17 +11,18 @@ import {
   ArrowUpRight,
   PieChart as PieIcon,
   BarChart3,
-  LineChart as LineIcon,
+  TrendingUp,
   Sparkles
 } from 'lucide-react';
 import { 
-  AreaChart, 
-  Area, 
   BarChart,
   Bar,
   PieChart,
   Pie,
   Cell,
+  ComposedChart,
+  Line,
+  ReferenceLine,
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -66,8 +67,8 @@ export default memo(function Dashboard({
   const [isFixedIncomeModalOpen, setIsFixedIncomeModalOpen] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
-  // Smart Chart Mode Toggle: 'growth' | 'sectors' | 'distribution' | 'stream'
-  const [chartMode, setChartMode] = useState<'growth' | 'sectors' | 'distribution' | 'stream'>('sectors');
+  // Smart Chart Mode Toggle: 'distribution' | 'sectors' | 'risk_weight' | 'growth'
+  const [chartMode, setChartMode] = useState<'distribution' | 'sectors' | 'risk_weight' | 'growth'>('distribution');
 
   // Active positions
   const activePositions = filteredPositions.filter(p => {
@@ -108,16 +109,54 @@ export default memo(function Dashboard({
         symbol: p.symbol,
         pnl: Math.round(uPnL),
         pct: Number(pct.toFixed(1)),
-        isPositive: uPnL >= 0
+        isPositive: uPnL >= 0,
+        shares: m.openShares,
+        val: Math.round(m.openShares * m.currentPrice)
       };
     }).sort((a, b) => b.pnl - a.pnl);
   }, [activePositions]);
 
-  // 3. Chronological Realized PnL Timeline
-  const computedGrowthData = useMemo(() => {
-    if (equityData && equityData.length > 0) return equityData;
-    return [{ trade: 'البداية', equity: activeDeposited, pnl: 0 }];
-  }, [equityData, activeDeposited]);
+  // 3. Weight & Position Size per Open Stock
+  const stockWeightData = useMemo(() => {
+    return activePositions.map(p => {
+      const m = computePositionMetrics(p);
+      const val = m.openShares * m.currentPrice;
+      const weight = activeCapital > 0 ? (val / activeCapital) * 100 : 0;
+      return {
+        symbol: p.symbol,
+        weight: Number(weight.toFixed(1)),
+        val: Math.round(val),
+        risk: Math.round(m.openRisk)
+      };
+    }).sort((a, b) => b.weight - a.weight);
+  }, [activePositions, activeCapital]);
+
+  // 4. Chronological Realized Profit Progression (filtered by active portfolio)
+  const profitTimelineData = useMemo(() => {
+    if (!equityData || equityData.length === 0) return [];
+    
+    // Filter by active portfolio filter
+    const filtered = equityData.filter((item: any) => {
+      if (portfolioFilter === 'all') return true;
+      return item.portfolioType === portfolioFilter;
+    });
+
+    if (filtered.length === 0) return [];
+
+    // Recalculate running cumulative PnL for filtered events
+    let runningCumulative = 0;
+    return filtered.map((item: any) => {
+      runningCumulative += item.tradePnL;
+      return {
+        ...item,
+        cumulativePnL: runningCumulative
+      };
+    });
+  }, [equityData, portfolioFilter]);
+
+  const totalFilteredRealizedPnL = useMemo(() => {
+    return profitTimelineData.length > 0 ? profitTimelineData[profitTimelineData.length - 1].cumulativePnL : 0;
+  }, [profitTimelineData]);
 
   // Ready plans
   const readyPlans = plans.filter(p => p.status === 'ready');
@@ -337,15 +376,28 @@ export default memo(function Dashboard({
             <div className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               <h3 className="font-black text-slate-800 dark:text-white text-sm md:text-base">
-                {chartMode === 'sectors' && 'توزيع السيولة والقطاعات النشطة'}
                 {chartMode === 'distribution' && 'خريطة أرباح وخسائر الأسهم المفتوحة'}
-                {chartMode === 'growth' && 'منحنى نمو رأس المال التراكمي (Equity)'}
-                {chartMode === 'stream' && 'تدفق الأرباح المحققة للصفقات'}
+                {chartMode === 'sectors' && 'توزيع السيولة والقطاعات النشطة'}
+                {chartMode === 'risk_weight' && 'أوزان المراكز والمخاطرة المفتوحة بالأسهم'}
+                {chartMode === 'growth' && (profitTimelineData.length > 0 ? `تطور الأرباح المحققة التراكمية (${formatEGP(totalFilteredRealizedPnL)})` : 'تطور الأرباح المحققة التراكمية')}
               </h3>
             </div>
 
-            {/* Toggles */}
-            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-black self-stretch sm:self-auto justify-between">
+            {/* Toggles - Stock Performance as #1 */}
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-black self-stretch sm:self-auto justify-between gap-1">
+              <button
+                onClick={() => setChartMode('distribution')}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  chartMode === 'distribution'
+                    ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="أرباح وخسائر الأسهم المفتوحة"
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                أداء الأسهم
+              </button>
+
               <button
                 onClick={() => setChartMode('sectors')}
                 className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
@@ -360,29 +412,29 @@ export default memo(function Dashboard({
               </button>
 
               <button
-                onClick={() => setChartMode('distribution')}
+                onClick={() => setChartMode('risk_weight')}
                 className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-                  chartMode === 'distribution'
-                    ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                  chartMode === 'risk_weight'
+                    ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-sm'
                     : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
                 }`}
-                title="أرباح الأسهم"
+                title="أوزان الأسهم ومخاطرتها"
               >
-                <BarChart3 className="w-3.5 h-3.5" />
-                أداء الأسهم
+                <Layers className="w-3.5 h-3.5" />
+                أوزان الأسهم
               </button>
 
               <button
                 onClick={() => setChartMode('growth')}
                 className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
                   chartMode === 'growth'
-                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
                     : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
                 }`}
-                title="نمو رأس المال"
+                title="تطور الأرباح المحققة التراكمية ونتائج الصفقات"
               >
-                <LineIcon className="w-3.5 h-3.5" />
-                منحنى Equity
+                <TrendingUp className="w-3.5 h-3.5" />
+                تطور الأرباح
               </button>
             </div>
           </div>
@@ -476,34 +528,97 @@ export default memo(function Dashboard({
               </div>
             )}
 
-            {/* VIEW 3: EQUITY GROWTH CURVE */}
+            {/* VIEW 3: STOCKS WEIGHT & RISK DISTRIBUTION */}
+            {chartMode === 'risk_weight' && (
+              <div className="w-full h-48">
+                {stockWeightData.length === 0 ? (
+                  <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs font-bold">
+                    لا توجد أسهم مفتوحة لحساب الأوزان
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stockWeightData} margin={{ top: 15, right: 10, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
+                      <XAxis dataKey="symbol" tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 'bold' }} />
+                      <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} unit="%" />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}
+                        formatter={(val: any, _: any, item: any) => [
+                          `${val}% (${formatEGP(item.payload.val, 0)}) | المخاطرة: ${formatEGP(item.payload.risk, 0)}`, 
+                          'وزن السهم من رأس المال'
+                        ]}
+                      />
+                      <Bar dataKey="weight" radius={[6, 6, 0, 0]} fill="#f59e0b" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            )}
+
+            {/* VIEW 4: REALIZED PROFIT PROGRESSION */}
             {chartMode === 'growth' && (
               <div className="w-full h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={computedGrowthData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorEquityDashboardSmart" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4}/>
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                    <XAxis dataKey="trade" hide />
-                    <YAxis domain={['dataMin - 1000', 'dataMax + 1000']} hide />
-                    <RechartsTooltip 
-                      contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '11px', fontWeight: 'bold' }}
-                      formatter={(value: any) => [formatEGP(Number(value) || 0, 0), 'القيمة السوقية']}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="equity" 
-                      stroke="#6366f1" 
-                      strokeWidth={3}
-                      fillOpacity={1} 
-                      fill="url(#colorEquityDashboardSmart)" 
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {profitTimelineData.length === 0 ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 text-xs font-bold gap-1 text-center px-4">
+                    <TrendingUp className="w-6 h-6 text-slate-400/50 mb-1" />
+                    <span>لم يتم تسجيل صفقات بيع أو أرباح محققة بعد في هذا القسم</span>
+                    <span className="text-[10px] text-slate-500">عند إغلاق الصفقات أو جني الأرباح الجزئية، سيظهر هنا مسار أرباحك التراكمية وتفاصيل كل صفقة</span>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={profitTimelineData} margin={{ top: 15, right: 10, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
+                      <XAxis 
+                        dataKey="symbol" 
+                        tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 'bold' }} 
+                      />
+                      <YAxis 
+                        yAxisId="cumulative"
+                        orientation="right"
+                        tick={{ fill: '#10b981', fontSize: 10, fontWeight: 'bold' }} 
+                        tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                      />
+                      <YAxis 
+                        yAxisId="trade"
+                        orientation="left"
+                        hide
+                      />
+                      <ReferenceLine yAxisId="cumulative" y={0} stroke="#64748b" strokeDasharray="3 3" />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '11px', fontWeight: 'bold' }}
+                        formatter={(val: any, name: any) => {
+                          if (name === 'الأرباح التراكمية') return [formatEGP(Number(val) || 0, 0), '📈 الأرباح التراكمية في الخزينة'];
+                          if (name === 'نتيجة الصفقة') return [formatEGP(Number(val) || 0, 0), '💰 صافي ربح/خسارة الصفقة'];
+                          return [val, name];
+                        }}
+                        labelFormatter={(label, items) => {
+                          const item = items?.[0]?.payload;
+                          return `${label} ${item?.formattedDate ? `(${item.formattedDate})` : ''}`;
+                        }}
+                      />
+                      <Bar 
+                        yAxisId="trade" 
+                        dataKey="tradePnL" 
+                        name="نتيجة الصفقة" 
+                        radius={[4, 4, 0, 0]}
+                      >
+                        {profitTimelineData.map((entry, index) => (
+                          <Cell key={`trade-bar-${index}`} fill={entry.tradePnL >= 0 ? '#10b981' : '#f43f5e'} opacity={0.75} />
+                        ))}
+                      </Bar>
+                      <Line 
+                        yAxisId="cumulative" 
+                        type="monotone" 
+                        dataKey="cumulativePnL" 
+                        name="الأرباح التراكمية"
+                        stroke="#10b981" 
+                        strokeWidth={2.5} 
+                        dot={{ fill: '#10b981', r: 3 }}
+                        activeDot={{ r: 5 }}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             )}
 

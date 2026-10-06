@@ -179,7 +179,22 @@ export interface TradeContextType {
   winRate: number;
   profitFactor: number;
   maxDrawdown: number;
-  equityData: { trade: string; equity: number; egx30: number; pnl: number; date: number }[];
+  equityData: { 
+    id?: string;
+    trade: string; 
+    symbol?: string;
+    equity?: number; 
+    egx30?: number; 
+    pnl: number; 
+    tradePnL?: number;
+    cumulativePnL?: number;
+    isWin?: boolean;
+    portfolioType?: 'investment' | 'speculation';
+    shares?: number;
+    price?: number;
+    date: number; 
+    formattedDate?: string;
+  }[];
   openPositionsCount: number;
   wonPositionsCount: number;
   lostPositionsCount: number;
@@ -562,31 +577,39 @@ const deleteWeeklyReview = async (id: string) => {
 
     const score = (closedCount + openCount) > 0 ? Math.max(0, 100 - (ruleBreakerCount * 12)) : 100;
 
-    // Compute Equity Curve & Max Drawdown based on exact chronological RealizedEvents
+    // Compute Realized Profit Progression & Max Drawdown based on exact chronological RealizedEvents
     allRealizedEvents.sort((a, b) => a.date - b.date);
 
-    let currentEquity = 100000;
-    let peakEquity = currentEquity;
+    let runningCumulativePnL = 0;
+    let peakPnL = 0;
     let maxDD = 0;
-    let currentEGX30 = 100000;
 
-    const computedEquityData = allRealizedEvents.map((evt, i) => {
-      currentEquity += evt.netPnL;
-      if (currentEquity > peakEquity) peakEquity = currentEquity;
-      const drawdown = peakEquity > 0 ? ((peakEquity - currentEquity) / peakEquity) * 100 : 0;
+    const computedEquityData = allRealizedEvents.map((evt) => {
+      runningCumulativePnL += evt.netPnL;
+      if (runningCumulativePnL > peakPnL) peakPnL = runningCumulativePnL;
+      const drawdown = peakPnL > 0 ? ((peakPnL - runningCumulativePnL) / peakPnL) * 100 : 0;
       if (drawdown > maxDD) maxDD = drawdown;
 
-      const marketMove = (Math.random() * 0.035) - 0.015;
-      if (i > 0) {
-        currentEGX30 = currentEGX30 * (1 + marketMove);
-      }
+      const dateObj = new Date(evt.date);
+      const dateStr = !isNaN(dateObj.getTime()) 
+        ? `${dateObj.getDate()}/${dateObj.getMonth() + 1}` 
+        : 'صفقة';
 
       return { 
+        id: evt.txId,
         trade: evt.symbol || 'صفقة', 
-        equity: currentEquity, 
-        egx30: currentEGX30, 
-        pnl: evt.netPnL, 
-        date: evt.date 
+        symbol: evt.symbol || 'صفقة',
+        date: evt.date,
+        formattedDate: dateStr,
+        tradePnL: Math.round(evt.netPnL),
+        pnl: Math.round(evt.netPnL),
+        cumulativePnL: Math.round(runningCumulativePnL),
+        equity: Math.round(runningCumulativePnL),
+        egx30: 0,
+        isWin: evt.netPnL >= 0,
+        portfolioType: evt.portfolioType || 'investment',
+        shares: evt.shares,
+        price: evt.price
       };
     });
 
