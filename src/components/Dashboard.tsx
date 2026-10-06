@@ -1,19 +1,27 @@
-import { memo, useState } from 'react';
+import { memo, useState, useMemo } from 'react';
 import { 
   Wallet, 
-  TrendingUp, 
-  Activity,
-  BookOpen,
-  Target,
+  Activity, 
+  BookOpen, 
+  Target, 
   Flame, 
-  Layers,
-  Edit2,
-  Plus,
-  ArrowUpRight
+  Layers, 
+  Edit2, 
+  Plus, 
+  ArrowUpRight,
+  PieChart as PieIcon,
+  BarChart3,
+  LineChart as LineIcon,
+  Sparkles
 } from 'lucide-react';
 import { 
   AreaChart, 
   Area, 
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -22,6 +30,7 @@ import {
 } from 'recharts';
 import { useTrades, type TickerPosition } from '../context/TradeContext';
 import { computePositionMetrics, formatEGP } from '../utils/calculations';
+import { getStockBySymbol } from '../data/egxStocks';
 import WeeklyReviewModal from './WeeklyReviewModal';
 import TransactionFormModal from './TransactionFormModal';
 import LedgerModal from './LedgerModal';
@@ -37,9 +46,7 @@ export default memo(function Dashboard({
   onOpenTrade?: (id: string) => void;
 }) {
   const { 
-        positions, 
     fixedIncome,
-    
     plans,
     portfolioFilter,
     setPortfolioFilter,
@@ -51,6 +58,7 @@ export default memo(function Dashboard({
     coreStats,
     coreSatelliteTarget,
     weeklyReviews,
+    equityData
   } = useTrades();
 
   const [selectedPosForTx, setSelectedPosForTx] = useState<{ pos: TickerPosition; type: 'buy' | 'sell' } | null>(null);
@@ -58,37 +66,58 @@ export default memo(function Dashboard({
   const [isFixedIncomeModalOpen, setIsFixedIncomeModalOpen] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
+  // Smart Chart Mode Toggle: 'growth' | 'sectors' | 'distribution' | 'stream'
+  const [chartMode, setChartMode] = useState<'growth' | 'sectors' | 'distribution' | 'stream'>('sectors');
+
   // Active positions
   const activePositions = filteredPositions.filter(p => {
     const metrics = computePositionMetrics(p);
     return p.status === 'active' && metrics.openShares > 0;
   });
 
-  // Closed positions for Equity Curve
-  const closedPositions = positions.filter(p => {
-    const metrics = computePositionMetrics(p);
-    return p.status === 'closed' || metrics.isFullyClosed;
-  });
-
-  // Equity Curve Timeline Data
-  const computedEquityData = closedPositions.sort((a, b) => {
-    const dateA = a.journal?.closedDate || a.journal?.openedDate || 0;
-    const dateB = b.journal?.closedDate || b.journal?.openedDate || 0;
-    return dateA - dateB;
-  }).reduce((acc, p, idx) => {
-    const pnl = computePositionMetrics(p).netRealizedPnL;
-    const currentEquity = idx === 0 ? activeDeposited + pnl : acc[idx - 1].equity + pnl;
-    acc.push({
-      trade: p.symbol || `#${idx + 1}`,
-      equity: currentEquity,
-      pnl,
+  // 1. Sector Allocation Data
+  const sectorData = useMemo(() => {
+    const map: Record<string, { name: string; value: number; count: number }> = {};
+    activePositions.forEach(p => {
+      const m = computePositionMetrics(p);
+      const stockInfo = getStockBySymbol(p.symbol);
+      const sector = stockInfo?.sector || (p.plan as any)?.sector || 'أخرى';
+      const val = m.openShares * m.currentPrice;
+      if (!map[sector]) {
+        map[sector] = { name: sector, value: 0, count: 0 };
+      }
+      map[sector].value += val;
+      map[sector].count += 1;
     });
-    return acc;
-  }, [] as { trade: string; equity: number; pnl: number }[]);
 
-  if (computedEquityData.length === 0) {
-    computedEquityData.push({ trade: 'بداية', equity: activeDeposited, pnl: 0 });
-  }
+    const list = Object.values(map).sort((a, b) => b.value - a.value);
+    return list;
+  }, [activePositions]);
+
+  // Colors for Sector Pie
+  const SECTOR_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#64748b'];
+
+  // 2. Performance Distribution (P&L per Open Stock)
+  const stockPerformanceData = useMemo(() => {
+    return activePositions.map(p => {
+      const m = computePositionMetrics(p);
+      const uPnL = m.netUnrealizedPnL;
+      const cost = m.openInvested;
+      const pct = cost > 0 ? (uPnL / cost) * 100 : 0;
+      return {
+        symbol: p.symbol,
+        pnl: Math.round(uPnL),
+        pct: Number(pct.toFixed(1)),
+        isPositive: uPnL >= 0
+      };
+    }).sort((a, b) => b.pnl - a.pnl);
+  }, [activePositions]);
+
+  // 3. Chronological Realized PnL Timeline
+  const computedGrowthData = useMemo(() => {
+    if (equityData && equityData.length > 0) return equityData;
+    return [{ trade: 'البداية', equity: activeDeposited, pnl: 0 }];
+  }, [equityData, activeDeposited]);
 
   // Ready plans
   const readyPlans = plans.filter(p => p.status === 'ready');
@@ -129,7 +158,7 @@ export default memo(function Dashboard({
         </div>
       </div>
 
-            <WeeklyReviewModal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} />
+      <WeeklyReviewModal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} />
 
       {/* Quick Action Banner for Weekly Review */}
       {(!weeklyReviews || weeklyReviews.length === 0 || (Date.now() - weeklyReviews[0].createdAt > 4 * 24 * 60 * 60 * 1000)) && (
@@ -155,8 +184,6 @@ export default memo(function Dashboard({
         </div>
       )}
 
-
-      
       {/* Core & Satellite Health Gauge — only shows when viewing investment portfolio */}
       {portfolioFilter === 'investment' && coreStats.totalInvestmentCapital > 0 && (
         <div className={`rounded-2xl p-4 border flex flex-col sm:flex-row items-center gap-4 shadow-sm transition-all ${
@@ -191,7 +218,6 @@ export default memo(function Dashboard({
       )}
 
       {/* Market Heat / Ready Plans Banner */}
-
       {readyPlans.length > 0 && (
         <div className="bg-gradient-to-l from-orange-600 via-amber-600 to-red-600 rounded-2xl p-4 md:p-5 shadow-sm text-white flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -239,7 +265,7 @@ export default memo(function Dashboard({
         </button>
       </div>
 
-      {/* Visual Portfolio Health (Replaces old hollow numbers) */}
+      {/* Visual Portfolio Health & Multi-View Charts Hub */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Allocation Bar */}
@@ -254,10 +280,10 @@ export default memo(function Dashboard({
               <div>
                 <div className="flex justify-between text-xs font-bold mb-1.5">
                   <span className="text-emerald-600">السيولة المتاحة للتداول (كاش)</span>
-                  <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(Math.max(0, availableLiquidity))}</span>
+                  <span className="text-slate-600 dark:text-slate-400 font-mono-num" dir="ltr">{formatEGP(Math.max(0, availableLiquidity))}</span>
                 </div>
                 <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-emerald-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (Math.max(0, availableLiquidity) / (activeCapital || 1)) * 100)}%` }}></div>
+                  <div className="bg-emerald-500 h-2.5 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (Math.max(0, availableLiquidity) / (activeCapital || 1)) * 100)}%` }}></div>
                 </div>
               </div>
               
@@ -273,76 +299,214 @@ export default memo(function Dashboard({
                       <Edit2 className="w-3 h-3" />
                     </button>
                   </span>
-                  <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(fixedIncome)}</span>
+                  <span className="text-slate-600 dark:text-slate-400 font-mono-num" dir="ltr">{formatEGP(fixedIncome)}</span>
                 </div>
                 <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-amber-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (fixedIncome / (activeCapital || 1)) * 100)}%` }}></div>
+                  <div className="bg-amber-500 h-2.5 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (fixedIncome / (activeCapital || 1)) * 100)}%` }}></div>
                 </div>
               </div>
 
               <div>
                 <div className="flex justify-between text-xs font-bold mb-1.5">
                   <span className="text-purple-600">السيولة المقيدة (أسهم)</span>
-                  <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(activeOpenCapital)}</span>
+                  <span className="text-slate-600 dark:text-slate-400 font-mono-num" dir="ltr">{formatEGP(activeOpenCapital)}</span>
                 </div>
                 <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-purple-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (activeOpenCapital / (activeCapital || 1)) * 100)}%` }}></div>
+                  <div className="bg-purple-500 h-2.5 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (activeOpenCapital / (activeCapital || 1)) * 100)}%` }}></div>
                 </div>
               </div>
 
               <div>
                 <div className="flex justify-between text-xs font-bold mb-1.5">
                   <span className="text-rose-600">المخاطرة المفتوحة (At Risk)</span>
-                  <span className="text-slate-600 dark:text-slate-400" dir="ltr">{formatEGP(activeOpenRisk)}</span>
+                  <span className="text-slate-600 dark:text-slate-400 font-mono-num" dir="ltr">{formatEGP(activeOpenRisk)}</span>
                 </div>
                 <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-rose-500 h-2.5 rounded-full" style={{ width: `${Math.min(100, (activeOpenRisk / (activeCapital || 1)) * 100)}%` }}></div>
+                  <div className="bg-rose-500 h-2.5 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (activeOpenRisk / (activeCapital || 1)) * 100)}%` }}></div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Equity Curve */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-[280px]">
-          <div className="flex items-center justify-between mb-4">
+        {/* SMART MULTI-VIEW CHARTS HUB */}
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between min-h-[300px]">
+          
+          {/* Header & View Toggles */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              <h3 className="font-black text-slate-800 dark:text-white">منحنى نمو رأس المال (Equity)</h3>
+              <Sparkles className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <h3 className="font-black text-slate-800 dark:text-white text-sm md:text-base">
+                {chartMode === 'sectors' && 'توزيع السيولة والقطاعات النشطة'}
+                {chartMode === 'distribution' && 'خريطة أرباح وخسائر الأسهم المفتوحة'}
+                {chartMode === 'growth' && 'منحنى نمو رأس المال التراكمي (Equity)'}
+                {chartMode === 'stream' && 'تدفق الأرباح المحققة للصفقات'}
+              </h3>
+            </div>
+
+            {/* Toggles */}
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-black self-stretch sm:self-auto justify-between">
+              <button
+                onClick={() => setChartMode('sectors')}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  chartMode === 'sectors'
+                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="توزيع القطاعات"
+              >
+                <PieIcon className="w-3.5 h-3.5" />
+                القطاعات
+              </button>
+
+              <button
+                onClick={() => setChartMode('distribution')}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  chartMode === 'distribution'
+                    ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="أرباح الأسهم"
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                أداء الأسهم
+              </button>
+
+              <button
+                onClick={() => setChartMode('growth')}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  chartMode === 'growth'
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="نمو رأس المال"
+              >
+                <LineIcon className="w-3.5 h-3.5" />
+                منحنى Equity
+              </button>
             </div>
           </div>
           
-          <div className="flex-1 w-full min-h-0" dir="ltr">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={computedEquityData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorEquityDashboard" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                <XAxis dataKey="trade" hide />
-                <YAxis 
-                  domain={['dataMin', 'dataMax']} 
-                  hide 
-                />
-                <RechartsTooltip 
-                  contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '12px' }}
-                  itemStyle={{ color: '#fff', fontWeight: 'bold' }}
-                  formatter={(value: any) => [formatEGP(Number(value) || 0, 0), 'القيمة السوقية']}
-                  labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="equity" 
-                  stroke="#3b82f6" 
-                  strokeWidth={3}
-                  fillOpacity={1} 
-                  fill="url(#colorEquityDashboard)" 
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+          {/* Chart Content Body */}
+          <div className="flex-1 w-full min-h-[200px] pt-3" dir="ltr">
+            
+            {/* VIEW 1: SECTORS PIE / BARS */}
+            {chartMode === 'sectors' && (
+              <div className="w-full h-full flex flex-col md:flex-row items-center justify-between gap-4">
+                {sectorData.length === 0 ? (
+                  <div className="w-full h-44 flex items-center justify-center text-slate-400 text-xs font-bold">
+                    لا توجد أسهم مفتوحة حالياً لحساب توزيع القطاعات
+                  </div>
+                ) : (
+                  <>
+                    <div className="w-full md:w-1/2 h-48">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={sectorData}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={45}
+                            outerRadius={75}
+                            paddingAngle={4}
+                          >
+                            {sectorData.map((_, index) => (
+                              <Cell key={`cell-${index}`} fill={SECTOR_COLORS[index % SECTOR_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <RechartsTooltip 
+                            contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}
+                            formatter={(val: any) => [`${formatEGP(Number(val))}`, 'القيمة']}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="w-full md:w-1/2 flex flex-col justify-center space-y-2 pr-2" dir="rtl">
+                      {sectorData.slice(0, 4).map((s, idx) => {
+                        const pct = activeOpenCapital > 0 ? (s.value / activeOpenCapital) * 100 : 0;
+                        return (
+                          <div key={s.name} className="flex items-center justify-between text-xs font-black">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: SECTOR_COLORS[idx % SECTOR_COLORS.length] }}></span>
+                              <span className="text-slate-700 dark:text-slate-300">{s.name} ({s.count})</span>
+                            </div>
+                            <span className="text-slate-500 dark:text-slate-400 font-mono-num" dir="ltr">
+                              {pct.toFixed(1)}% ({formatEGP(s.value, 0)})
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* VIEW 2: INDIVIDUAL STOCKS PNL DISTRIBUTION */}
+            {chartMode === 'distribution' && (
+              <div className="w-full h-48">
+                {stockPerformanceData.length === 0 ? (
+                  <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs font-bold">
+                    لا توجد أسهم مفتوحة لعرض توزيع الأداء
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stockPerformanceData} margin={{ top: 15, right: 10, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
+                      <XAxis dataKey="symbol" tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 'bold' }} />
+                      <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}
+                        formatter={(val: any, _: any, item: any) => [
+                          `${formatEGP(Number(val))} (${item.payload.pct}%)`, 
+                          'الربح/الخسارة غير المحققة'
+                        ]}
+                      />
+                      <Bar dataKey="pnl" radius={[6, 6, 0, 0]}>
+                        {stockPerformanceData.map((entry, index) => (
+                          <Cell key={`bar-${index}`} fill={entry.isPositive ? '#10b981' : '#f43f5e'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            )}
+
+            {/* VIEW 3: EQUITY GROWTH CURVE */}
+            {chartMode === 'growth' && (
+              <div className="w-full h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={computedGrowthData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorEquityDashboardSmart" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
+                    <XAxis dataKey="trade" hide />
+                    <YAxis domain={['dataMin - 1000', 'dataMax + 1000']} hide />
+                    <RechartsTooltip 
+                      contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '11px', fontWeight: 'bold' }}
+                      formatter={(value: any) => [formatEGP(Number(value) || 0, 0), 'القيمة السوقية']}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="equity" 
+                      stroke="#6366f1" 
+                      strokeWidth={3}
+                      fillOpacity={1} 
+                      fill="url(#colorEquityDashboardSmart)" 
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
           </div>
         </div>
       </div>
