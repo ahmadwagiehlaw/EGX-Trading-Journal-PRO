@@ -257,6 +257,91 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
   };
 }
 
+export interface TradingCycle {
+  cycleIndex: number;
+  startDate: number;
+  endDate?: number;
+  status: 'active' | 'closed';
+  transactions: Transaction[];
+  totalBought: number;
+  totalSold: number;
+  openShares: number;
+  avgEntry: number;
+  avgExit: number;
+  netRealizedPnL: number;
+  totalCommission: number;
+  durationDays: number;
+}
+
+export function computePositionCycles(transactions: Transaction[] = [], commissionRate: number = 0.003, symbol: string = ''): TradingCycle[] {
+  if (!transactions || transactions.length === 0) return [];
+  const sorted = [...transactions].sort((a, b) => a.date - b.date);
+  
+  const cycles: TradingCycle[] = [];
+  let currentCycleTxs: Transaction[] = [];
+  let currentOpenShares = 0;
+  
+  for (const tx of sorted) {
+    currentCycleTxs.push(tx);
+    if (tx.type === 'buy') {
+      currentOpenShares += tx.shares;
+    } else if (tx.type === 'sell') {
+      currentOpenShares = Math.max(0, currentOpenShares - tx.shares);
+      if (currentOpenShares === 0) {
+        // Cycle completed / closed!
+        const cycleSim = simulatePositionMetrics(currentCycleTxs, commissionRate, symbol);
+        const startDate = currentCycleTxs[0]?.date || tx.date;
+        const endDate = tx.date;
+        const durationDays = Math.max(1, Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)));
+        
+        cycles.push({
+          cycleIndex: cycles.length + 1,
+          startDate,
+          endDate,
+          status: 'closed',
+          transactions: [...currentCycleTxs],
+          totalBought: cycleSim.totalBought,
+          totalSold: cycleSim.totalSold,
+          openShares: 0,
+          avgEntry: cycleSim.avgEntry,
+          avgExit: cycleSim.avgExit,
+          netRealizedPnL: cycleSim.totalNetRealizedPnL,
+          totalCommission: cycleSim.totalCommissionPaid,
+          durationDays
+        });
+        
+        currentCycleTxs = [];
+        currentOpenShares = 0;
+      }
+    }
+  }
+  
+  // If there are remaining open transactions, they form the active cycle
+  if (currentCycleTxs.length > 0) {
+    const cycleSim = simulatePositionMetrics(currentCycleTxs, commissionRate, symbol);
+    const startDate = currentCycleTxs[0]?.date || Date.now();
+    const durationDays = Math.max(1, Math.round((Date.now() - startDate) / (1000 * 60 * 60 * 24)));
+    
+    cycles.push({
+      cycleIndex: cycles.length + 1,
+      startDate,
+      endDate: undefined,
+      status: currentOpenShares > 0 ? 'active' : 'closed',
+      transactions: [...currentCycleTxs],
+      totalBought: cycleSim.totalBought,
+      totalSold: cycleSim.totalSold,
+      openShares: cycleSim.openShares,
+      avgEntry: cycleSim.avgEntry,
+      avgExit: cycleSim.avgExit,
+      netRealizedPnL: cycleSim.totalNetRealizedPnL,
+      totalCommission: cycleSim.totalCommissionPaid,
+      durationDays
+    });
+  }
+  
+  return cycles;
+}
+
 export function computePositionMetrics(position: TickerPosition, commissionRate: number = 0.003) {
   const transactions = position.transactions || [];
   const sim = simulatePositionMetrics(transactions, commissionRate, position.symbol);

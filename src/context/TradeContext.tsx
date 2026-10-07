@@ -499,6 +499,11 @@ const deleteWeeklyReview = async (id: string) => {
     return positions.map(positionToLegacyTrade);
   }, [positions]);
 
+  const filteredPositions = useMemo(() => {
+    if (portfolioFilter === 'all') return positions;
+    return positions.filter(p => p.portfolioType === portfolioFilter);
+  }, [positions, portfolioFilter]);
+
   const {
     totalRealizedPnL,
     totalNetRealizedPnL,
@@ -531,7 +536,7 @@ const deleteWeeklyReview = async (id: string) => {
 
     let allRealizedEvents: RealizedEvent[] = [];
     
-    positions.forEach(pos => {
+    filteredPositions.forEach(pos => {
       const metrics = computePositionMetrics(pos, commissionRate);
       
       sumCommission += metrics.totalCommission;
@@ -557,7 +562,7 @@ const deleteWeeklyReview = async (id: string) => {
       }
     });
 
-    // Realized events win/loss counts (accurate for partial sells & fully closed)
+    // Realized events win/loss counts (accurate for partial sells & fully closed using Lowest-Cost-First)
     allRealizedEvents.forEach(evt => {
       if (evt.netPnL > 0) wonCount++;
       else if (evt.netPnL < 0) lostCount++;
@@ -630,7 +635,7 @@ const deleteWeeklyReview = async (id: string) => {
       totalOpenRisk: openRisk,
       disciplineScore: score,
     };
-  }, [positions, commissionRate]);
+  }, [filteredPositions, commissionRate]);
 
   
 
@@ -677,7 +682,7 @@ const deleteWeeklyReview = async (id: string) => {
       capitalSpeculation: depSpec + pnlSpec,
       calculatedFixedIncome: dynamicFixedIncome > 0 ? dynamicFixedIncome : fixedIncome
     };
-  }, [ledger, positions, legacyInvestmentCap, legacySpeculationCap, fixedIncome]);
+  }, [ledger, positions, legacyInvestmentCap, legacySpeculationCap, fixedIncome, commissionRate]);
 
   // CRUD for Positions
   const addPosition = async (posData: Omit<TickerPosition, 'id'>): Promise<string> => {
@@ -925,12 +930,6 @@ const deleteWeeklyReview = async (id: string) => {
     await setDoc(doc(db, 'settings', 'capital'), { fixedIncome: amount }, { merge: true });
   };
 
-  
-  const filteredPositions = useMemo(() => {
-    if (portfolioFilter === 'all') return positions;
-    return positions.filter(p => p.portfolioType === portfolioFilter);
-  }, [positions, portfolioFilter]);
-
   const { activeCapital, activeDeposited, activeOpenCapital, activeOpenRisk } = useMemo(() => {
     if (portfolioFilter === 'investment') {
       return {
@@ -1064,11 +1063,12 @@ const deleteWeeklyReview = async (id: string) => {
   }), [
     positions, trades, profitFactor, maxDrawdown, equityData, ledger,
     depositedInvestment, depositedSpeculation, plans,
-    capitalInvestment, capitalSpeculation, fixedIncome, portfolioFilter, setPortfolioFilter, activeCapital, activeDeposited, activeOpenCapital, activeOpenRisk, filteredPositions, weeklyReviews, stickyNotes,
+    capitalInvestment, capitalSpeculation, calculatedFixedIncome, portfolioFilter, setPortfolioFilter, activeCapital, activeDeposited, activeOpenCapital, activeOpenRisk, filteredPositions, weeklyReviews, stickyNotes,
     totalRealizedPnL, totalNetRealizedPnL, totalCommissionPaid,
     winRate, openPositionsCount, wonPositionsCount, lostPositionsCount,
     totalOpenCapital, totalOpenCapitalInvestment, totalOpenCapitalSpeculation,
-    totalOpenRisk, disciplineScore, loading, commissionRate, isSimulator, coreStats, coreSatelliteTarget
+    totalOpenRisk, disciplineScore, loading, commissionRate, isSimulator, toggleSimulator, coreStats, coreSatelliteTarget,
+    closePosition, addTransaction, updateTransaction, deleteTransaction
   ]);
 
   if (loading) {

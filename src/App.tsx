@@ -55,7 +55,7 @@ export default function App() {
           />
         </div>
         
-        <div className={activeTab === 'استراتيجيات التداول' ? 'block' : 'hidden'}>
+        <div className={activeTab === 'استراتيجيات التداول' || activeTab === 'قائمة المراقبة' || activeTab === 'الخطط' ? 'block' : 'hidden'}>
           <Watchlist onMoveToJournal={handleStartTrade} />
         </div>
         
@@ -73,7 +73,7 @@ export default function App() {
           <div className="py-20 text-center font-bold text-slate-400">جاري التحميل...</div>
         }>
           {activeTab === 'التحليلات' && <Analytics />}
-          {activeTab === 'الخزينة' && <CashLedger />}
+          {(activeTab === 'الخزينة' || activeTab === 'المركز المالي') && <CashLedger />}
           {activeTab === 'الإعدادات' && <Settings />}
         </Suspense>
         

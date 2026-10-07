@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, Check } from 'lucide-react';
 import { searchEGXStocks, getStockBySymbol, type EGXStock } from '../data/egxStocks';
 
@@ -21,7 +21,7 @@ export default function StockAutocomplete({
 }: StockAutocompleteProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState(value || '');
-  const [results, setResults] = useState<EGXStock[]>([]);
+  const results = useMemo(() => isOpen ? searchEGXStocks(query) : [], [query, isOpen]);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -29,14 +29,6 @@ export default function StockAutocomplete({
   useEffect(() => {
     setQuery(value || '');
   }, [value]);
-
-  useEffect(() => {
-    if (isOpen) {
-      const filtered = searchEGXStocks(query);
-      setResults(filtered);
-      setSelectedIndex(0);
-    }
-  }, [query, isOpen]);
 
   // Click outside listener
   useEffect(() => {
@@ -115,7 +107,7 @@ export default function StockAutocomplete({
               لا يوجد سهم يطابق البحث — يمكنك كتابة الرمز مباشرة.
             </div>
           ) : (
-            results.map((stock, idx) => {
+            results.map((stock: EGXStock, idx: number) => {
               const isSelected = idx === selectedIndex;
               const isCurrent = stock.symbol.toUpperCase() === value.toUpperCase();
 

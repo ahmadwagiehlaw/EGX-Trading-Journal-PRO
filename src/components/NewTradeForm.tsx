@@ -1,5 +1,5 @@
 import { Save, CheckCircle2, Copy } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTrades } from '../context/TradeContext';
 import StockAutocomplete from './StockAutocomplete';
 
@@ -10,9 +10,9 @@ export default function NewTradeForm({
   initialData?: any; 
   onClose?: () => void;
 }) {
-  const { addPosition, updatePosition, capitalInvestment, capitalSpeculation, totalOpenCapitalInvestment } = useTrades();
+  const { positions, addPosition, updatePosition, capitalInvestment, totalOpenCapitalInvestment } = useTrades();
 
-    const [dateStr, setDateStr] = useState(() => {
+  const [dateStr, setDateStr] = useState(() => {
     const d = new Date();
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
     return d.toISOString().slice(0, 16);
@@ -42,10 +42,8 @@ export default function NewTradeForm({
     if (initialData?.initialStopLoss) setStopLoss(initialData.initialStopLoss.toString());
   }, [initialData]);
 
-  const [calcResults, setCalcResults] = useState<{sl: string, target: string, shares: string} | null>(null);
-
-  // Risk Auto-Calculation (Preview Only)
-  useEffect(() => {
+  // Risk Auto-Calculation (Derived via useMemo - Pure and instantaneous)
+  const calcResults = useMemo(() => {
     const atr = parseFloat(atrStr);
     const entry = parseFloat(entryPrice);
     if (!isNaN(atr) && atr > 0 && !isNaN(entry) && entry > 0) {
@@ -63,15 +61,14 @@ export default function NewTradeForm({
       const sharesByAllocation = Math.floor(maxAllocationAmount / entry);
       const finalShares = Math.min(sharesByRisk, sharesByAllocation);
 
-      setCalcResults({
+      return {
         sl: calculatedSl.toFixed(2),
         target: calculatedTarget.toFixed(2),
         shares: finalShares.toString()
-      });
-    } else {
-      setCalcResults(null);
+      };
     }
-  }, [atrStr, entryPrice, capitalInvestment, capitalSpeculation, totalOpenCapitalInvestment]);
+    return null;
+  }, [atrStr, entryPrice, capitalInvestment, totalOpenCapitalInvestment]);
 
   const applyCalculations = () => {
     if (calcResults) {
@@ -89,23 +86,45 @@ export default function NewTradeForm({
     const target = parseFloat(targetPrice) || 0;
     const sl = parseFloat(stopLoss) || 0;
     const atr15 = parseFloat(atrStr) || initialData?.atr15 || initialData?.atrAtEntry || 0;
+    const cleanSym = symbol.trim().toUpperCase();
+
+    const existingPos = !initialData?.id ? positions.find(p => p.symbol.toUpperCase() === cleanSym) : null;
 
     if (initialData?.id) {
       // Editing existing position (merge safely)
       await updatePosition(initialData.id, {
-        symbol: symbol.toUpperCase(),
+        symbol: cleanSym,
         'plan.entryZone.min': entry,
         'plan.entryZone.max': entry,
         'plan.target': target,
         'plan.stop': sl,
         'plan.atr': atr15,
       } as any);
+    } else if (existingPos) {
+      // Re-activating existing stock card for a new cycle (zero duplication)
+      await updatePosition(existingPos.id, {
+        status: 'active',
+        plan: {
+          strategy: existingPos.plan?.strategy || '',
+          entryZone: { min: entry, max: entry },
+          target,
+          stop: sl,
+          atr: atr15,
+        },
+        trailingStop: {
+          initial: sl,
+          current: sl,
+          highestReached: entry,
+          atrAtEntry: atr15,
+        },
+        'journal.openedDate': new Date(dateStr).getTime(),
+      } as any);
     } else {
       // Create new TickerPosition strictly as a Plan
       await addPosition({
-        symbol: symbol.toUpperCase(),
-        portfolioType: 'investment', // legacy field, fallback
-        status: 'planning', // Always start as a plan
+        symbol: cleanSym,
+        portfolioType: 'investment',
+        status: 'planning',
         plan: {
           strategy: '',
           entryZone: { min: entry, max: entry },
@@ -113,7 +132,7 @@ export default function NewTradeForm({
           stop: sl,
           atr: atr15,
         },
-        transactions: [], // No initial transactions
+        transactions: [],
         trailingStop: {
           initial: sl,
           current: sl,

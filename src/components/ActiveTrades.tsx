@@ -1,5 +1,5 @@
 import ConfirmModal from './ConfirmModal';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { 
   ArrowDownToLine, 
   Lock, 
@@ -35,11 +35,10 @@ const Amt = ({ v, plus = false }: { v: number; plus?: boolean }) => {
 import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 import { useTrades } from '../context/TradeContext';
 import { useTheme } from '../context/ThemeContext';
-import { computePositionMetrics, computeOpenLotsLowestPriceFirst, computeStopAnalytics, formatEGP, type TrailingStopState } from '../utils/calculations';
+import { computePositionMetrics, computeOpenLotsLowestPriceFirst, computeStopAnalytics, computePositionCycles, formatEGP, type TrailingStopState } from '../utils/calculations';
 import TransactionFormModal from './TransactionFormModal';
 
 export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: () => void }) {
-
 
   const { positions, updateTrailingStop, updatePosition, deleteTransaction, coreStats, capitalInvestment, capitalSpeculation, commissionRate, activeCapital } = useTrades();
   const { theme } = useTheme();
@@ -49,6 +48,11 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     if (!position) return null;
     return computePositionMetrics(position, commissionRate);
   }, [position, commissionRate]);
+
+  const cycles = useMemo(() => {
+    if (!position?.transactions) return [];
+    return computePositionCycles(position.transactions, commissionRate, position.symbol);
+  }, [position?.transactions, commissionRate, position?.symbol]);
 
   const [newHighestPrice, setNewHighestPrice] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
@@ -284,40 +288,10 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     setIsEditingSupports(false);
   };
 
-  useEffect(() => {
-    if (position) {
-      if (!isEditingNote) setStockNote(position.plan?.makerPlan || '');
-      if (isEditingAtr) setAtrInput((position.trailingStop?.atrAtEntry || position.plan?.atr || 0).toString());
-      if (isEditingRsi) setRsiInput((position.plan?.rsi || 0).toString());
-      if (isEditingTargets) {
-        setT1Input((position.plan?.target || 0).toString());
-        setT2Input((position.plan?.targets?.[0] || 0).toString());
-        setT3Input((position.plan?.targets?.[1] || 0).toString());
-      }
-      if (isEditingSupports) {
-        setS1Input((position.plan?.supports?.[0] || 0).toString());
-        setS2Input((position.plan?.supports?.[1] || 0).toString());
-        setS3Input((position.plan?.supports?.[2] || 0).toString());
-      }
-    }
-  }, [isEditingAtr, isEditingRsi, isEditingTargets, isEditingSupports, position]);
-
-
-
-
-
-  
-  
-  
   const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
   const [isEditingCoreShares, setIsEditingCoreShares] = useState(false);
   const [coreSharesInput, setCoreSharesInput] = useState(position?.coreShares?.toString() || '');
-  
-  useEffect(() => {
-    if (!isEditingCoreShares && position) {
-      setCoreSharesInput(position.coreShares?.toString() || '');
-    }
-  }, [position?.coreShares, isEditingCoreShares, position]);
+  const [mountTime] = useState(() => Date.now());
 
   const handleSaveCoreShares = async () => {
     if (!position || !metrics) return;
@@ -390,7 +364,7 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
     }
 
     if (position.portfolioType === 'speculation' && position.journal?.openedDate) {
-      const daysHeld = (Date.now() - position.journal.openedDate) / (1000 * 60 * 60 * 24);
+      const daysHeld = (mountTime - position.journal.openedDate) / (1000 * 60 * 60 * 24);
       if (daysHeld > 14 && pnlPercent < 2) {
         insights.push({ type: 'warning', text: `هذا التمركز المضاربي مستمر منذ ${Math.floor(daysHeld)} يوم بدون ربح يذكر. انتبه لتكلفة الفرصة البديلة (Cash Drag).` });
       }
@@ -554,142 +528,222 @@ if (!position || !metrics) return null;
 
           {rightPaneView === 'ledger' ? (
             <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-900/50 mt-14">
-               
+              
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-2 mb-6">
+                <button onClick={() => setTxModalType('buy')} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
+                  + {metrics!.isOpen ? 'تمركز إضافي (شراء)' : 'بدء دورة جديدة (شراء)'}
+                </button>
+                {metrics!.isOpen && (
+                  <button onClick={() => setTxModalType('sell')} className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
+                    ↙ بيع جزئي (جني ربح)
+                  </button>
+                )}
+              </div>
 
-               
-             <div className="flex flex-wrap gap-2 mb-8">
-                 <button onClick={() => setTxModalType('buy')} className="flex-1 py-2 bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded-xl font-black text-xs border border-blue-200 dark:border-blue-800">+ تمركز إضافي</button>
-                 <button onClick={() => setTxModalType('sell')} className="flex-1 py-2 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 rounded-xl font-black text-xs border border-emerald-200 dark:border-emerald-800">↙ بيع جزئي</button>
-                 <button className="flex-1 py-2 bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 rounded-xl font-black text-xs border border-amber-200 dark:border-amber-800 opacity-50 cursor-not-allowed">توزيع نقدي</button>
-                 <button className="flex-1 py-2 bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 rounded-xl font-black text-xs border border-purple-200 dark:border-purple-800 opacity-50 cursor-not-allowed">تجزئة/مجاني</button>
-               </div>
+              {/* All-Time Historical Performance Ribbon */}
+              {cycles.length > 0 && (
+                <div className="bg-gradient-to-l from-slate-900 to-indigo-950 text-white p-4 rounded-2xl border border-slate-800 shadow-sm mb-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-white/10 rounded-xl">
+                      <Target className="w-5 h-5 text-indigo-300" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-xs text-slate-300">سجل الأداء التاريخي للسهم</h4>
+                      <p className="text-[11px] text-slate-400 font-bold mt-0.5">
+                        {cycles.length} {cycles.length === 1 ? 'دورة تداول' : 'دورات تداول'} مسجلة
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-left flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-400">إجمالي الأرباح المحققة:</span>
+                    <span className={`text-base font-black font-mono-num ${metrics!.netRealizedPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} dir="ltr">
+                      {metrics!.netRealizedPnL > 0 ? '+' : ''}{formatEGP(metrics!.netRealizedPnL)} EGP
+                    </span>
+                  </div>
+                </div>
+              )}
 
-             {/* Open Lots (Lowest Price First / FIFO) Table */}
-             <div className="mb-8">
-               <div className="flex items-center justify-between mb-4">
-                 <div className="flex items-center gap-2">
-                   <Target className="w-5 h-5 text-indigo-500" />
-                   <h3 className="text-lg font-black text-slate-800 dark:text-slate-200">الدفعات المفتوحة (Open Lots)</h3>
-                 </div>
-                 <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 px-2 py-1 rounded border border-indigo-200 dark:border-indigo-800/50">
-                   قاعدة: الأقل سعراً أولاً (Lowest-Price First)
-                 </span>
-               </div>
-               
-               <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 mb-8">
-                 <table className="w-full text-sm text-center">
-                   <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold text-[11px]">
-                     <tr>
-                       <th className="py-3 px-2 rounded-r-xl">تاريخ الشراء</th>
-                       <th className="py-3 px-2">سعر الشراء</th>
-                       <th className="py-3 px-2">الكمية المتبقية</th>
-                       <th className="py-3 px-2">الربح/الخسارة</th>
-                       <th className="py-3 px-2 rounded-l-xl">إجراء</th>
-                     </tr>
-                   </thead>
-                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                     {computeOpenLotsLowestPriceFirst(position!.transactions).map(lot => {
-                       const lotValue = lot.remainingShares * metrics!.currentPrice;
-                       const lotCost = lot.remainingShares * lot.price;
-                       const lotPnL = lotValue - lotCost;
-                       const lotPnLPercent = lotCost > 0 ? (lotPnL / lotCost) * 100 : 0;
-                       const isWinning = lotPnL > 0;
-                       
-                       return (
-                         <tr key={lot.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors font-mono-num text-xs font-bold text-slate-700 dark:text-slate-300">
-                           <td className="py-3 px-2">{new Date(lot.date).toLocaleDateString('en-GB')}</td>
-                           <td className="py-3 px-2 text-blue-600 dark:text-blue-400">{lot.price.toFixed(2)}</td>
-                           <td className="py-3 px-2">{lot.remainingShares.toLocaleString()} سهم</td>
-                           <td className={`py-3 px-2 ${isWinning ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
-                             {lotPnL > 0 ? '+' : ''}{lotPnL.toFixed(2)} ({lotPnLPercent.toFixed(1)}%)
-                           </td>
-                           <td className="py-3 px-2">
-                             <button 
-                               onClick={() => setTxModalType('sell')}
-                               className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-3 py-1.5 rounded-lg font-black hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors border border-emerald-200 dark:border-emerald-800/50"
-                             >
-                               جني ربح
-                             </button>
-                           </td>
-                         </tr>
-                       );
-                     })}
-                     {computeOpenLotsLowestPriceFirst(position!.transactions).length === 0 && (
-                       <tr>
-                         <td colSpan={5} className="py-8 text-slate-400 text-xs font-bold">لا توجد دفعات مفتوحة حالياً.</td>
-                       </tr>
-                     )}
-                   </tbody>
-                 </table>
-               </div>
-             </div>
-             
-             <h3 className="text-lg font-black text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-                <Target className="w-5 h-5 text-slate-400" />
-                سجل الحركات الكامل
-             </h3>
+              {/* Open Lots (Lowest Price First) Table — only when position is open */}
+              {metrics!.isOpen && (
+                <div className="mb-8">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Target className="w-5 h-5 text-indigo-500" />
+                      <h3 className="text-base font-black text-slate-800 dark:text-slate-200">الدفعات المفتوحة الحالية (Open Lots)</h3>
+                    </div>
+                    <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 px-2 py-1 rounded-md border border-indigo-200 dark:border-indigo-800/50">
+                      قاعدة: الأقل سعراً أولاً (Lowest-Price First)
+                    </span>
+                  </div>
+                  
+                  <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 mb-6">
+                    <table className="w-full text-xs text-center">
+                      <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold text-[11px]">
+                        <tr>
+                          <th className="py-3 px-2 rounded-r-xl">تاريخ الشراء</th>
+                          <th className="py-3 px-2">سعر الشراء</th>
+                          <th className="py-3 px-2">الكمية المتبقية</th>
+                          <th className="py-3 px-2">الربح/الخسارة</th>
+                          <th className="py-3 px-2 rounded-l-xl">إجراء</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                        {computeOpenLotsLowestPriceFirst(position!.transactions).map(lot => {
+                          const lotValue = lot.remainingShares * metrics!.currentPrice;
+                          const lotCost = lot.remainingShares * lot.price;
+                          const lotPnL = lotValue - lotCost;
+                          const lotPnLPercent = lotCost > 0 ? (lotPnL / lotCost) * 100 : 0;
+                          const isWinning = lotPnL > 0;
+                          
+                          return (
+                            <tr key={lot.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors font-mono-num text-xs font-bold text-slate-700 dark:text-slate-300">
+                              <td className="py-3 px-2">{new Date(lot.date).toLocaleDateString('en-GB')}</td>
+                              <td className="py-3 px-2 text-blue-600 dark:text-blue-400">{lot.price.toFixed(2)}</td>
+                              <td className="py-3 px-2">{lot.remainingShares.toLocaleString()} سهم</td>
+                              <td className={`py-3 px-2 ${isWinning ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
+                                {lotPnL > 0 ? '+' : ''}{lotPnL.toFixed(2)} ({lotPnLPercent.toFixed(1)}%)
+                              </td>
+                              <td className="py-3 px-2">
+                                <button 
+                                  onClick={() => setTxModalType('sell')}
+                                  className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-3 py-1.5 rounded-lg font-black hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors border border-emerald-200 dark:border-emerald-800/50"
+                                >
+                                  جني ربح
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {computeOpenLotsLowestPriceFirst(position!.transactions).length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="py-6 text-slate-400 text-xs font-bold">لا توجد دفعات مفتوحة حالياً.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
-               <div className="overflow-x-auto">
-                 <table className="w-full text-sm text-center">
-                   <thead className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold text-[11px]">
-                     <tr>
-                       <th className="py-3 px-2 rounded-r-xl">العملية</th>
-                       <th className="py-3 px-2">التاريخ</th>
-                       <th className="py-3 px-2">الكمية</th>
-                       <th className="py-3 px-2">السعر</th>
-                       <th className="py-3 px-2">الإجمالي</th>
-                       <th className="py-3 px-2">الربح المحقق</th>
-                       <th className="py-3 px-2 rounded-l-xl">إجراءات</th>
-                     </tr>
-                   </thead>
-                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                     {[...position!.transactions].sort((a,b)=>b.date - a.date).map(tx => (
-                       <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors font-mono-num">
-                         <td className="py-4 px-2">
-                           <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-black ${tx.type === 'buy' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'}`}>
-                             {tx.type === 'buy' ? 'شراء' : 'بيع (جني ربح)'}
-                           </span>
-                         </td>
-                         <td className="py-4 px-2 font-bold text-slate-600 dark:text-slate-300 text-xs">
-                           {new Date(tx.date).toLocaleDateString('en-GB')}
-                         </td>
-                         <td className="py-4 px-2 font-black text-slate-800 dark:text-white">
-                           {tx.shares.toLocaleString()}
-                         </td>
-                         <td className="py-4 px-2 font-black text-slate-800 dark:text-white">
-                           {tx.price.toFixed(2)}
-                         </td>
-                         <td className="py-4 px-2 font-black text-slate-800 dark:text-white">
-                           {tx.amount.toFixed(2)}
-                         </td>
-                         <td className="py-4 px-2">
-                           {tx.type === 'sell' && tx.id ? (
-                             <span className={`font-black ${(metrics!.txPnL?.[tx.id] || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} dir="ltr">
-                               {(metrics!.txPnL?.[tx.id] || 0) >= 0 ? '+' : ''}{(metrics!.txPnL?.[tx.id] || 0).toFixed(2)}
-                             </span>
-                           ) : <span className="text-slate-300 dark:text-slate-600">-</span>}
-                         </td>
-                         <td className="py-4 px-2 flex justify-center gap-1">
-                            <button 
-                              onClick={() => { setTxModalType('edit'); setEditingTx(tx); }}
-                              className="p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" 
-                              title="تعديل المعاملة"
-                            >
-                              <Pencil className="w-4 h-4"/>
-                            </button>
-                            <button 
-                              onClick={() => setConfirmTxId(tx.id)}
-                              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors" 
-                              title="حذف المعاملة"
-                            >
-                              <Trash2 className="w-4 h-4"/>
-                            </button>
-                         </td>
-                       </tr>
-                     ))}
-                   </tbody>
-                 </table>
-               </div>
+              {/* Trading Cycles Log */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <Target className="w-5 h-5 text-slate-400" />
+                    دورات وجولات التداول (Trading Cycles)
+                  </h3>
+                </div>
+
+                {cycles.map((cycle) => {
+                  const isActiveCycle = cycle.status === 'active';
+                  return (
+                    <div 
+                      key={cycle.cycleIndex}
+                      className={`rounded-2xl border transition-all p-4 ${
+                        isActiveCycle 
+                          ? 'bg-white dark:bg-slate-900 border-blue-200 dark:border-blue-900/60 shadow-sm' 
+                          : 'bg-slate-50/80 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 opacity-90'
+                      }`}
+                    >
+                      {/* Cycle Header */}
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2.5 py-1 rounded-lg text-xs font-black ${
+                            isActiveCycle 
+                              ? 'bg-blue-600 text-white' 
+                              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                          }`}>
+                            الدورة {cycle.cycleIndex} {isActiveCycle ? '(نشطة حالياً 🟢)' : '(أرشيف مغلق ✓)'}
+                          </span>
+                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                            {new Date(cycle.startDate).toLocaleDateString('en-GB')}
+                            {cycle.endDate ? ` ← ${new Date(cycle.endDate).toLocaleDateString('en-GB')}` : ' ← مستمرة'}
+                            {` (${cycle.durationDays} يوم)`}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3 text-xs font-bold font-mono-num">
+                          <span className="text-slate-500">
+                            م. دخول: <b className="text-slate-800 dark:text-slate-200">{cycle.avgEntry.toFixed(2)}</b>
+                            {cycle.avgExit > 0 && ` | م. خروج: ${cycle.avgExit.toFixed(2)}`}
+                          </span>
+                          <span className={`font-black ${cycle.netRealizedPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
+                            {cycle.netRealizedPnL > 0 ? '+' : ''}{formatEGP(cycle.netRealizedPnL)} EGP
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Cycle Transactions Table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-center">
+                          <thead className="bg-slate-100/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold text-[10px]">
+                            <tr>
+                              <th className="py-2.5 px-2 rounded-r-lg">العملية</th>
+                              <th className="py-2.5 px-2">التاريخ</th>
+                              <th className="py-2.5 px-2">الكمية</th>
+                              <th className="py-2.5 px-2">السعر</th>
+                              <th className="py-2.5 px-2">الإجمالي</th>
+                              <th className="py-2.5 px-2">الربح المحقق</th>
+                              <th className="py-2.5 px-2 rounded-l-lg">إجراءات</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                            {[...cycle.transactions].sort((a,b)=>b.date - a.date).map(tx => (
+                              <tr key={tx.id} className="hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors font-mono-num">
+                                <td className="py-2.5 px-2">
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black ${
+                                    tx.type === 'buy' 
+                                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' 
+                                      : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                  }`}>
+                                    {tx.type === 'buy' ? 'شراء' : 'بيع'}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-2 font-bold text-slate-600 dark:text-slate-300 text-[11px]">
+                                  {new Date(tx.date).toLocaleDateString('en-GB')}
+                                </td>
+                                <td className="py-2.5 px-2 font-black text-slate-800 dark:text-white">
+                                  {tx.shares.toLocaleString()}
+                                </td>
+                                <td className="py-2.5 px-2 font-black text-slate-800 dark:text-white">
+                                  {tx.price.toFixed(2)}
+                                </td>
+                                <td className="py-2.5 px-2 font-black text-slate-800 dark:text-white">
+                                  {formatEGP(tx.amount)}
+                                </td>
+                                <td className="py-2.5 px-2">
+                                  {tx.type === 'sell' && tx.id ? (
+                                    <span className={`font-black ${(metrics!.txPnL?.[tx.id] || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
+                                      {(metrics!.txPnL?.[tx.id] || 0) >= 0 ? '+' : ''}{(metrics!.txPnL?.[tx.id] || 0).toFixed(2)}
+                                    </span>
+                                  ) : <span className="text-slate-300 dark:text-slate-600">-</span>}
+                                </td>
+                                <td className="py-2.5 px-2 flex justify-center gap-1">
+                                   <button 
+                                     onClick={() => { setTxModalType('edit'); setEditingTx(tx); }}
+                                     className="p-1 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors" 
+                                     title="تعديل المعاملة"
+                                   >
+                                     <Pencil className="w-3.5 h-3.5"/>
+                                   </button>
+                                   <button 
+                                     onClick={() => setConfirmTxId(tx.id)}
+                                     className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded transition-colors" 
+                                     title="حذف المعاملة"
+                                   >
+                                     <Trash2 className="w-3.5 h-3.5"/>
+                                   </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             <AdvancedRealTimeChart 

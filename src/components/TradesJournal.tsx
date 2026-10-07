@@ -144,7 +144,7 @@ export default memo(function TradesJournal({
   }, [activeTradeIdProp]);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'won' | 'lost' | 'ruleBreaker'>('all');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'closed' | 'all' | 'won' | 'lost' | 'ruleBreaker'>('active');
   const [txModal, setTxModal] = useState<{ pos: TickerPosition; type: 'buy' | 'sell' } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
@@ -152,13 +152,15 @@ export default memo(function TradesJournal({
   const filteredPositions = useMemo(() => {
     return positions.filter(pos => {
       const metrics = computePositionMetrics(pos);
-      const isWon = metrics.netRealizedPnL > 0 && (pos.status === 'closed' || metrics.openShares === 0);
-      const isLost = metrics.netRealizedPnL < 0 && (pos.status === 'closed' || metrics.openShares === 0);
       const isActive = pos.status === 'active' && metrics.openShares > 0;
+      const isClosed = !isActive && (pos.status === 'closed' || metrics.isFullyClosed || metrics.openShares === 0);
+      const isWon = metrics.netRealizedPnL > 0 && isClosed;
+      const isLost = metrics.netRealizedPnL < 0 && isClosed;
       const isRuleBreaker = pos.journal?.isRuleBreaker;
 
       // Status filter
       if (statusFilter === 'active' && !isActive) return false;
+      if (statusFilter === 'closed' && !isClosed) return false;
       if (statusFilter === 'won' && !isWon) return false;
       if (statusFilter === 'lost' && !isLost) return false;
       if (statusFilter === 'ruleBreaker' && !isRuleBreaker) return false;
@@ -310,15 +312,6 @@ export default memo(function TradesJournal({
           {/* Status Tabs */}
           <div className="flex p-1 bg-slate-100 dark:bg-slate-800/90 rounded-2xl overflow-x-auto border border-slate-200/60 dark:border-slate-700/50">
             <button
-              onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${statusFilter === 'all'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
-                }`}
-            >
-              الكل ({positions.length})
-            </button>
-            <button
               onClick={() => setStatusFilter('active')}
               className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${statusFilter === 'active'
                   ? 'bg-blue-600 text-white shadow-sm'
@@ -327,6 +320,27 @@ export default memo(function TradesJournal({
             >
               <span className="w-2 h-2 rounded-full bg-blue-300 animate-pulse"></span>
               نشطة ({positions.filter(p => computePositionMetrics(p).openShares > 0 && p.status === 'active').length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('closed')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${statusFilter === 'closed'
+                  ? 'bg-slate-900 dark:bg-slate-700 text-white shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
+                }`}
+            >
+              مغلقة ({positions.filter(p => {
+                const m = computePositionMetrics(p);
+                return !(p.status === 'active' && m.openShares > 0);
+              }).length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${statusFilter === 'all'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
+                }`}
+            >
+              الكل ({positions.length})
             </button>
             <button
               onClick={() => setStatusFilter('won')}
@@ -437,11 +451,7 @@ export default memo(function TradesJournal({
                 onClick={() => setSelectedTradeId(pos.id)}
                 className={`bg-white dark:bg-slate-900 rounded-3xl border transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1 overflow-hidden cursor-pointer flex flex-col relative group ${metrics.isOpen
                     ? 'border-blue-200/90 dark:border-blue-900/60 hover:border-blue-400 dark:hover:border-blue-500'
-                    : metrics.netRealizedPnL > 0
-                      ? 'border-emerald-200/90 dark:border-emerald-900/60 hover:border-emerald-400 dark:hover:border-emerald-500'
-                      : metrics.netRealizedPnL < 0
-                        ? 'border-rose-200/90 dark:border-rose-900/60 hover:border-rose-400 dark:hover:border-rose-500'
-                        : 'border-slate-200 dark:border-slate-800'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40 opacity-90 hover:opacity-100 hover:border-slate-400'
                   }`}
               >
                 {/* Status Indicator Bar at the Top */}
@@ -455,8 +465,8 @@ export default memo(function TradesJournal({
                         : metrics.isOpen
                           ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
                           : metrics.netRealizedPnL > 0
-                            ? 'bg-emerald-100 dark:bg-emerald-900 border-emerald-300 text-emerald-800 dark:text-emerald-300'
-                            : 'bg-rose-100 dark:bg-rose-900 border-rose-300 text-rose-800 dark:text-rose-300'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
+                            : 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400'
                       }`}>
                       <SectorIcon className="w-5 h-5 stroke-[2.5]" />
                     </div>
@@ -467,14 +477,19 @@ export default memo(function TradesJournal({
                           <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight leading-none mb-1 truncate" dir="ltr">
                             {pos.symbol}
                           </h3>
-                          {(() => {
-                            const dominantPortfolio = computeDominantPortfolio(pos.transactions, pos.portfolioType);
-                            return dominantPortfolio === 'speculation' ? (
-                              <span className="bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded text-[9px] font-bold self-start mt-0.5">مضاربة</span>
-                            ) : (
-                              <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded text-[9px] font-bold self-start mt-0.5">استثمار</span>
-                            );
-                          })()}
+                          <div className="flex items-center gap-1">
+                            {(() => {
+                              const dominantPortfolio = computeDominantPortfolio(pos.transactions, pos.portfolioType);
+                              return dominantPortfolio === 'speculation' ? (
+                                <span className="bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded text-[9px] font-bold self-start mt-0.5">مضاربة</span>
+                              ) : (
+                                <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded text-[9px] font-bold self-start mt-0.5">استثمار</span>
+                              );
+                            })()}
+                            {!metrics.isOpen && (
+                              <span className="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded text-[9px] font-bold self-start mt-0.5">مغلق ✓</span>
+                            )}
+                          </div>
                         </div>
                         <div className="flex items-center gap-1">
                           {isRuleBreaker && (
@@ -489,7 +504,7 @@ export default memo(function TradesJournal({
                           )}
                         </div>
                       </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold truncate">
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold truncate mt-1">
                         {stockInfo?.nameAr || pos.plan?.strategy || 'تمركز'}
                       </p>
                     </div>
@@ -497,33 +512,33 @@ export default memo(function TradesJournal({
 
                   {/* Compact Metrics Grid */}
                   <div className="grid grid-cols-2 gap-2 mt-auto">
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl border border-slate-100 dark:border-slate-700/50">
-                      <span className="text-[9px] text-slate-400 font-bold block mb-0.5">الدخول</span>
-                      <span className="text-xs font-black text-slate-900 dark:text-white font-mono-num" dir="ltr">
-                        {metrics.avgEntry.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl border border-slate-100 dark:border-slate-700/50 relative">
-                      {(() => {
-                        const dominantPortfolio = computeDominantPortfolio(pos.transactions, pos.portfolioType);
-                        const isWarning = metrics.isOpen && (metrics.openShares * metrics.avgEntry) > (dominantPortfolio === 'speculation' ? capitalSpeculation : capitalInvestment) * 0.25;
-                        return (
-                          <>
-                            <div className="flex items-center justify-between mb-0.5">
-                              <span className="text-[9px] text-slate-400 font-bold">الكمية</span>
-                              {isWarning && (
-                                <span className="text-rose-600 text-[10px]" title="⚠️ تجاوز 25% من المحفظة">⚠️</span>
-                              )}
-                            </div>
-                            <span className={`text-xs font-black font-mono-num ${isWarning ? 'text-rose-600 dark:text-rose-500' : 'text-slate-900 dark:text-white'}`} dir="ltr">
-                              {metrics.openShares}
-                            </span>
-                          </>
-                        );
-                      })()}
-                    </div>
                     {metrics.isOpen ? (
                       <>
+                        <div className="bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                          <span className="text-[9px] text-slate-400 font-bold block mb-0.5">الدخول</span>
+                          <span className="text-xs font-black text-slate-900 dark:text-white font-mono-num" dir="ltr">
+                            {metrics.avgEntry.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl border border-slate-100 dark:border-slate-700/50 relative">
+                          {(() => {
+                            const dominantPortfolio = computeDominantPortfolio(pos.transactions, pos.portfolioType);
+                            const isWarning = metrics.isOpen && (metrics.openShares * metrics.avgEntry) > (dominantPortfolio === 'speculation' ? capitalSpeculation : capitalInvestment) * 0.25;
+                            return (
+                              <>
+                                <div className="flex items-center justify-between mb-0.5">
+                                  <span className="text-[9px] text-slate-400 font-bold">الكمية</span>
+                                  {isWarning && (
+                                    <span className="text-rose-600 text-[10px]" title="⚠️ تجاوز 25% من المحفظة">⚠️</span>
+                                  )}
+                                </div>
+                                <span className={`text-xs font-black font-mono-num ${isWarning ? 'text-rose-600 dark:text-rose-500' : 'text-slate-900 dark:text-white'}`} dir="ltr">
+                                  {metrics.openShares}
+                                </span>
+                              </>
+                            );
+                          })()}
+                        </div>
                         <div className="bg-emerald-50 dark:bg-emerald-900/10 p-2 rounded-xl border border-emerald-100 dark:border-emerald-800/30">
                           <span className="text-[9px] text-emerald-600/80 dark:text-emerald-500/80 font-bold block mb-0.5">الهدف</span>
                           <span className="text-xs font-black text-emerald-600 dark:text-emerald-500 font-mono-num" dir="ltr">
@@ -538,12 +553,26 @@ export default memo(function TradesJournal({
                         </div>
                       </>
                     ) : (
-                      <div className="col-span-2 bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl border border-slate-100 dark:border-slate-700/50 flex justify-between items-center">
-                         <span className="text-[9px] text-slate-400 font-bold block">الربح المحقق</span>
-                         <span className={`text-xs font-black font-mono-num ${metrics.netRealizedPnL > 0 ? 'text-emerald-600 dark:text-emerald-500' : metrics.netRealizedPnL < 0 ? 'text-rose-600 dark:text-rose-500' : 'text-slate-500'}`} dir="ltr">
-                           {metrics.netRealizedPnL > 0 ? '+' : ''}{formatEGP(metrics.netRealizedPnL)}
-                         </span>
-                      </div>
+                      <>
+                        <div className="bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                          <span className="text-[9px] text-slate-400 font-bold block mb-0.5">م. الدخول / الخروج</span>
+                          <span className="text-[11px] font-black text-slate-800 dark:text-slate-200 font-mono-num" dir="ltr">
+                            {metrics.avgEntry.toFixed(2)} / {metrics.avgExit.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-800/40 p-2 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                          <span className="text-[9px] text-slate-400 font-bold block mb-0.5">إجمالي المبيع</span>
+                          <span className="text-[11px] font-black text-slate-800 dark:text-slate-200 font-mono-num" dir="ltr">
+                            {metrics.totalSold.toLocaleString()} سهم
+                          </span>
+                        </div>
+                        <div className="col-span-2 bg-slate-100 dark:bg-slate-800/70 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                           <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold block">الربح المحقق للدورة</span>
+                           <span className={`text-sm font-black font-mono-num ${metrics.netRealizedPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
+                             {metrics.netRealizedPnL > 0 ? '+' : ''}{formatEGP(metrics.netRealizedPnL)} EGP
+                           </span>
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>

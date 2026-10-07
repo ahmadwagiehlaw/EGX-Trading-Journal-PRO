@@ -22,7 +22,6 @@ import WeeklyReviewTab from './WeeklyReviewTab';
 
 export default function Analytics() {
   const { 
-        positions, 
     filteredPositions,
     activeCapital,
     activeOpenCapital,
@@ -41,7 +40,7 @@ export default function Analytics() {
       const metrics = computePositionMetrics(pos, commissionRate);
       return pos.status === 'closed' || metrics.isFullyClosed || metrics.netRealizedPnL !== 0;
     });
-  }, [positions, commissionRate]);
+  }, [filteredPositions, commissionRate]);
 
   // Strategy Playbook Analysis
   const strategyStats = useMemo(() => {
@@ -75,9 +74,9 @@ export default function Analytics() {
   const wonEvents = allRealizedEvents.filter(e => e.netPnL > 0);
   const lostEvents = allRealizedEvents.filter(e => e.netPnL < 0);
 
-  const winRate = allRealizedEvents.length > 0 
-    ? ((wonEvents.length / allRealizedEvents.length) * 100).toFixed(1) 
-    : '0.0';
+  const totalDecisions = wonEvents.length + lostEvents.length;
+  const winRateNum = totalDecisions > 0 ? (wonEvents.length / totalDecisions) * 100 : 0;
+  const winRate = winRateNum.toFixed(1);
 
   const totalGrossPnL = filteredPositions.reduce((sum, p) => sum + computePositionMetrics(p, commissionRate).realizedPnL, 0);
   const totalCommissionPaid = filteredPositions.reduce((sum, p) => sum + computePositionMetrics(p, commissionRate).totalCommission, 0);
@@ -89,7 +88,7 @@ export default function Analytics() {
   const avgWin = wonEvents.length > 0 ? totalGain / wonEvents.length : 0;
   const avgLoss = lostEvents.length > 0 ? totalLoss / lostEvents.length : 0;
   const realRR = avgLoss > 0 ? (avgWin / avgLoss).toFixed(2) : (avgWin > 0 ? '∞' : '0.00');
-  const expectancy = ((parseFloat(winRate) / 100) * avgWin) - ((1 - (parseFloat(winRate) / 100)) * avgLoss);
+  const expectancy = ((winRateNum / 100) * avgWin) - ((1 - (winRateNum / 100)) * avgLoss);
 
   const ruleBreakerCount = filteredPositions.filter(p => p.journal?.isRuleBreaker).length;
   const disciplineScore = filteredPositions.length > 0 ? Math.max(0, 100 - (ruleBreakerCount * 12)) : 100;
@@ -270,7 +269,7 @@ export default function Analytics() {
               </div>
               <p className="text-slate-500 dark:text-slate-400 font-bold text-[11px]">نسبة النجاح (Win Rate)</p>
               <h3 className="text-xl font-black text-blue-700 dark:text-blue-400 font-mono-num mt-1" dir="ltr">{winRate}%</h3>
-              <span className="text-[10px] text-slate-400 font-bold mt-0.5">{wonEvents.length} من {allRealizedEvents.length} صفقات</span>
+              <span className="text-[10px] text-slate-400 font-bold mt-0.5">{wonEvents.length} من {totalDecisions} صفقات</span>
             </div>
 
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center">

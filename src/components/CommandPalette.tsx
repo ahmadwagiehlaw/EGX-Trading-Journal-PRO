@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Command } from 'cmdk';
-import { Search, PenTool, LayoutDashboard, Target, BookOpen, BarChart2, Settings as SettingsIcon } from 'lucide-react';
+import { Search, PenTool, LayoutDashboard, Target, BookOpen, BarChart2, Wallet, Settings as SettingsIcon } from 'lucide-react';
 
 interface CommandPaletteProps {
   open: boolean;
@@ -55,8 +55,9 @@ export default function CommandPalette({ open, setOpen, setActiveTab, onStartTra
             <Command.Group heading="الانتقال إلى" className="text-xs font-black text-slate-400 dark:text-slate-500 px-2 py-1.5 mt-2">
               {[
                 { name: 'لوحة القيادة', icon: LayoutDashboard, color: 'blue' },
-                { name: 'قائمة المراقبة', icon: Target, color: 'orange' },
                 { name: 'سجل الصفقات', icon: BookOpen, color: 'emerald' },
+                { name: 'استراتيجيات التداول', icon: Target, color: 'orange' },
+                { name: 'الخزينة', icon: Wallet, color: 'amber' },
                 { name: 'التحليلات', icon: BarChart2, color: 'purple' },
                 { name: 'الإعدادات', icon: SettingsIcon, color: 'slate' }
               ].map((tab) => {

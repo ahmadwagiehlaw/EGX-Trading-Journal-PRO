@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTrades } from '../context/TradeContext';
 import { computePositionMetrics } from '../utils/calculations';
 import { getStockBySymbol } from '../data/egxStocks';
@@ -23,9 +23,10 @@ const Amt = ({ v, plus = false, className = '' }: { v: number; plus?: boolean, c
 };
 
 export default function PortfolioSummary() {
-  const { positions, commissionRate, activeCapital, fixedIncome, equityData, winRate, profitFactor, maxDrawdown, wonPositionsCount, lostPositionsCount } = useTrades();
+  const { filteredPositions, commissionRate, activeCapital, fixedIncome, equityData, winRate, profitFactor, maxDrawdown, wonPositionsCount, lostPositionsCount } = useTrades();
 
   const [allocTab, setAllocTab] = useState<'stocks' | 'sectors' | 'strategy'>('stocks');
+  const [mountTime] = useState(() => Date.now());
 
   const stats = useMemo(() => {
     let cost = 0;
@@ -46,7 +47,7 @@ export default function PortfolioSummary() {
     const strategyAlloc: Record<string, number> = {};
     const stockPnL: { sym: string, uPnL: number, uPct: number }[] = [];
 
-    positions.forEach(p => {
+    filteredPositions.forEach(p => {
       const m = computePositionMetrics(p, commissionRate);
       rPnL += m.netRealizedPnL;
       
@@ -85,7 +86,7 @@ export default function PortfolioSummary() {
         });
         
         if (p.journal?.openedDate) {
-           const days = (Date.now() - p.journal.openedDate) / 86400000;
+           const days = (mountTime - p.journal.openedDate) / 86400000;
            holdDaysWeightedSum += days * m.openInvested;
         }
       }
@@ -113,7 +114,7 @@ export default function PortfolioSummary() {
     const largest = allocList[0];
 
     return { cost, mv, rPnL, uPnL, netTotal, exposurePct, cash, freeCash, fixedIncome, avgHold, risk, openCount, allocList, sectorAllocList, strategyAllocList, largest, riskReward, stockPnL };
-  }, [positions, commissionRate, activeCapital, fixedIncome]);
+  }, [filteredPositions, commissionRate, activeCapital, fixedIncome, mountTime]);
 
   if (stats.openCount === 0 && stats.rPnL === 0 && stats.uPnL === 0) return null;
 

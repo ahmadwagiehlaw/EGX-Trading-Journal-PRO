@@ -6,12 +6,12 @@ import {
   Settings, 
   TrendingUp, 
   Target, 
+  Wallet,
   Wifi, 
   WifiOff, 
   ShieldCheck,
   Moon,
   Sun,
-
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useTrades } from '../context/TradeContext';
@@ -44,7 +44,7 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
     { name: 'لوحة القيادة', icon: LayoutDashboard, color: 'text-blue-600 dark:text-blue-400', activeBg: 'bg-blue-600 text-white shadow-blue-500/20' },
     { name: 'سجل الصفقات', icon: BookOpen, color: 'text-emerald-600 dark:text-emerald-500', activeBg: 'bg-emerald-600 text-white shadow-emerald-500/20' },
     { name: 'استراتيجيات التداول', icon: Target, color: 'text-orange-600 dark:text-orange-400', activeBg: 'bg-orange-600 text-white shadow-orange-500/20' },
-
+    { name: 'الخزينة', icon: Wallet, color: 'text-amber-600 dark:text-amber-400', activeBg: 'bg-amber-600 text-white shadow-amber-500/20' },
     { name: 'التحليلات', icon: BarChart2, color: 'text-purple-600 dark:text-purple-400', activeBg: 'bg-purple-600 text-white shadow-purple-500/20' },
     { name: 'الإعدادات', icon: Settings, color: 'text-slate-600 dark:text-slate-400', activeBg: 'bg-slate-800 dark:bg-slate-700 text-white' },
   ];

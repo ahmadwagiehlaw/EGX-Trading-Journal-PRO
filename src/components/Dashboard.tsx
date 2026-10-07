@@ -66,6 +66,7 @@ export default memo(function Dashboard({
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
   const [isFixedIncomeModalOpen, setIsFixedIncomeModalOpen] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [mountTime] = useState(() => Date.now());
 
   // Smart Chart Mode Toggle: 'distribution' | 'sectors' | 'risk_weight' | 'growth'
   const [chartMode, setChartMode] = useState<'distribution' | 'sectors' | 'risk_weight' | 'growth'>('distribution');
@@ -200,7 +201,7 @@ export default memo(function Dashboard({
       <WeeklyReviewModal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} />
 
       {/* Quick Action Banner for Weekly Review */}
-      {(!weeklyReviews || weeklyReviews.length === 0 || (Date.now() - weeklyReviews[0].createdAt > 4 * 24 * 60 * 60 * 1000)) && (
+      {(!weeklyReviews || weeklyReviews.length === 0 || (mountTime - weeklyReviews[0].createdAt > 4 * 24 * 60 * 60 * 1000)) && (
         <div className="bg-gradient-to-r from-indigo-900 to-indigo-800 rounded-3xl p-5 md:p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
            <div className="flex items-start gap-4">
               <div className="p-3 bg-white/10 rounded-2xl shrink-0">
@@ -271,7 +272,7 @@ export default memo(function Dashboard({
             </div>
           </div>
           <button 
-            onClick={() => onNavigate?.('قائمة المراقبة')}
+            onClick={() => onNavigate?.('استراتيجيات التداول')}
             className="w-full sm:w-auto bg-white text-orange-700 px-5 py-2.5 rounded-xl font-black text-xs hover:bg-orange-50 transition-all shadow-sm shrink-0"
           >
             استعراض الخطط الجاهزة
@@ -780,7 +781,7 @@ export default memo(function Dashboard({
                 أحدث خطط المراقبة
               </h3>
               <button 
-                onClick={() => onNavigate?.('قائمة المراقبة')} 
+                onClick={() => onNavigate?.('استراتيجيات التداول')} 
                 className="text-xs font-black text-blue-600 dark:text-blue-400 hover:underline"
               >
                 عرض الكل ({plans.length})
