@@ -1,35 +1,61 @@
 import { type TickerPosition, computePositionMetrics } from './calculations';
 import { type Plan } from '../context/TradeContext';
 
+export interface ExportFilterOptions {
+  portfolioType?: 'all' | 'investment' | 'speculation';
+  status?: 'all' | 'active' | 'closed';
+  commissionRate?: number;
+}
+
 /**
- * Exports all positions into an Excel-friendly CSV with UTF-8 BOM encoding.
+ * Exports positions into an Excel-friendly CSV with comprehensive financial columns & UTF-8 BOM encoding.
  */
-export function exportPositionsToCsv(positions: TickerPosition[]): void {
-  if (positions.length === 0) {
-    alert('لا توجد صفقات لتصديرها حالياً.');
+export function exportPositionsToCsv(positions: TickerPosition[], options: ExportFilterOptions = {}): void {
+  const { portfolioType = 'all', status = 'all', commissionRate = 0.003 } = options;
+
+  let filtered = positions;
+  if (portfolioType !== 'all') {
+    filtered = filtered.filter(p => (p.portfolioType || 'investment') === portfolioType);
+  }
+  if (status !== 'all') {
+    filtered = filtered.filter(p => {
+      const m = computePositionMetrics(p, commissionRate);
+      const isActive = p.status === 'active' && m.openShares > 0;
+      return status === 'active' ? isActive : !isActive;
+    });
+  }
+
+  if (filtered.length === 0) {
+    alert('لا توجد صفقات تطابق خيارات التصدير المحددة.');
     return;
   }
 
   const headers = [
     'الرمز (Ticker)',
+    'نوع المحفظة',
     'الحالة',
     'الاستراتيجية',
     'متوسط سعر الدخول',
     'الكمية المشتراة',
     'الكمية المتبقية',
+    'سعر السوق الحالي',
     'الوقف الحالي',
     'الهدف',
-    'صافي الربح المحقق (EGP)',
+    'إجمالي العمولات والدمغة (EGP)',
+    'إجمالي الربح قبل العمولة (Gross)',
+    'صافي الربح المحقق (Net P&L)',
+    'العائد المحقق %',
     'تاريخ الفتح',
     'تاريخ الإغلاق',
+    'أيام الاحتفاظ',
     'الحالة النفسية',
     'الدرس المستفاد',
     'الخطأ الفني',
-    'مخالفة لقواعد 3MS'
+    'مخالفة لقواعد التداول'
   ];
 
-  const rows = positions.map((pos) => {
-    const metrics = computePositionMetrics(pos);
+  const rows = filtered.map((pos) => {
+    const metrics = computePositionMetrics(pos, commissionRate);
     const openedDateStr = pos.journal?.openedDate 
       ? new Date(pos.journal.openedDate).toLocaleDateString('ar-EG') 
       : '';
@@ -37,18 +63,33 @@ export function exportPositionsToCsv(positions: TickerPosition[]): void {
       ? new Date(pos.journal.closedDate).toLocaleDateString('ar-EG') 
       : '';
 
+    let holdingDays = 0;
+    if (pos.journal?.openedDate) {
+      const end = pos.journal?.closedDate || Date.now();
+      holdingDays = Math.max(1, Math.round((end - pos.journal.openedDate) / (1000 * 60 * 60 * 24)));
+    }
+
+    const costBasis = metrics.totalBought > 0 ? metrics.totalBought * metrics.avgEntry : 0;
+    const returnPct = costBasis > 0 ? (metrics.netRealizedPnL / costBasis) * 100 : 0;
+
     return [
       pos.symbol,
-      metrics.isOpen ? 'مفتوحة' : 'مغلقة',
+      pos.portfolioType === 'speculation' ? 'مضاربة' : 'استثمار',
+      metrics.isOpen ? 'نشطة' : 'مغلقة',
       pos.plan?.strategy || '',
       metrics.avgEntry.toFixed(2),
       metrics.totalBought,
       metrics.openShares,
+      (pos.currentMarketPrice || metrics.currentPrice).toFixed(2),
       metrics.currentStop.toFixed(2),
       pos.plan?.target ? pos.plan.target.toFixed(2) : '',
+      metrics.totalCommission.toFixed(2),
       metrics.realizedPnL.toFixed(2),
+      metrics.netRealizedPnL.toFixed(2),
+      `${returnPct.toFixed(1)}%`,
       openedDateStr,
       closedDateStr,
+      holdingDays,
       pos.journal?.emotion || 'neutral',
       `"${(pos.journal?.lessonLearned || '').replace(/"/g, '""')}"`,
       `"${(pos.journal?.mistake || '').replace(/"/g, '""')}"`,
@@ -63,7 +104,8 @@ export function exportPositionsToCsv(positions: TickerPosition[]): void {
   
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', `EGX_Trades_Report_${new Date().toISOString().split('T')[0]}.csv`);
+  const filterTag = portfolioType !== 'all' ? `_${portfolioType}` : '';
+  link.setAttribute('download', `EGX_Trades_Report${filterTag}_${new Date().toISOString().split('T')[0]}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

@@ -27,7 +27,15 @@ export default function TransactionFormModal({
   linkedBuyId = '',
   inline = false
 }: TransactionFormModalProps) {
-  const { addTransaction, updateTransaction, capitalInvestment, capitalSpeculation, totalOpenCapitalInvestment, totalOpenCapitalSpeculation } = useTrades();
+  const { 
+    addTransaction, 
+    updateTransaction, 
+    updatePosition,
+    capitalInvestment, 
+    capitalSpeculation, 
+    totalOpenCapitalInvestment, 
+    totalOpenCapitalSpeculation 
+  } = useTrades();
 
   const [type, setType] = useState<'buy' | 'sell' | 'dividend' | 'split' | 'bonus'>(defaultType);
   const [priceStr, setPriceStr] = useState('');
@@ -37,6 +45,7 @@ export default function TransactionFormModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingSaveData, setPendingSaveData] = useState<any>(null);
+  const [raiseStopToBreakeven, setRaiseStopToBreakeven] = useState(false);
   const formRef = React.useRef<HTMLFormElement>(null);
 
   const [portfolioType, setPortfolioType] = useState<'investment' | 'speculation'>(
@@ -162,6 +171,21 @@ export default function TransactionFormModal({
         await updateTransaction(position.id, transactionToEdit.id, txPayload);
       } else {
         await addTransaction(position.id, txPayload);
+        
+        // If selling and user checked raiseStopToBreakeven, ratchet stop to breakeven
+        if (type === 'sell' && raiseStopToBreakeven && currentMetrics.avgEntry > currentMetrics.currentStop) {
+          const beStop = currentMetrics.avgEntry;
+          await updatePosition(position.id, {
+            trailingStop: {
+              initial: position.trailingStop?.initial || position.plan?.stop || beStop,
+              current: beStop,
+              highestReached: Math.max(position.trailingStop?.highestReached || 0, price),
+              atrAtEntry: position.trailingStop?.atrAtEntry || position.plan?.atr || 0,
+              ...(position.trailingStop?.atrMultiplier ? { atrMultiplier: position.trailingStop.atrMultiplier } : {})
+            },
+            currentStopLoss: beStop,
+          } as any);
+        }
       }
 
       setIsSubmitting(false);
@@ -174,6 +198,7 @@ export default function TransactionFormModal({
         setNote('');
         setExecutionRating(0);
         setCustomEntryReason('');
+        setRaiseStopToBreakeven(false);
       }
     } catch (err: any) {
       setIsSubmitting(false);
@@ -224,6 +249,48 @@ export default function TransactionFormModal({
           </button>
         </div>
 
+        {/* Quick Profit Taking Ratios (When Selling) */}
+        {type === 'sell' && currentMetrics && currentMetrics.openShares > 0 && (
+          <div className="bg-emerald-50/60 dark:bg-emerald-950/30 p-3 rounded-2xl border border-emerald-100 dark:border-emerald-900/50 space-y-2">
+            <div className="flex items-center justify-between text-xs font-black text-emerald-900 dark:text-emerald-300">
+              <span>⚡ جني أرباح سريع (اختر كمية البيع):</span>
+              <span className="font-mono-num">{currentMetrics.openShares} سهم متاح</span>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { label: '25% (ربع)', ratio: 0.25 },
+                { label: '33% (ثلث)', ratio: 1 / 3 },
+                { label: '50% (نصف)', ratio: 0.5 },
+                { label: '100% (الكل)', ratio: 1.0 },
+              ].map(preset => {
+                const calculatedQty = preset.ratio === 1.0 
+                  ? currentMetrics.openShares 
+                  : Math.floor(currentMetrics.openShares * preset.ratio);
+                const isActive = sharesStr === calculatedQty.toString() && calculatedQty > 0;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      setSharesStr(calculatedQty.toString());
+                      if (!priceStr && position.currentMarketPrice) {
+                        setPriceStr(position.currentMarketPrice.toString());
+                      }
+                    }}
+                    className={`py-2 text-xs font-black rounded-xl transition-all ${
+                      isActive 
+                        ? 'bg-emerald-600 text-white shadow-md' 
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-emerald-200/60 dark:border-emerald-800/40 hover:bg-emerald-100/50'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5 col-span-2">
             <label className="text-xs font-black text-slate-500">تاريخ المعاملة</label>
@@ -238,6 +305,26 @@ export default function TransactionFormModal({
             <input type="number" step="0.001" required value={priceStr} onChange={e => setPriceStr(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 text-center font-bold" />
           </div>
         </div>
+
+        {/* Breakeven Ratchet Option */}
+        {type === 'sell' && currentMetrics && currentMetrics.avgEntry > currentMetrics.currentStop && (
+          <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+            raiseStopToBreakeven 
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300' 
+              : 'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+          }`}>
+            <input 
+              type="checkbox" 
+              className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500" 
+              checked={raiseStopToBreakeven} 
+              onChange={e => setRaiseStopToBreakeven(e.target.checked)} 
+            />
+            <div className="flex-1 text-right">
+              <span className="text-xs font-black block">🛡️ حجز الأرباح: رفع الوقف تلقائياً لنقطة الدخول (Breakeven)</span>
+              <span className="text-[10px] opacity-75 font-bold block">سيتم رفع الوقف إلى {currentMetrics.avgEntry.toFixed(2)} EGP لحماية باقي الكمية بعد البيع الجزئي</span>
+            </div>
+          </label>
+        )}
 
         <div className="space-y-1.5">
           <label className="text-xs font-black text-slate-500">ملاحظات حرة (اختياري)</label>

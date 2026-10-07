@@ -12,7 +12,8 @@ import {
   FileSpreadsheet,
   FileJson,
   ImageIcon,
-  Lock
+  Lock,
+  X
 } from 'lucide-react';
 import { useTrades } from '../context/TradeContext';
 import { exportPositionsToCsv, exportPlansToCsv } from '../utils/exportCsv';
@@ -31,6 +32,9 @@ export default function Settings() {
   } = useTrades();
   const [confirmReset, setConfirmReset] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportPortfolio, setExportPortfolio] = useState<'all' | 'investment' | 'speculation'>('all');
+  const [exportStatus, setExportStatus] = useState<'all' | 'active' | 'closed'>('all');
   
   // Local state initialized with fallbacks
   const [defaultRisk, setDefaultRisk] = useState(() => (contextDefaultRisk !== undefined && contextDefaultRisk !== null ? contextDefaultRisk.toString() : (localStorage.getItem('egx_risk_per_trade_pct') || '1')));
@@ -295,14 +299,14 @@ export default function Settings() {
             
             {/* Export to Excel (Positions) */}
             <button 
-              onClick={() => exportPositionsToCsv(positions)}
+              onClick={() => setIsExportModalOpen(true)}
               className="flex flex-col items-center justify-center p-5 bg-slate-50 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border border-slate-200 dark:border-slate-700 hover:border-emerald-300 rounded-2xl transition-all gap-2.5 group text-center"
             >
               <div className="w-11 h-11 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
                 <FileSpreadsheet className="w-5 h-5" />
               </div>
               <span className="font-black text-xs text-slate-800 dark:text-white">تصدير الصفقات Excel / CSV</span>
-              <span className="text-[10px] text-slate-400 font-bold">كشف حساب صفقات متكامل</span>
+              <span className="text-[10px] text-slate-400 font-bold">تصدير مخصص مع فلاتر</span>
             </button>
 
             {/* Export Watchlist Plans to CSV */}
@@ -346,6 +350,101 @@ export default function Settings() {
 
       </div>
     
+      {/* Export Options Modal */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsExportModalOpen(false)}></div>
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl relative z-10 w-full max-w-md border border-slate-200 dark:border-slate-800 space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-black text-base text-slate-900 dark:text-white">تصدير الصفقات إلى Excel / CSV</h3>
+              </div>
+              <button onClick={() => setIsExportModalOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Portfolio Filter */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-500 dark:text-slate-400">تصفية حسب نوع المحفظة:</label>
+                <div className="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-xl">
+                  {[
+                    { id: 'all', label: 'الكل' },
+                    { id: 'investment', label: 'استثمار' },
+                    { id: 'speculation', label: 'مضاربة' }
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setExportPortfolio(opt.id as any)}
+                      className={`py-1.5 text-xs font-black rounded-lg transition-all ${
+                        exportPortfolio === opt.id 
+                          ? 'bg-emerald-600 text-white shadow-sm' 
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Status Filter */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-500 dark:text-slate-400">تصفية حسب حالة الصفقات:</label>
+                <div className="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-xl">
+                  {[
+                    { id: 'all', label: 'الكل' },
+                    { id: 'active', label: 'نشطة فقط' },
+                    { id: 'closed', label: 'مغلقة فقط' }
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setExportStatus(opt.id as any)}
+                      className={`py-1.5 text-xs font-black rounded-lg transition-all ${
+                        exportStatus === opt.id 
+                          ? 'bg-blue-600 text-white shadow-sm' 
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className="flex-1 py-2.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-200"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  exportPositionsToCsv(positions, {
+                    portfolioType: exportPortfolio,
+                    status: exportStatus,
+                    commissionRate
+                  });
+                  setIsExportModalOpen(false);
+                }}
+                className="flex-1 py-2.5 text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md flex items-center justify-center gap-1.5"
+              >
+                <Download className="w-4 h-4" />
+                تحميل الملف (CSV)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmModal
         isOpen={confirmReset}
         title="مسح جميع البيانات"

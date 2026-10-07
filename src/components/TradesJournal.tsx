@@ -30,12 +30,14 @@ import {
   Car,
   Landmark,
   Briefcase,
-  Boxes
+  Boxes,
+  RefreshCw
 } from 'lucide-react';
 import NewTradeForm from './NewTradeForm';
 import ActiveTrades from './ActiveTrades';
 import PortfolioSummary from './PortfolioSummary';
 import TransactionFormModal from './TransactionFormModal';
+import BatchPriceModal from './BatchPriceModal';
 import { useTrades, type TickerPosition } from '../context/TradeContext';
 import { computePositionMetrics, formatEGP, computeDominantPortfolio } from '../utils/calculations';
 import { getStockBySymbol } from '../data/egxStocks';
@@ -147,6 +149,7 @@ export default memo(function TradesJournal({
   const [statusFilter, setStatusFilter] = useState<'active' | 'closed' | 'all' | 'won' | 'lost' | 'ruleBreaker'>('active');
   const [txModal, setTxModal] = useState<{ pos: TickerPosition; type: 'buy' | 'sell' } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isBatchPriceOpen, setIsBatchPriceOpen] = useState(false);
 
   // Filtered positions
   const filteredPositions = useMemo(() => {
@@ -412,6 +415,16 @@ export default memo(function TradesJournal({
               <span className="hidden md:inline">جدول</span>
             </button>
           </div>
+
+          {/* Batch Price Updater Button */}
+          <button
+            onClick={() => setIsBatchPriceOpen(true)}
+            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-black px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1.5 text-xs whitespace-nowrap shadow-xs"
+            title="تحديث أسعار جميع الأسهم المفتوحة دفعة واحدة"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-blue-500" />
+            <span className="hidden sm:inline">تحديث الأسعار</span>
+          </button>
 
           {/* New Trade Button */}
           <button
@@ -938,6 +951,12 @@ export default memo(function TradesJournal({
         onClose={() => setTxModal(null)}
         position={txModal?.pos || null}
         defaultType={txModal?.type || 'buy'}
+      />
+
+      {/* Batch Price Updater Modal */}
+      <BatchPriceModal
+        isOpen={isBatchPriceOpen}
+        onClose={() => setIsBatchPriceOpen(false)}
       />
 
     </div>
