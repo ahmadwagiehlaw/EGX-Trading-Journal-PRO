@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { type PlanUpdate } from '../components/PlanUpdatesFeed';
 import { 
@@ -206,10 +206,14 @@ export interface TradeContextType {
   loading: boolean;
   commissionRate: number;
   updateCommissionRate: (rate: number) => Promise<void>;
+  defaultRisk: number;
+  updateDefaultRisk: (risk: number) => Promise<void>;
+  clearAllData: () => Promise<void>;
 }
 
 const defaultCapital = { investment: 1000000, speculation: 100000 };
 const defaultCommissionRate = 0.003;
+const defaultRiskRate = 1;
 
 const TradeContext = createContext<TradeContextType | undefined>(undefined);
 
@@ -412,6 +416,10 @@ const deleteWeeklyReview = async (id: string) => {
   const [legacySpeculationCap, setLegacySpeculationCap] = useState<number>(defaultCapital.speculation);
   const [fixedIncome, setFixedIncomeState] = useState<number>(0);
   const [commissionRate, setCommissionRate] = useState<number>(defaultCommissionRate);
+  const [defaultRisk, setDefaultRiskState] = useState<number>(() => {
+    const saved = localStorage.getItem('egx_risk_per_trade_pct');
+    return saved ? parseFloat(saved) : defaultRiskRate;
+  });
   const [loading, setLoading] = useState(true);
   const [portfolioFilter, setPortfolioFilter] = useState<'all' | 'investment' | 'speculation'>('all');
 
@@ -458,6 +466,11 @@ const deleteWeeklyReview = async (id: string) => {
         setLegacySpeculationCap(data.speculation || defaultCapital.speculation);
         setFixedIncomeState(data.fixedIncome || 0);
         setCommissionRate(data.commissionRate !== undefined ? data.commissionRate : defaultCommissionRate);
+        if (data.defaultRisk !== undefined) {
+          const numRisk = Number(data.defaultRisk);
+          setDefaultRiskState(numRisk);
+          localStorage.setItem('egx_risk_per_trade_pct', String(numRisk));
+        }
       }
     }, handleError);
 
@@ -641,10 +654,10 @@ const deleteWeeklyReview = async (id: string) => {
 
   // Compute Capital (Deposits vs Equity)
   const { depositedInvestment, depositedSpeculation, capitalInvestment, capitalSpeculation, calculatedFixedIncome } = useMemo(() => {
-    // 1. Calculate pure deposited capital and dynamic fixed income from ledger
-    let depInv = 0;
-    let depSpec = 0;
-    let dynamicFixedIncome = 0;
+    // 1. Calculate pure deposited capital (Base Registered Capital + Ledger Deposits/Withdrawals)
+    let depInv = legacyInvestmentCap;
+    let depSpec = legacySpeculationCap;
+    let dynamicFixedIncome = fixedIncome;
     
     if (ledger.length > 0) {
       ledger.forEach(entry => {
@@ -658,11 +671,6 @@ const deleteWeeklyReview = async (id: string) => {
           if (entry.type === 'withdrawal') depSpec -= entry.amount;
         }
       });
-    } else {
-      // Fallback to legacy if ledger is empty
-      depInv = legacyInvestmentCap;
-      depSpec = legacySpeculationCap;
-      dynamicFixedIncome = fixedIncome;
     }
 
     // 2. Calculate PnL per portfolio
@@ -916,6 +924,39 @@ const deleteWeeklyReview = async (id: string) => {
     await setDoc(doc(db, 'settings', 'capital'), { commissionRate: rate }, { merge: true });
   };
 
+  const updateDefaultRisk = async (risk: number) => {
+    setDefaultRiskState(risk);
+    localStorage.setItem('egx_risk_per_trade_pct', String(risk));
+    await setDoc(doc(db, 'settings', 'capital'), { defaultRisk: risk }, { merge: true });
+  };
+
+  const clearAllData = async () => {
+    const collectionsToClear = [
+      'trades',
+      'plans',
+      'ledger',
+      getPath('weekly_reviews'),
+      getPath('sticky_notes'),
+    ];
+    
+    for (const colName of collectionsToClear) {
+      const snap = await getDocs(collection(db, colName));
+      const deletePromises = snap.docs.map(d => deleteDoc(doc(db, colName, d.id)));
+      await Promise.all(deletePromises);
+    }
+
+    // Reset settings in Firestore
+    await setDoc(doc(db, 'settings', 'capital'), {
+      investment: defaultCapital.investment,
+      speculation: defaultCapital.speculation,
+      fixedIncome: 0,
+      commissionRate: defaultCommissionRate,
+      defaultRisk: defaultRiskRate
+    });
+
+    localStorage.clear();
+  };
+
   // Ledger CRUD
   const addLedgerEntry = async (entry: Omit<LedgerEntry, 'id'>) => {
     const id = 'ldg_' + Math.random().toString(36).substring(2, 9);
@@ -1059,7 +1100,10 @@ const deleteWeeklyReview = async (id: string) => {
     disciplineScore,
     loading,
     commissionRate,
-    updateCommissionRate
+    updateCommissionRate,
+    defaultRisk,
+    updateDefaultRisk,
+    clearAllData
   }), [
     positions, trades, profitFactor, maxDrawdown, equityData, ledger,
     depositedInvestment, depositedSpeculation, plans,
@@ -1067,7 +1111,7 @@ const deleteWeeklyReview = async (id: string) => {
     totalRealizedPnL, totalNetRealizedPnL, totalCommissionPaid,
     winRate, openPositionsCount, wonPositionsCount, lostPositionsCount,
     totalOpenCapital, totalOpenCapitalInvestment, totalOpenCapitalSpeculation,
-    totalOpenRisk, disciplineScore, loading, commissionRate, isSimulator, toggleSimulator, coreStats, coreSatelliteTarget,
+    totalOpenRisk, disciplineScore, loading, commissionRate, defaultRisk, isSimulator, toggleSimulator, coreStats, coreSatelliteTarget,
     closePosition, addTransaction, updateTransaction, deleteTransaction
   ]);
 

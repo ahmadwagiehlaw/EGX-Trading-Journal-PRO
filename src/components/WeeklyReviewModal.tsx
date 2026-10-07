@@ -51,7 +51,7 @@ export default function WeeklyReviewModal({ isOpen, onClose, reviewToEdit }: Pro
     // End time includes the whole day
     const endTime = new Date(endDate).getTime() + (24 * 60 * 60 * 1000 - 1);
     
-    // Find positions with any transactions in this date range
+    // Find positions with any transactions / realized events in this date range
     let realizedPnL = 0;
     let won = 0;
     let closedCount = 0;
@@ -59,19 +59,26 @@ export default function WeeklyReviewModal({ isOpen, onClose, reviewToEdit }: Pro
 
     positions.forEach(p => {
       const metrics = computePositionMetrics(p, commissionRate);
-      const txsInPeriod = (p.transactions || []).filter(t => t.date >= startTime && t.date <= endTime);
       
-      if (txsInPeriod.length > 0) {
-        // If the very first buy was in this period
-        const firstTx = [...(p.transactions||[])].sort((a,b)=>a.date-b.date)[0];
-        if (firstTx && firstTx.date >= startTime && firstTx.date <= endTime) openedCount++;
-        
-        // If the position was fully closed in this period
-        if (p.status === 'closed' && p.journal?.closedDate && p.journal.closedDate >= startTime && p.journal.closedDate <= endTime) {
-          closedCount++;
-          realizedPnL += metrics.netRealizedPnL;
-          if (metrics.netRealizedPnL > 0) won++;
-        }
+      // Check first buy in period
+      const firstTx = [...(p.transactions || [])].sort((a, b) => a.date - b.date)[0];
+      if (firstTx && firstTx.date >= startTime && firstTx.date <= endTime) {
+        openedCount++;
+      }
+
+      // Check realized events (sells/exits) in this period
+      if (metrics.realizedEvents && metrics.realizedEvents.length > 0) {
+        metrics.realizedEvents.forEach(evt => {
+          if (evt.date && evt.date >= startTime && evt.date <= endTime) {
+            closedCount++;
+            realizedPnL += evt.netPnL;
+            if (evt.netPnL > 0) won++;
+          }
+        });
+      } else if (p.status === 'closed' && p.journal?.closedDate && p.journal.closedDate >= startTime && p.journal.closedDate <= endTime) {
+        closedCount++;
+        realizedPnL += metrics.netRealizedPnL;
+        if (metrics.netRealizedPnL > 0) won++;
       }
     });
 
@@ -79,8 +86,8 @@ export default function WeeklyReviewModal({ isOpen, onClose, reviewToEdit }: Pro
     if (reviewToEdit && reviewToEdit.weekStartDate === startTime && reviewToEdit.weekEndDate === endTime) {
       return {
         tradesCount: reviewToEdit.tradesCount, // legacy
-        openedCount,
-        closedCount,
+        openedCount: (reviewToEdit as any).openedCount || openedCount,
+        closedCount: (reviewToEdit as any).closedCount || closedCount,
         pnl: reviewToEdit.pnl,
         winRate: reviewToEdit.winRate
       };
@@ -93,9 +100,9 @@ export default function WeeklyReviewModal({ isOpen, onClose, reviewToEdit }: Pro
       pnl: realizedPnL,
       winRate: closedCount > 0 ? (won / closedCount) * 100 : 0
     };
-  }, [positions, commissionRate, startDate, endDate]);
+  }, [positions, commissionRate, startDate, endDate, reviewToEdit]);
 
-    const handleSave = () => {
+  const handleSave = () => {
     if (!whatWentWell || !whatWentWrong || !focusNextWeek) {
       alert('يرجى تعبئة جميع حقول التأمل الذاتي!');
       return;
@@ -112,6 +119,8 @@ export default function WeeklyReviewModal({ isOpen, onClose, reviewToEdit }: Pro
       whatWentWell,
       whatWentWrong,
       focusNextWeek,
+      disciplineScore,
+      marketCondition,
     };
 
     if (reviewToEdit) {

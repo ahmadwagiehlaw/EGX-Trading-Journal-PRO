@@ -59,6 +59,16 @@ export default function WeeklyReviewTab() {
                 من {new Date(review.weekStartDate).toLocaleDateString('ar-EG')} إلى {new Date(review.weekEndDate).toLocaleDateString('ar-EG')}
               </div>
               <div className="flex flex-wrap items-center gap-2 md:gap-3 text-xs font-mono-num font-black">
+                {review.marketCondition && (
+                  <span className="bg-purple-50 dark:bg-purple-900/30 px-2.5 py-1 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
+                    {review.marketCondition === 'bull' ? '🐂 صاعد' : review.marketCondition === 'bear' ? '🐻 هابط' : review.marketCondition === 'sideways' ? '🦀 عرضي' : '⚡ متذبذب'}
+                  </span>
+                )}
+                {review.disciplineScore && (
+                  <span className="bg-amber-50 dark:bg-amber-900/30 px-2.5 py-1 rounded-lg text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1">
+                    {'⭐'.repeat(review.disciplineScore)} ({review.disciplineScore}/5)
+                  </span>
+                )}
                 <span className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-300">إغلاق {review.tradesCount} | فتح {(review as any).openedCount || 0}</span>
                 <span className="bg-blue-50 dark:bg-blue-900/30 px-3 py-1.5 rounded-lg text-blue-600 dark:text-blue-400">{review.winRate.toFixed(0)}% Win</span>
                 <span className={`px-3 py-1.5 rounded-lg ${review.pnl >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'}`} dir="ltr">

@@ -18,11 +18,22 @@ import { useTrades } from '../context/TradeContext';
 import { exportPositionsToCsv, exportPlansToCsv } from '../utils/exportCsv';
 
 export default function Settings() {
-  const { capitalInvestment, capitalSpeculation, positions, plans, commissionRate, updateCommissionRate } = useTrades();
+  const { 
+    capitalInvestment, 
+    capitalSpeculation, 
+    positions, 
+    plans, 
+    commissionRate, 
+    updateCommissionRate,
+    defaultRisk: contextDefaultRisk,
+    updateDefaultRisk,
+    clearAllData
+  } = useTrades();
   const [confirmReset, setConfirmReset] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   
   // Local state initialized with fallbacks
-  const [defaultRisk, setDefaultRisk] = useState(() => localStorage.getItem('egx_risk_per_trade_pct') || '1');
+  const [defaultRisk, setDefaultRisk] = useState(() => (contextDefaultRisk !== undefined && contextDefaultRisk !== null ? contextDefaultRisk.toString() : (localStorage.getItem('egx_risk_per_trade_pct') || '1')));
   const [commission, setCommission] = useState(() => (commissionRate !== undefined && commissionRate !== null ? commissionRate.toString() : '0.003'));
   const [imageProvider, setImageProvider] = useState(() => localStorage.getItem('egx_image_provider') || 'imgbb');
   const [imageKey, setImageKey] = useState(() => localStorage.getItem('egx_image_key') || '');
@@ -37,10 +48,21 @@ export default function Settings() {
     }
   }, [commissionRate]);
 
+  useEffect(() => {
+    if (contextDefaultRisk !== undefined && contextDefaultRisk !== null) {
+      setDefaultRisk(contextDefaultRisk.toString());
+    }
+  }, [contextDefaultRisk]);
+
   const handleSave = async () => {
     const commVal = parseFloat(commission);
     if (!isNaN(commVal) && updateCommissionRate) {
       await updateCommissionRate(commVal);
+    }
+    
+    const riskVal = parseFloat(defaultRisk);
+    if (!isNaN(riskVal) && updateDefaultRisk) {
+      await updateDefaultRisk(riskVal);
     }
     
     localStorage.setItem('egx_risk_per_trade_pct', defaultRisk);
@@ -74,11 +96,17 @@ export default function Settings() {
 
   const executeClearData = async () => {
     try {
-      localStorage.clear(); 
+      setIsClearing(true);
+      if (clearAllData) {
+        await clearAllData();
+      } else {
+        localStorage.clear();
+      }
       window.location.reload();
     } catch (error: any) {
       alert('حدث خطأ أثناء مسح البيانات: ' + error.message);
     } finally {
+      setIsClearing(false);
       setConfirmReset(false);
     }
   };
@@ -321,11 +349,11 @@ export default function Settings() {
       <ConfirmModal
         isOpen={confirmReset}
         title="مسح جميع البيانات"
-        message="تحذير: سيتم مسح جميع الصفقات والخطط والمراجعات من السحابة نهائياً. لا يمكن التراجع عن هذه الخطوة!"
+        message={isClearing ? "جاري مسح جميع الصفقات والخطط وقاعدة البيانات من السحابة..." : "تحذير: سيتم مسح جميع الصفقات والخطط وحركات الخزينة والملاحظات من السحابة نهائياً وتصفير الحساب. لا يمكن التراجع عن هذه الخطوة!"}
         type="danger"
-        confirmText="نعم، امسح كل شيء"
+        confirmText={isClearing ? "جاري المسح..." : "نعم، امسح كل شيء"}
         onConfirm={executeClearData}
-        onCancel={() => setConfirmReset(false)}
+        onCancel={() => !isClearing && setConfirmReset(false)}
       />
     </div>
   );
