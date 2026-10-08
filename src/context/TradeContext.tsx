@@ -67,6 +67,13 @@ export interface Plan {
   status: 'waiting' | 'ready';
   updates: PlanUpdate[];
   createdAt?: number;
+  
+  // Tactical Institutional Liquidity & Momentum Metrics
+  buyFlowRatio?: number; // Green Inflow % (0-100)
+  rvol?: number;         // Relative Volume %
+  vwap?: number;         // Volume-Weighted Average Price (EGP)
+  week52High?: number;   // 52-Week High (EGP)
+  week52Low?: number;    // 52-Week Low (EGP)
 }
 
 export interface LedgerEntry {
@@ -575,10 +582,12 @@ const deleteWeeklyReview = async (id: string) => {
       }
     });
 
-    // Realized events win/loss counts (accurate for partial sells & fully closed using Lowest-Cost-First)
+    // Realized events win/loss counts (accurate for sell trading decisions; dividends excluded from win rate to prevent distortion)
     allRealizedEvents.forEach(evt => {
-      if (evt.netPnL > 0) wonCount++;
-      else if (evt.netPnL < 0) lostCount++;
+      if (evt.type === 'sell') {
+        if (evt.netPnL > 0) wonCount++;
+        else if (evt.netPnL < 0) lostCount++;
+      }
     });
 
     const totalRealizedDecisions = wonCount + lostCount;

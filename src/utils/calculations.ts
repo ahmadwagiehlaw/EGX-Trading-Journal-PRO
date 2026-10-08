@@ -142,7 +142,7 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
       const netPricePerShare = netProceeds / tx.shares;
       const grossPricePerShare = tx.price;
       
-      openLots.sort((a, b) => a.price - b.price); // Lowest Cost First
+      openLots.sort((a, b) => (a.price - b.price) || (a.date - b.date)); // Lowest Cost First with FIFO tie-breaker
 
       let txRealizedPnL = 0;
       let txNetRealizedPnL = 0;
@@ -354,6 +354,13 @@ export function computePositionMetrics(position: TickerPosition, commissionRate:
   const unrealizedPnL = currentPrice > 0 && sim.openShares > 0 ? (currentPrice - sim.avgEntry) * sim.openShares : 0;
   const netUnrealizedPnL = currentPrice > 0 && sim.openShares > 0 ? ((currentPrice - sim.avgEntry) * sim.openShares) - (currentPrice * sim.openShares * commissionRate) : 0;
 
+  // House Money / Free-Ride Tracker: Net capital outlay remaining in position
+  const totalCashReturned = (sim.totalRevenue - (sim.totalRevenue * commissionRate)) + sim.totalDividends;
+  const netPositionCapitalOutlay = sim.totalBuyCost - totalCashReturned;
+  const isFreeRide = isOpen && netPositionCapitalOutlay <= 0 && sim.openShares > 0;
+  const freeRideSecuredGain = isFreeRide ? Math.abs(netPositionCapitalOutlay) : 0;
+  const lowestCostOpenLot = sim.openLots.length > 0 ? sim.openLots[0] : null;
+
   return {
     avgEntry: sim.avgEntry,
     avgExit: sim.avgExit,
@@ -366,6 +373,11 @@ export function computePositionMetrics(position: TickerPosition, commissionRate:
     openInvested: sim.totalCost,
     totalBuyCost: sim.totalBuyCost,
     totalRevenue: sim.totalRevenue,
+    totalDividends: sim.totalDividends,
+    netPositionCapitalOutlay,
+    isFreeRide,
+    freeRideSecuredGain,
+    lowestCostOpenLot,
     currentStop,
     openRisk,
     isOpen,

@@ -12,6 +12,8 @@ interface TransactionFormModalProps {
   position: TickerPosition | null;
   defaultType?: 'buy' | 'sell' | 'dividend' | 'split' | 'bonus';
   defaultShares?: string;
+  defaultPrice?: string;
+  defaultNote?: string;
   transactionToEdit?: Transaction | null;
   linkedBuyId?: string;
   inline?: boolean;
@@ -23,6 +25,8 @@ export default function TransactionFormModal({
   position,
   defaultType = 'buy',
   defaultShares = '',
+  defaultPrice = '',
+  defaultNote = '',
   transactionToEdit = null,
   linkedBuyId = '',
   inline = false
@@ -33,15 +37,16 @@ export default function TransactionFormModal({
     updatePosition,
     capitalInvestment, 
     capitalSpeculation, 
+    fixedIncome,
     totalOpenCapitalInvestment, 
     totalOpenCapitalSpeculation 
   } = useTrades();
 
   const [type, setType] = useState<'buy' | 'sell' | 'dividend' | 'split' | 'bonus'>(defaultType);
-  const [priceStr, setPriceStr] = useState('');
+  const [priceStr, setPriceStr] = useState(defaultPrice);
   const [sharesStr, setSharesStr] = useState(defaultShares);
   const [dateStr, setDateStr] = useState(new Date().toISOString().slice(0, 10));
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(defaultNote);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingSaveData, setPendingSaveData] = useState<any>(null);
@@ -119,8 +124,8 @@ export default function TransactionFormModal({
 
     if (type === 'buy') {
       const availablePower = portfolioType === 'investment' 
-        ? (capitalInvestment - totalOpenCapitalInvestment) 
-        : (capitalSpeculation - totalOpenCapitalSpeculation);
+        ? Math.max(0, capitalInvestment - totalOpenCapitalInvestment - (fixedIncome || 0))
+        : Math.max(0, capitalSpeculation - totalOpenCapitalSpeculation);
       
       if (amount > availablePower && !transactionToEdit) {
         if (!window.confirm(`تحذير: سيولة الـ ${portfolioType === 'investment' ? 'استثمار' : 'مضاربة'} المتاحة (${formatEGP(availablePower)}) لا تكفي لهذه الصفقة (${formatEGP(amount)}). هل أنت متأكد من الاستمرار (سيتم تجاوز السقف)؟`)) {
@@ -129,9 +134,27 @@ export default function TransactionFormModal({
       }
     }
 
-    if (type === 'sell' && shares > currentMetrics.openShares && !transactionToEdit) {
-      setError(`لا يمكن بيع كمية (${shares}) أكبر من الكمية المفتوحة المتبقية (${currentMetrics.openShares} سهم).`);
-      return;
+    if (type === 'sell' && !transactionToEdit) {
+      if (shares > currentMetrics.openShares) {
+        setError(`لا يمكن بيع كمية (${shares}) أكبر من الكمية المفتوحة المتبقية (${currentMetrics.openShares} سهم).`);
+        return;
+      }
+
+      // Core Allocation Shield Protection
+      const coreShares = position?.coreShares || 0;
+      if (coreShares > 0) {
+        const freeSwingShares = Math.max(0, currentMetrics.openShares - coreShares);
+        if (shares > freeSwingShares) {
+          const coreCut = shares - freeSwingShares;
+          if (!window.confirm(`🛡️ تنبيه درع الكور (Core Shield):
+أنت على وشك بيع ${shares} سهم، مما سيقتطع (${coreCut} سهم) من أسهم الكور المخصصة للاستثمار طويل الأجل (${coreShares} سهم).
+المتاح للبيع الحر من أسهم المضاربة هو (${freeSwingShares} سهم) فقط.
+
+هل أنت متأكد من تنفيذ هذا البيع الاستراتيجي من أسهم الكور؟`)) {
+            return;
+          }
+        }
+      }
     }
 
     try {
@@ -248,6 +271,21 @@ export default function TransactionFormModal({
             مجاني/تجزئة
           </button>
         </div>
+
+        {/* Core Shield Breakdown (When Selling Core Position) */}
+        {type === 'sell' && (position?.coreShares || 0) > 0 && (
+          <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 rounded-2xl flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="text-amber-600">🛡️</span>
+              <span className="font-bold text-amber-800 dark:text-amber-300">درع أسهم الكور:</span>
+            </div>
+            <div className="font-black text-amber-900 dark:text-amber-200 font-mono-num">
+              <span>🔒 {position?.coreShares} كور محمي</span>
+              <span className="mx-1.5">|</span>
+              <span className="text-emerald-700 dark:text-emerald-400">🎯 {Math.max(0, currentMetrics.openShares - (position?.coreShares || 0))} بيع نشط</span>
+            </div>
+          </div>
+        )}
 
         {/* Quick Profit Taking Ratios (When Selling) */}
         {type === 'sell' && currentMetrics && currentMetrics.openShares > 0 && (

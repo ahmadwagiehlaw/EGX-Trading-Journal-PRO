@@ -26,21 +26,29 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const { theme, toggleTheme } = useTheme();
   const { isSimulator, toggleSimulator } = useTrades();
+  const [showTreasuryTab, setShowTreasuryTab] = useState(() => localStorage.getItem('egx_show_treasury_tab') !== 'false');
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
+    const handleNavChange = () => {
+      setShowTreasuryTab(localStorage.getItem('egx_show_treasury_tab') !== 'false');
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('storage', handleNavChange);
+    window.addEventListener('egx_nav_settings_changed', handleNavChange);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('storage', handleNavChange);
+      window.removeEventListener('egx_nav_settings_changed', handleNavChange);
     };
   }, []);
 
-  const navigation = [
+  const allNavigation = [
     { name: 'لوحة القيادة', icon: LayoutDashboard, color: 'text-blue-600 dark:text-blue-400', activeBg: 'bg-blue-600 text-white shadow-blue-500/20' },
     { name: 'سجل الصفقات', icon: BookOpen, color: 'text-emerald-600 dark:text-emerald-500', activeBg: 'bg-emerald-600 text-white shadow-emerald-500/20' },
     { name: 'استراتيجيات التداول', icon: Target, color: 'text-orange-600 dark:text-orange-400', activeBg: 'bg-orange-600 text-white shadow-orange-500/20' },
@@ -49,7 +57,9 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
     { name: 'الإعدادات', icon: Settings, color: 'text-slate-600 dark:text-slate-400', activeBg: 'bg-slate-800 dark:bg-slate-700 text-white' },
   ];
 
-  const activeItem = navigation.find(n => n.name === activeTab);
+  const navigation = allNavigation.filter(item => item.name !== 'الخزينة' || showTreasuryTab);
+
+  const activeItem = allNavigation.find(n => n.name === activeTab);
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200" dir="rtl">

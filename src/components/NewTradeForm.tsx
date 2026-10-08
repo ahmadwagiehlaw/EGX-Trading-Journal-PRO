@@ -16,6 +16,7 @@ export default function NewTradeForm({
     updatePosition, 
     capitalInvestment, 
     capitalSpeculation,
+    fixedIncome,
     totalOpenCapitalInvestment, 
     totalOpenCapitalSpeculation,
     defaultRisk 
@@ -46,6 +47,7 @@ export default function NewTradeForm({
     initialData?.plan?.stop?.toString() || 
     ''
   );
+  const [coreShares, setCoreShares] = useState<string>(initialData?.coreShares?.toString() || '');
   const [atrStr, setAtrStr] = useState<string>(initialData?.atr15?.toString() || initialData?.plan?.atr?.toString() || '');
   
   useEffect(() => {
@@ -56,6 +58,7 @@ export default function NewTradeForm({
     if (initialData?.entryPrice) setEntryPrice(initialData.entryPrice.toString());
     if (initialData?.targetPrice) setTargetPrice(initialData.targetPrice.toString());
     if (initialData?.initialStopLoss) setStopLoss(initialData.initialStopLoss.toString());
+    if (initialData?.coreShares) setCoreShares(initialData.coreShares.toString());
   }, [initialData]);
 
   // Risk Auto-Calculation (Derived via useMemo - Pure and instantaneous)
@@ -67,10 +70,10 @@ export default function NewTradeForm({
       const calculatedSl = entry - slDistance;
       const calculatedTarget = entry + (2 * slDistance); // Minimum 2:1 Target
       
-      // Use Available Buying Power based on selected portfolio
+      // Use Available Buying Power based on selected portfolio (deducting Fixed Income)
       const availablePower = portfolioType === 'speculation'
         ? Math.max(0, capitalSpeculation - totalOpenCapitalSpeculation)
-        : Math.max(0, capitalInvestment - totalOpenCapitalInvestment);
+        : Math.max(0, capitalInvestment - totalOpenCapitalInvestment - (fixedIncome || 0));
       
       const capital = availablePower > 0 ? availablePower : (portfolioType === 'speculation' ? capitalSpeculation : capitalInvestment);
       const riskPct = (defaultRisk && defaultRisk > 0) ? defaultRisk / 100 : 0.01;
@@ -88,7 +91,7 @@ export default function NewTradeForm({
       };
     }
     return null;
-  }, [atrStr, entryPrice, portfolioType, capitalInvestment, capitalSpeculation, totalOpenCapitalInvestment, totalOpenCapitalSpeculation, defaultRisk]);
+  }, [atrStr, entryPrice, portfolioType, capitalInvestment, capitalSpeculation, fixedIncome, totalOpenCapitalInvestment, totalOpenCapitalSpeculation, defaultRisk]);
 
   const applyCalculations = () => {
     if (calcResults) {
@@ -120,6 +123,7 @@ export default function NewTradeForm({
       await updatePosition(initialData.id, {
         symbol: cleanSym,
         portfolioType,
+        coreShares: parseInt(coreShares) || 0,
         'plan.strategy': strategy,
         'plan.entryZone.min': entry,
         'plan.entryZone.max': entry,
@@ -143,6 +147,7 @@ export default function NewTradeForm({
       await updatePosition(existingPos.id, {
         status: numShares > 0 ? 'active' : 'planning',
         portfolioType,
+        coreShares: parseInt(coreShares) || 0,
         transactions: [...(existingPos.transactions || []), ...initialTx],
         plan: {
           strategy,
@@ -175,6 +180,7 @@ export default function NewTradeForm({
       await addPosition({
         symbol: cleanSym,
         portfolioType,
+        coreShares: parseInt(coreShares) || 0,
         status: numShares > 0 ? 'active' : 'planning',
         plan: {
           strategy,
@@ -328,6 +334,32 @@ export default function NewTradeForm({
           />
         </div>
       </div>
+
+      {/* Core Allocation Shield (For Investment Portfolio) */}
+      {portfolioType === 'investment' && (
+        <div className="bg-amber-500/10 border border-amber-500/30 p-3.5 rounded-2xl flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-amber-500 text-lg">🔒</span>
+            <div>
+              <label className="text-xs font-black text-amber-900 dark:text-amber-300 block">
+                أسهم الكور المحمية (Core Allocation):
+              </label>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">
+                حماية أسهم الاستثمار طويل الأجل من البيع الانفعالي أثناء المضاربة
+              </span>
+            </div>
+          </div>
+          <input 
+            type="number" 
+            step="1"
+            placeholder="0"
+            value={coreShares}
+            onChange={(e) => setCoreShares(e.target.value)}
+            className="w-28 text-left font-black font-mono-num text-xs py-2 px-3 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-xl focus:border-amber-500 outline-none text-amber-900 dark:text-amber-200"
+            dir="ltr"
+          />
+        </div>
+      )}
 
       {/* Risk Management & ATR Calculator */}
       <div className="bg-slate-100 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">

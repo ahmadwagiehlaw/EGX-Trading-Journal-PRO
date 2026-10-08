@@ -43,6 +43,7 @@ export default function Settings() {
   const [imageKey, setImageKey] = useState(() => localStorage.getItem('egx_image_key') || '');
   const [imageEndpoint, setImageEndpoint] = useState(() => localStorage.getItem('egx_image_endpoint') || '');
   const [privacyPin, setPrivacyPin] = useState(() => localStorage.getItem('egx_privacy_pin') || '');
+  const [showTreasuryTab, setShowTreasuryTab] = useState(() => localStorage.getItem('egx_show_treasury_tab') !== 'false');
 
   const [savedMessage, setSavedMessage] = useState(false);
 
@@ -74,6 +75,8 @@ export default function Settings() {
     localStorage.setItem('egx_image_key', imageKey.trim());
     localStorage.setItem('egx_image_endpoint', imageEndpoint.trim());
     localStorage.setItem('egx_privacy_pin', privacyPin.trim());
+    localStorage.setItem('egx_show_treasury_tab', String(showTreasuryTab));
+    window.dispatchEvent(new Event('egx_nav_settings_changed'));
 
     setSavedMessage(true);
     setTimeout(() => setSavedMessage(false), 3000);
@@ -285,6 +288,48 @@ export default function Settings() {
                 رمز الحماية يُحفظ بأمان في متصفحك لمنع أي شخص متطفل على جهازك من الاطلاع على أرقام محفظتك وصفقاتك.
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Navigation & Interface Customization */}
+        <div className="md:col-span-2 bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+          <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <Wallet className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+            <div>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white">تخصيص القوائم وواجهة الاستخدام</h3>
+              <p className="text-xs font-bold text-slate-400 mt-0.5">تحكم في العناصر والأزرار المعروضة في شريط التنقل الرئيسي</p>
+            </div>
+          </div>
+
+          <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/80 dark:border-slate-700/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1 max-w-xl">
+              <div className="flex items-center gap-2">
+                <span className="font-black text-sm text-slate-900 dark:text-white">إظهار تبويب "الخزينة" في القائمة الرئيسية</span>
+                {showTreasuryTab ? (
+                  <span className="text-[10px] font-black bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-md">مفعّل</span>
+                ) : (
+                  <span className="text-[10px] font-black bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md">مخفي</span>
+                )}
+              </div>
+              <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
+                عند إلغاء التفعيل، سيتم إخفاء تبويب الخزينة من القائمة الجانبية وشريط التنقل السفلي للهاتف لتبسيط الشاشة، مع إمكانية الوصول إلى الخزينة مباشرة في أي وقت عبر زر بطاقة الخزينة في لوحة القيادة (الداشبورد).
+              </p>
+            </div>
+
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input 
+                type="checkbox" 
+                checked={showTreasuryTab} 
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setShowTreasuryTab(val);
+                  localStorage.setItem('egx_show_treasury_tab', String(val));
+                  window.dispatchEvent(new Event('egx_nav_settings_changed'));
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-slate-600 peer-checked:bg-amber-600"></div>
+            </label>
           </div>
         </div>
 

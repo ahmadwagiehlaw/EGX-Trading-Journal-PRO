@@ -31,13 +31,15 @@ import {
   Landmark,
   Briefcase,
   Boxes,
-  RefreshCw
+  RefreshCw,
+  Moon
 } from 'lucide-react';
 import NewTradeForm from './NewTradeForm';
 import ActiveTrades from './ActiveTrades';
 import PortfolioSummary from './PortfolioSummary';
 import TransactionFormModal from './TransactionFormModal';
 import BatchPriceModal from './BatchPriceModal';
+import EODReviewModal from './EODReviewModal';
 import { useTrades, type TickerPosition } from '../context/TradeContext';
 import { computePositionMetrics, formatEGP, computeDominantPortfolio } from '../utils/calculations';
 import { getStockBySymbol } from '../data/egxStocks';
@@ -147,9 +149,16 @@ export default memo(function TradesJournal({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'active' | 'closed' | 'all' | 'won' | 'lost' | 'ruleBreaker'>('active');
-  const [txModal, setTxModal] = useState<{ pos: TickerPosition; type: 'buy' | 'sell' } | null>(null);
+  const [txModal, setTxModal] = useState<{ 
+    pos: TickerPosition; 
+    type: 'buy' | 'sell' | 'dividend' | 'split' | 'bonus'; 
+    shares?: string;
+    price?: string;
+    note?: string;
+  } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isBatchPriceOpen, setIsBatchPriceOpen] = useState(false);
+  const [isEODOpen, setIsEODOpen] = useState(false);
 
   // Filtered positions
   const filteredPositions = useMemo(() => {
@@ -416,10 +425,20 @@ export default memo(function TradesJournal({
             </button>
           </div>
 
+          {/* EOD 60-Second Review Button */}
+          <button
+            onClick={() => setIsEODOpen(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-black px-3.5 py-2.5 rounded-2xl shadow-md shadow-indigo-500/20 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1.5 text-xs whitespace-nowrap"
+            title="مراجعة إغلاق الجلسة وتحديث الأسعار وتقييم الانضباط في 60 ثانية"
+          >
+            <Moon className="w-3.5 h-3.5 text-amber-300 fill-current" />
+            <span className="hidden sm:inline">إغلاق الجلسة (60ث)</span>
+          </button>
+
           {/* Batch Price Updater Button */}
           <button
             onClick={() => setIsBatchPriceOpen(true)}
-            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-black px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1.5 text-xs whitespace-nowrap shadow-xs"
+            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-black px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1.5 text-xs whitespace-nowrap shadow-xs"
             title="تحديث أسعار جميع الأسهم المفتوحة دفعة واحدة"
           >
             <RefreshCw className="w-3.5 h-3.5 text-blue-500" />
@@ -429,7 +448,7 @@ export default memo(function TradesJournal({
           {/* New Trade Button */}
           <button
             onClick={() => { setEditingTrade(null); setIsNewTradeOpen(true); }}
-            className="flex-1 sm:flex-none bg-gradient-to-l from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-black px-5 py-2.5 rounded-2xl shadow-md shadow-blue-500/20 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-xs whitespace-nowrap"
+            className="flex-1 sm:flex-none bg-gradient-to-l from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-black px-4 sm:px-5 py-2.5 rounded-2xl shadow-md shadow-blue-500/20 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-xs whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
             <span>صفقة جديدة</span>
@@ -523,6 +542,28 @@ export default memo(function TradesJournal({
                     </div>
                   </div>
 
+                  {/* Free-Ride House Money Badge */}
+                  {metrics.isFreeRide && (
+                    <div className="mb-2 bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-amber-500/15 border border-amber-400/60 dark:border-amber-500/60 p-1.5 rounded-xl flex items-center justify-between shadow-2xs">
+                      <div className="flex items-center gap-1">
+                        <span className="text-amber-500 text-xs">🏆</span>
+                        <span className="text-[10px] font-black text-amber-800 dark:text-amber-300">سهم مجاني (0 مخاطرة)</span>
+                      </div>
+                      <span className="text-[9px] font-mono-num font-black text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/80 px-1 py-0.2 rounded border border-emerald-300 dark:border-emerald-800">
+                        ربح محجوز +{formatEGP(metrics.freeRideSecuredGain)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Core vs Satellite Shield Breakdown */}
+                  {metrics.isOpen && (pos.coreShares || 0) > 0 && (
+                    <div className="mb-2 bg-amber-500/10 border border-amber-500/30 dark:border-amber-500/40 p-1.5 rounded-xl flex items-center justify-between text-[10px] font-black font-mono-num">
+                      <span className="text-amber-700 dark:text-amber-300">🔒 {pos.coreShares} كور محمي</span>
+                      <span className="text-slate-400">|</span>
+                      <span className="text-emerald-700 dark:text-emerald-400">🎯 {Math.max(0, metrics.openShares - (pos.coreShares || 0))} نشط</span>
+                    </div>
+                  )}
+
                   {/* Compact Metrics Grid */}
                   <div className="grid grid-cols-2 gap-2 mt-auto">
                     {metrics.isOpen ? (
@@ -564,6 +605,28 @@ export default memo(function TradesJournal({
                             {metrics.currentStop.toFixed(2)}
                           </span>
                         </div>
+
+                        {/* Smart Scale-Out Assistant Button */}
+                        {metrics.lowestCostOpenLot && (
+                          <div className="col-span-2 mt-1">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTxModal({
+                                  pos,
+                                  type: 'sell',
+                                  shares: metrics.lowestCostOpenLot!.shares.toString(),
+                                  price: (metrics.currentPrice || metrics.avgEntry).toString(),
+                                  note: `جني ربح سريع لأرخص دفعة (${metrics.lowestCostOpenLot!.shares} سهم بسعر شراء ${metrics.lowestCostOpenLot!.price.toFixed(2)})`
+                                });
+                              }}
+                              className="w-full py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 text-[10px] font-black rounded-xl flex items-center justify-center gap-1 transition-all shadow-2xs"
+                              title={`أرخص دفعة: ${metrics.lowestCostOpenLot.shares} سهم بسعر ${metrics.lowestCostOpenLot.price.toFixed(2)} EGP`}
+                            >
+                              <span>🎯 جني ربح أرخص دفعة ({metrics.lowestCostOpenLot.shares} س @ {metrics.lowestCostOpenLot.price.toFixed(2)})</span>
+                            </button>
+                          </div>
+                        )}
                       </>
                     ) : (
                       <>
@@ -951,12 +1014,21 @@ export default memo(function TradesJournal({
         onClose={() => setTxModal(null)}
         position={txModal?.pos || null}
         defaultType={txModal?.type || 'buy'}
+        defaultShares={txModal?.shares || ''}
+        defaultPrice={txModal?.price || ''}
+        defaultNote={txModal?.note || ''}
       />
 
       {/* Batch Price Updater Modal */}
       <BatchPriceModal
         isOpen={isBatchPriceOpen}
         onClose={() => setIsBatchPriceOpen(false)}
+      />
+
+      {/* 60-Second EOD Review Modal */}
+      <EODReviewModal
+        isOpen={isEODOpen}
+        onClose={() => setIsEODOpen(false)}
       />
 
     </div>

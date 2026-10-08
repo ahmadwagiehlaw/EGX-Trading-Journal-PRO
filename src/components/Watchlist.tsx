@@ -1,6 +1,25 @@
-import { useState, memo } from 'react';
+import { useState, memo, useMemo } from 'react';
 import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
-import { Plus, Target, Clock, CheckSquare, X, Save, Search, LineChart, FileText, Trash2, ArrowUpDown, HelpCircle, Zap } from 'lucide-react';
+import { 
+  Plus, 
+  Target, 
+  Clock, 
+  CheckSquare, 
+  X, 
+  Save, 
+  Search, 
+  LineChart, 
+  FileText, 
+  Trash2, 
+  ArrowUpDown, 
+  HelpCircle, 
+  Zap, 
+  Crosshair, 
+  Flame, 
+  CheckCircle2, 
+  ArrowLeft,
+  Activity
+} from 'lucide-react';
 import PlanUpdatesFeed from './PlanUpdatesFeed';
 import StockAutocomplete from './StockAutocomplete';
 import { useTrades, type Plan } from '../context/TradeContext';
@@ -35,7 +54,7 @@ const PLAYBOOK_TEMPLATES = [
 ];
 
 export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (item: any) => void }) {
-  const { plans, addPlan, updatePlan, deletePlan, convertPlanToPosition, capitalInvestment } = useTrades();
+  const { plans, positions, addPlan, updatePlan, deletePlan, convertPlanToPosition, capitalInvestment } = useTrades();
 
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -128,6 +147,12 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
     }
   };
 
+  const togglePlanStatus = (e: React.MouseEvent, plan: Plan) => {
+    e.stopPropagation();
+    const nextStatus = plan.status === 'ready' ? 'waiting' : 'ready';
+    updatePlan(plan.id, { status: nextStatus });
+  };
+
   const openQuickBuyModal = (plan: Plan) => {
     const { min } = getEntryRange(plan);
     setQuickBuyPlan(plan);
@@ -153,96 +178,211 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
     }
   };
 
-  const filteredPlans = plans.filter(p => {
-    const matchesTab = activeTab === 'all' || p.status === activeTab;
-    const matchesSearch = 
-      (p.symbol || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
-      (p.strategy || '').toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesTab && matchesSearch;
-  });
+  const filteredPlans = useMemo(() => {
+    return plans.filter(p => {
+      const matchesTab = activeTab === 'all' || p.status === activeTab;
+      const matchesSearch = 
+        (p.symbol || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+        (p.strategy || '').toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesTab && matchesSearch;
+    });
+  }, [plans, activeTab, searchQuery]);
+
+  // Pipeline Counts
+  const waitingCount = useMemo(() => plans.filter(p => p.status === 'waiting' || !p.status).length, [plans]);
+  const readyCount = useMemo(() => plans.filter(p => p.status === 'ready').length, [plans]);
+  const activePositionsCount = useMemo(() => positions.filter(p => p.status === 'active').length, [positions]);
 
   return (
-    <div className="w-full space-y-6" dir="rtl">
-      {/* Header & Controls */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-800 p-4 rounded-3xl shadow-sm">
+    <div className="w-full space-y-6 font-['Cairo']" dir="rtl">
+      
+      {/* 4-Stage Interactive Trade Pipeline Banner */}
+      <div className="bg-slate-900 text-white rounded-3xl p-5 border border-slate-800 shadow-xl overflow-hidden relative">
+        <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-blue-600/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute -left-10 -top-10 w-48 h-48 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none"></div>
         
-        {/* Filters and Search */}
-        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
-          
-          {/* Subtabs */}
-          <div className="flex p-1.5 bg-slate-100 dark:bg-slate-800 rounded-2xl w-full md:w-auto">
-            <button 
-              onClick={() => setActiveTab('all')}
-              className={`flex-1 md:px-6 py-2 rounded-xl text-sm font-black transition-all ${
-                activeTab === 'all' 
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' 
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
-              }`}
-            >
-              كل الخطط ({plans.length})
-            </button>
-            <button 
-              onClick={() => setActiveTab('waiting')}
-              className={`flex-1 md:px-6 py-2 rounded-xl text-sm font-black transition-all flex items-center justify-center gap-2 ${
-                activeTab === 'waiting' 
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' 
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
-              }`}
-            >
-              <Clock className="w-4 h-4 text-slate-400" />
-              قيد المتابعة ({plans.filter(p => p.status === 'waiting').length})
-            </button>
-            <button 
-              onClick={() => setActiveTab('ready')}
-              className={`flex-1 md:px-6 py-2 rounded-xl text-sm font-black transition-all flex items-center justify-center gap-2 ${
-                activeTab === 'ready' 
-                  ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' 
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
-              }`}
-            >
-              <Target className="w-4 h-4 text-blue-500" />
-              جاهز للتنفيذ ({plans.filter(p => p.status === 'ready').length})
-            </button>
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <Crosshair className="w-5 h-5 text-white animate-pulse" />
+            </div>
+            <div>
+              <h2 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
+                رادار الفرص وقمع التداول الاستراتيجي
+                <span className="text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full font-bold">
+                  4-Stage Trade Pipeline
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400 font-bold">
+                من رصد الفكرة وتحليل القوة، إلى منطقة القنص والتنفيذ الفوري بضغطة زر
+              </p>
+            </div>
           </div>
 
-          {/* Search */}
-          <div className="relative w-full md:w-72">
-            <Search className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            <input 
-              type="text" 
-              placeholder="ابحث بالرمز أو الاستراتيجية..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pr-10 pl-4 py-2 text-sm font-bold text-slate-900 dark:text-white placeholder-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900 outline-none shadow-sm transition-all"
-            />
-          </div>
+          <button 
+            onClick={() => {
+              setSelectedPlan({ 
+                id: Date.now().toString(), 
+                symbol: '', 
+                strategy: 'اختراق منطقة تذبذب (VCP / Breakout)', 
+                entryZone: { min: 0, max: 0 }, 
+                target: 0, 
+                stop: 0, 
+                status: 'waiting', 
+                updates: [] 
+              });
+              setIsModalOpen(true);
+            }}
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black px-5 py-2.5 rounded-2xl shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-transform hover:-translate-y-0.5 w-full md:w-auto shrink-0 text-xs"
+          >
+            <Plus className="w-4 h-4" />
+            إضافة فرصة جديدة للرادار
+          </button>
         </div>
-        
-        <button 
-          onClick={() => {
-            setSelectedPlan({ 
-              id: Date.now().toString(), 
-              symbol: '', 
-              strategy: '', 
-              entryZone: { min: 0, max: 0 }, 
-              target: 0, 
-              stop: 0, 
-              status: 'waiting', 
-              updates: [] 
-            });
-            setIsModalOpen(true);
-          }}
-          className="bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white font-black px-6 py-2.5 rounded-2xl shadow-md flex items-center justify-center gap-2 transition-transform hover:-translate-y-0.5 w-full md:w-auto shrink-0 text-sm"
-        >
-          <Plus className="w-4 h-4" />
-          إضافة خطة جديدة
-        </button>
+
+        {/* The 4 Connected Interactive Stages */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-4">
+          
+          {/* Stage 1: Idea Radar */}
+          <div 
+            onClick={() => setActiveTab('waiting')}
+            className={`cursor-pointer p-3.5 rounded-2xl border transition-all relative ${
+              activeTab === 'waiting'
+                ? 'bg-slate-800/90 border-blue-500 ring-2 ring-blue-500/30 shadow-lg'
+                : 'bg-slate-800/40 border-slate-700/60 hover:bg-slate-800/70 hover:border-slate-600'
+            }`}
+          >
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                <Clock className="w-3 h-3 text-slate-400" />
+                1. رادار الفرص
+              </span>
+              <span className="text-xs font-black font-mono-num bg-slate-700 text-slate-200 px-2 py-0.5 rounded-md">
+                {waitingCount}
+              </span>
+            </div>
+            <div className="text-xs font-black text-white">رصد ودراسة النماذج</div>
+            <div className="text-[10px] text-slate-400 font-bold mt-1">تحديد الاستراتيجية وقوة Confluence</div>
+          </div>
+
+          {/* Stage 2: Trigger Zone */}
+          <div 
+            onClick={() => setActiveTab('ready')}
+            className={`cursor-pointer p-3.5 rounded-2xl border transition-all relative ${
+              activeTab === 'ready'
+                ? 'bg-blue-950/40 border-amber-500 ring-2 ring-amber-500/30 shadow-lg'
+                : 'bg-slate-800/40 border-slate-700/60 hover:bg-slate-800/70 hover:border-slate-600'
+            }`}
+          >
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                <Target className="w-3 h-3 text-amber-400" />
+                2. منطقة القنص (Trigger)
+              </span>
+              <span className="text-xs font-black font-mono-num bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-md">
+                {readyCount}
+              </span>
+            </div>
+            <div className="text-xs font-black text-white">جاهز للتنفيذ الفوري</div>
+            <div className="text-[10px] text-slate-400 font-bold mt-1">داخل نطاق الشراء ونسبة R:R مكتملة</div>
+          </div>
+
+          {/* Stage 3: Instant Execution Gateway */}
+          <div className="p-3.5 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 flex flex-col justify-between">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                <Zap className="w-3 h-3 text-emerald-400 fill-current" />
+                3. التنفيذ بضغطة زر
+              </span>
+              <span className="text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded-md">
+                1-Click Buy
+              </span>
+            </div>
+            <div className="text-xs font-black text-white">تحويل فوري بدون صفقات وهمية</div>
+            <div className="text-[10px] text-emerald-400/80 font-bold mt-1">زر ⚡ ينقل السهم للمحفظة في ثوانٍ</div>
+          </div>
+
+          {/* Stage 4: Active Portfolio Link */}
+          <div 
+            onClick={() => onMoveToJournal(null)}
+            className="cursor-pointer p-3.5 rounded-2xl border border-slate-700/60 bg-slate-800/40 hover:bg-slate-800/80 hover:border-slate-600 transition-all flex flex-col justify-between group"
+          >
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-400 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-indigo-400" />
+                4. إدارة التمركز بالمحفظة
+              </span>
+              <span className="text-xs font-black font-mono-num bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-md">
+                {activePositionsCount} نشط
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-black text-white group-hover:text-indigo-300 transition-colors">عرض الصفقات الحية</div>
+              <ArrowLeft className="w-3.5 h-3.5 text-slate-400 group-hover:-translate-x-1 group-hover:text-indigo-400 transition-all" />
+            </div>
+            <div className="text-[10px] text-slate-400 font-bold mt-1">إضافة دفعات، وتخفيف، ورفع الوقف</div>
+          </div>
+
+        </div>
       </div>
 
-      {/* Grid of Cards */}
+      {/* Filter Tabs & Search Bar */}
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl shadow-sm">
+        
+        {/* Subtabs */}
+        <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl w-full md:w-auto">
+          <button 
+            onClick={() => setActiveTab('all')}
+            className={`flex-1 md:px-5 py-1.5 rounded-lg text-xs font-black transition-all ${
+              activeTab === 'all' 
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' 
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
+            }`}
+          >
+            كل الفرص ({plans.length})
+          </button>
+          <button 
+            onClick={() => setActiveTab('waiting')}
+            className={`flex-1 md:px-5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'waiting' 
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' 
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5 text-slate-400" />
+            رادار المراقبة ({waitingCount})
+          </button>
+          <button 
+            onClick={() => setActiveTab('ready')}
+            className={`flex-1 md:px-5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'ready' 
+                ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-sm' 
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
+            }`}
+          >
+            <Target className="w-3.5 h-3.5 text-amber-500" />
+            منطقة القنص الجاهزة ({readyCount})
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="relative w-full md:w-80">
+          <Search className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input 
+            type="text" 
+            placeholder="ابحث بالرمز أو الاستراتيجية..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pr-10 pl-4 py-2 text-xs font-bold text-slate-900 dark:text-white placeholder-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900 outline-none transition-all"
+          />
+        </div>
+      </div>
+
+      {/* Tactical Radar Grid of Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {filteredPlans.map(item => {
           const rrr = calculateRRR(item);
+          const score = calculateScore(item);
           const isReady = item.status === 'ready';
           const { min: entryMin, max: entryMax } = getEntryRange(item);
           
@@ -250,45 +390,61 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
             <div 
               key={item.id} 
               onClick={() => { setSelectedPlan(item); setIsModalOpen(true); }}
-              className={`cursor-pointer bg-white dark:bg-slate-900 backdrop-blur-md border rounded-3xl p-5 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col relative group ${
+              className={`cursor-pointer bg-white dark:bg-slate-900 border rounded-3xl p-5 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col relative group ${
                 isReady 
-                  ? 'border-blue-300 dark:border-blue-700 ring-2 ring-blue-100 dark:ring-blue-950 shadow-blue-500/5' 
+                  ? 'border-amber-400/80 dark:border-amber-500/80 ring-2 ring-amber-500/10 shadow-amber-500/5' 
                   : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
               }`}
             >
-              {/* Card Header */}
-              <div className="flex justify-between items-start mb-4">
+              {/* Tactical Badge Top Bar */}
+              <div className="flex justify-between items-start mb-3">
                 <div className="flex flex-col gap-1 items-start">
-                  <div className="flex items-center gap-2">
-                    <span className="text-3xl font-black text-slate-900 dark:text-white tracking-tight" dir="ltr">{item.symbol || '---'}</span>
-                  </div>
-                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md w-fit line-clamp-1">
+                  <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight font-mono-num" dir="ltr">
+                    {item.symbol || '---'}
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-lg line-clamp-1 border border-slate-200/50 dark:border-slate-700/50">
                     {item.strategy || 'بدون استراتيجية'}
                   </span>
                 </div>
-                <div className="flex flex-col items-end gap-1.5">
-                  <span className={`px-2.5 py-1 rounded-lg text-xs font-black flex items-center gap-1 border ${
+                
+                {/* Fast Status Switch Button */}
+                <button
+                  onClick={(e) => togglePlanStatus(e, item)}
+                  title="انقر للتبديل الفوري بين المراقبة ومنطقة القنص"
+                  className={`px-2.5 py-1 rounded-xl text-[11px] font-black flex items-center gap-1 border transition-all ${
                     isReady 
-                      ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800' 
-                      : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                  }`}>
-                    {isReady ? <Target className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-                    {isReady ? 'جاهز للتنفيذ' : 'قيد المتابعة'}
-                  </span>
-                  <span className="text-[10px] font-mono-num font-black text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-md border border-emerald-100 dark:border-emerald-900">
-                    RRR {rrr}
-                  </span>
-                </div>
+                      ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700 hover:bg-amber-100' 
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {isReady ? <Target className="w-3.5 h-3.5 text-amber-500" /> : <Clock className="w-3.5 h-3.5 text-slate-400" />}
+                  {isReady ? 'منطقة القنص 🎯' : 'قيد المراقبة ⏳'}
+                </button>
+              </div>
+
+              {/* Confluence Score Pill */}
+              <div className="flex items-center justify-between mb-3 bg-slate-50 dark:bg-slate-800/70 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-slate-800 text-xs">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                  <Flame className={`w-3.5 h-3.5 ${score >= 6 ? 'text-amber-500 fill-amber-500' : 'text-slate-400'}`} />
+                  قوة النموذج (Confluence):
+                </span>
+                <span className={`font-black font-mono-num text-xs ${
+                  score >= 6 
+                    ? 'text-amber-600 dark:text-amber-400' 
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}>
+                  {score} / 10
+                </span>
               </div>
 
               {/* Entry Zone Display (Range Bar) */}
-              <div className="my-3 p-3 bg-slate-50/80 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-700/80 space-y-2">
+              <div className="my-1 p-3 bg-slate-50/90 dark:bg-slate-800/80 rounded-2xl border border-slate-100 dark:border-slate-700/80 space-y-2">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
                     <ArrowUpDown className="w-3 h-3 text-blue-500" />
-                    نطاق الدخول:
+                    نطاق القنص:
                   </span>
-                  <span className="font-black text-blue-700 dark:text-blue-400 font-mono-num" dir="ltr">
+                  <span className="font-black text-blue-700 dark:text-blue-400 font-mono-num text-xs" dir="ltr">
                     {entryMin === entryMax || entryMax === 0 
                       ? `${entryMin.toFixed(2)} EGP`
                       : `${entryMin.toFixed(2)} — ${entryMax.toFixed(2)} EGP`
@@ -297,37 +453,85 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60 dark:border-slate-700/60 text-center text-xs">
-                  <div className="bg-emerald-50/70 dark:bg-emerald-950/40 p-1.5 rounded-lg border border-emerald-100 dark:border-emerald-900/60">
-                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500 block">الهدف الرئيسي</span>
-                    <span className="font-black text-emerald-700 dark:text-emerald-300 text-sm" dir="ltr">{item.target?.toFixed(2) || '0.00'}</span>
+                  <div className="bg-emerald-50/80 dark:bg-emerald-950/40 p-1.5 rounded-xl border border-emerald-200/60 dark:border-emerald-900/60">
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 block">الهدف</span>
+                    <span className="font-black text-emerald-700 dark:text-emerald-300 text-xs font-mono-num" dir="ltr">
+                      {item.target?.toFixed(2) || '0.00'}
+                    </span>
                   </div>
-                  <div className="bg-red-50/70 dark:bg-red-950/40 p-1.5 rounded-lg border border-red-100 dark:border-red-900/60">
-                    <span className="text-[10px] font-bold text-red-600 dark:text-red-500 block">وقف الخسارة</span>
-                    <span className="font-black text-red-700 dark:text-red-300 text-sm" dir="ltr">{item.stop?.toFixed(2) || '0.00'}</span>
+                  <div className="bg-red-50/80 dark:bg-red-950/40 p-1.5 rounded-xl border border-red-200/60 dark:border-red-900/60">
+                    <span className="text-[10px] font-bold text-red-600 dark:text-red-400 block">الوقف</span>
+                    <span className="font-black text-red-700 dark:text-red-300 text-xs font-mono-num" dir="ltr">
+                      {item.stop?.toFixed(2) || '0.00'}
+                    </span>
                   </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  <span className="font-bold">العائد للمخاطرة R:R</span>
+                  <span className="font-black font-mono-num text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-md border border-emerald-100 dark:border-emerald-900">
+                    1 : {rrr}
+                  </span>
                 </div>
               </div>
 
+              {/* Market Liquidity & Volume Radar on Card */}
+              {(item.buyFlowRatio !== undefined || item.rvol !== undefined || item.vwap !== undefined) && (
+                <div className="my-1.5 p-2 bg-slate-900 text-white rounded-xl border border-slate-800 space-y-1.5 shadow-2xs">
+                  {item.buyFlowRatio !== undefined && (
+                    <div>
+                      <div className="flex justify-between items-center text-[9px] font-black mb-1">
+                        <span className="text-emerald-400 font-mono-num">سيولة شراء: {item.buyFlowRatio}%</span>
+                        <span className="text-rose-400 font-mono-num">بيع: {100 - item.buyFlowRatio}%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-rose-600 rounded-full overflow-hidden flex">
+                        <div 
+                          className="h-full bg-emerald-500 rounded-full transition-all duration-300" 
+                          style={{ width: `${item.buyFlowRatio}%` }} 
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-1 text-[9px] font-mono-num font-black pt-0.5">
+                    {item.rvol !== undefined && (
+                      <span className={`px-1.5 py-0.5 rounded border ${
+                        item.rvol >= 150 
+                          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700 animate-pulse' 
+                          : 'bg-slate-800 text-slate-300 border-slate-700'
+                      }`}>
+                        RVol: {item.rvol}% {item.rvol >= 150 ? '🔥' : ''}
+                      </span>
+                    )}
+                    {item.vwap !== undefined && (
+                      <span className="bg-slate-800 text-blue-300 border border-slate-700 px-1.5 py-0.5 rounded">
+                        VWAP: {item.vwap} ج
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Updates Badge if any */}
               {item.updates && item.updates.length > 0 && (
-                <div className="mb-3 text-[11px] text-slate-400 dark:text-slate-500 font-bold flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                  {item.updates.length} تحديث مسجل
+                <div className="my-2 text-[10px] text-slate-400 dark:text-slate-500 font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                  {item.updates.length} ملاحظة فنية مسجلة
                 </div>
               )}
 
               {/* Action Buttons */}
-              <div className="mt-auto flex flex-col gap-2 pt-1">
+              <div className="mt-auto flex flex-col gap-2 pt-2">
                 <button 
                   onClick={(e) => { e.stopPropagation(); openQuickBuyModal(item); }}
-                  className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-transform active:scale-95"
+                  className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black rounded-xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 transition-transform active:scale-95"
                 >
-                  <Zap className="w-3.5 h-3.5 fill-current" />
-                  ⚡ تنفيذ شراء فوري
+                  <Zap className="w-3.5 h-3.5 fill-current text-amber-300 animate-pulse" />
+                  ⚡ تنفيذ شراء فوري (1-Click)
                 </button>
-                <div className="w-full py-2 bg-slate-100/50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 text-[11px] font-black rounded-xl flex items-center justify-center gap-1.5 transition-colors">
+                <div className="w-full py-1.5 bg-slate-100/60 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 text-[10px] font-bold rounded-xl flex items-center justify-center gap-1 transition-colors">
                   <FileText className="w-3 h-3" />
-                  انقر لعرض وتعديل الخطة
+                  انقر لعرض وتعديل الخطة والشارت
                 </div>
               </div>
             </div>
@@ -337,22 +541,22 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
         {filteredPlans.length === 0 && (
           <div className="col-span-full py-16 text-center flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl bg-white/40 dark:bg-slate-900/40">
             <Target className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3" />
-            <h3 className="text-lg font-black text-slate-700 dark:text-slate-300">لا توجد خطط تطابق البحث</h3>
-            <p className="text-slate-400 dark:text-slate-500 font-bold mt-1 text-sm">أضف خطة جديدة لتبدأ المتابعة وتوثيق أهدافك بدقة!</p>
+            <h3 className="text-base font-black text-slate-700 dark:text-slate-300">لا توجد خطط تطابق البحث</h3>
+            <p className="text-slate-400 dark:text-slate-500 font-bold mt-1 text-xs">أضف فرصة جديدة للرادار لتبدأ المتابعة وقنص الأهداف بدقة!</p>
           </div>
         )}
       </div>
 
       {/* Plan Details Modal with Range inputs & Live RRR */}
       {isModalOpen && selectedPlan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 font-['Cairo']" dir="rtl">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
           <div className={`w-full bg-white dark:bg-slate-900 rounded-3xl shadow-2xl relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[95vh] transition-all duration-500 ease-out ${modalLeftTab === 'chart' ? 'max-w-[95vw] lg:max-w-7xl' : 'max-w-[95vw] lg:max-w-5xl'}`}>
             
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/70">
-              <h2 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/70">
+              <h2 className="text-lg font-black text-slate-800 dark:text-white flex items-center gap-2">
                 <CheckSquare className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                محرر الخطة والتمركز الذكي
+                محرر الخطة والتمركز الذكي (Smart Plan Editor)
               </h2>
               
               <div className="flex items-center gap-2">
@@ -391,15 +595,12 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 flex flex-col lg:flex-row gap-6 items-stretch">
+            <div className="flex-1 overflow-y-auto p-5 flex flex-col lg:flex-row gap-5 items-stretch">
               {/* Right Column: Parameters & Entry Range */}
               <div className="w-full lg:w-[420px] space-y-4 bg-slate-50 dark:bg-slate-800/60 p-5 rounded-3xl border border-slate-100 dark:border-slate-700/60 flex flex-col shrink-0">
                 
                 <div>
-                  <div className="flex justify-between items-end mb-1.5">
-                    <label className="text-xs font-black text-slate-500 dark:text-slate-400 block">السهم (ابحث بالاسم أو الرمز)</label>
-                    
-                  </div>
+                  <label className="text-xs font-black text-slate-500 dark:text-slate-400 block mb-1.5">السهم (ابحث بالاسم أو الرمز)</label>
                   <StockAutocomplete
                     value={selectedPlan.symbol}
                     onChange={(sym) => setSelectedPlan({...selectedPlan, symbol: sym})}
@@ -409,19 +610,19 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
 
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-black text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                        <Target className="w-3.5 h-3.5" />
-                        استراتيجية التداول (Playbook)
-                      </label>
-                      <button 
-                        type="button"
-                        onClick={() => setShowPlaybookInfo(!showPlaybookInfo)}
-                        className="text-[10px] flex items-center gap-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 px-2 py-1 rounded-lg font-bold transition-colors"
-                      >
-                        <HelpCircle className="w-3 h-3" />
-                        شرح الاستراتيجيات
-                      </button>
-                    </div>
+                    <label className="text-xs font-black text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      <Target className="w-3.5 h-3.5" />
+                      استراتيجية التداول (Playbook)
+                    </label>
+                    <button 
+                      type="button"
+                      onClick={() => setShowPlaybookInfo(!showPlaybookInfo)}
+                      className="text-[10px] flex items-center gap-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 px-2 py-1 rounded-lg font-bold transition-colors"
+                    >
+                      <HelpCircle className="w-3 h-3" />
+                      شرح الاستراتيجيات
+                    </button>
+                  </div>
                   <select 
                     value={selectedPlan.strategy} 
                     onChange={(e) => {
@@ -433,7 +634,7 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
                       }
                       setSelectedPlan({...selectedPlan, strategy: strat, checklist: initialChecklist, setupScore: 0});
                     }} 
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-3 py-2.5 font-bold text-slate-900 dark:text-white text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-900 outline-none mb-3 cursor-pointer"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-3 py-2 font-bold text-slate-900 dark:text-white text-xs focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-900 outline-none mb-3 cursor-pointer"
                   >
                     <option value="">-- اختر استراتيجية --</option>
                     {PLAYBOOK_TEMPLATES.map(t => (
@@ -445,258 +646,354 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
                   </select>
 
                   {showPlaybookInfo && (
-                    <div className="mb-4 bg-blue-50/50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30 p-3.5 rounded-2xl text-xs space-y-3">
+                    <div className="mb-4 bg-blue-50/50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30 p-3 rounded-2xl text-[11px] space-y-2">
                       <div>
-                        <strong className="text-blue-800 dark:text-blue-300 flex items-center gap-1 mb-1"><Target className="w-3 h-3"/> استراتيجية VCP (مارك مينيرفيني)</strong>
-                        <p className="text-slate-600 dark:text-slate-400 leading-relaxed">تعتمد على إيجاد أسهم في اتجاه صاعد، تمر بفترة تماسك وتقلص في التذبذب (انخفاض حجم التداول). الدخول يكون مع اختراق المقاومة بحجم تداول ضخم.</p>
+                        <strong className="text-blue-800 dark:text-blue-300 flex items-center gap-1 mb-0.5"><Target className="w-3 h-3"/> استراتيجية VCP (مارك مينيرفيني)</strong>
+                        <p className="text-slate-600 dark:text-slate-300 leading-relaxed">تقلص نطاق التذبذب مع جفاف أحجام التداول قبل اختراق نقطة محورية (Pivot Point).</p>
                       </div>
                       <div>
-                        <strong className="text-emerald-800 dark:text-emerald-300 flex items-center gap-1 mb-1"><Target className="w-3 h-3"/> استراتيجية الارتداد (Pullback)</strong>
-                        <p className="text-slate-600 dark:text-slate-400 leading-relaxed">الشراء عندما يتراجع السعر (يصحح) نحو مستوى دعم قوي أو متوسط متحرك (مثل 20 أو 50 يوم) دون أن يكسره بقوة، مع ظهور شموع انعكاسية.</p>
-                      </div>
-                      <div>
-                        <strong className="text-orange-800 dark:text-orange-300 flex items-center gap-1 mb-1"><Target className="w-3 h-3"/> استراتيجية الزخم (Momentum / Gap Up)</strong>
-                        <p className="text-slate-600 dark:text-slate-400 leading-relaxed">تعتمد على الأخبار القوية أو الأرباح الاستثنائية التي تسبب قفزة سعرية (فجوة لأعلى)، وندخل مع استمرار الزخم والقوة الشرائية العنيفة.</p>
+                        <strong className="text-blue-800 dark:text-blue-300 flex items-center gap-1 mb-0.5"><Target className="w-3 h-3"/> استراتيجية Pullback</strong>
+                        <p className="text-slate-600 dark:text-slate-300 leading-relaxed">الشراء عند اختبار متوسط متحرك صاعد (20 أو 50 يوم) مع ظهور شمعة انعكاسية تأكيدية.</p>
                       </div>
                     </div>
-                  )}
-
-
-                  {/* Confluence Matrix UI */}
-                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-indigo-100 dark:border-indigo-900/60 shadow-inner">
-                    <div className="flex justify-between items-center mb-3">
-                      <label className="text-[11px] font-black text-indigo-800 dark:text-indigo-400">نقاط قوة الصفقة (Confluence Score)</label>
-                      <span className={`text-xs font-black px-2 py-0.5 rounded-md flex items-center gap-1 ${
-                        calculateScore(selectedPlan) >= 8 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' :
-                        calculateScore(selectedPlan) >= 6 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' :
-                        'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
-                      }`}>
-                        {calculateScore(selectedPlan) < 6 && '⚠️'}
-                        جودة الصفقة: {calculateScore(selectedPlan)} / 10
-                      </span>
-                    </div>
-                    <div className="space-y-2.5">
-                      {CONFLUENCE_CRITERIA.map(crit => (
-                        <label key={crit.id} className="flex items-start gap-2 cursor-pointer group">
-                          <input 
-                            type="checkbox" 
-                            checked={!!selectedPlan.checklist?.[crit.id]}
-                            onChange={(e) => {
-                              const newChecklist = { ...selectedPlan.checklist };
-                              newChecklist[crit.id] = e.target.checked;
-                              
-                              let tempPlan = { ...selectedPlan, checklist: newChecklist };
-                              if (calculateScore(tempPlan) < 6 && tempPlan.status === 'ready') {
-                                tempPlan.status = 'waiting';
-                              }
-                              
-                              setSelectedPlan(tempPlan);
-                            }}
-                            className="mt-0.5 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 bg-white dark:bg-slate-800 dark:border-slate-600 transition-colors cursor-pointer"
-                          />
-                          <div className="flex flex-col">
-                            <span className={`text-[11px] font-bold leading-relaxed transition-colors ${
-                              selectedPlan.checklist?.[crit.id] 
-                                ? 'text-indigo-900 dark:text-indigo-300' 
-                                : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300'
-                            }`}>
-                              {crit.label}
-                            </span>
-                            <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold">{crit.points} {crit.points === 1 ? 'نقطة' : 'نقاط'}</span>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {selectedPlan.strategy === 'استراتيجية مخصصة (Custom)' && (
-                    <input 
-                      type="text"
-                      onChange={(e) => setSelectedPlan({...selectedPlan, strategy: e.target.value})}
-                      placeholder="اكتب اسم استراتيجيتك المخصصة..."
-                      className="w-full mt-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 font-bold text-slate-900 dark:text-white text-sm focus:border-blue-500 outline-none"
-                    />
                   )}
                 </div>
-                
-                {/* Entry Zone Inputs (Min & Max Range) */}
-                <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-blue-100 dark:border-blue-900/60 space-y-2">
-                  <label className="text-xs font-black text-blue-800 dark:text-blue-400 flex items-center gap-1">
-                    <ArrowUpDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+
+                {/* Confluence Criteria Checklist */}
+                <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <Flame className="w-3.5 h-3.5 text-amber-500" />
+                      نقاط قوة الصفقة (Confluence Score)
+                    </span>
+                    <span className={`text-xs font-black font-mono-num px-2 py-0.5 rounded-lg border ${
+                      calculateScore(selectedPlan) >= 6 
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800' 
+                        : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800'
+                    }`}>
+                      {calculateScore(selectedPlan)} / 10
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700/80">
+                    {CONFLUENCE_CRITERIA.map(crit => {
+                      const isChecked = !!selectedPlan.checklist?.[crit.id];
+                      return (
+                        <label 
+                          key={crit.id} 
+                          className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60 p-1 rounded-lg cursor-pointer transition-colors"
+                        >
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="checkbox" 
+                              checked={isChecked}
+                              onChange={(e) => {
+                                const newChecklist = { ...(selectedPlan.checklist || {}), [crit.id]: e.target.checked };
+                                setSelectedPlan({ ...selectedPlan, checklist: newChecklist });
+                              }}
+                              className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                            />
+                            <span>{crit.label}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono-num">{crit.points} نقطة</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Entry Zone (Range Inputs) */}
+                <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-700">
+                  <label className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                    <ArrowUpDown className="w-3.5 h-3.5 text-blue-500" />
                     نطاق سعر الدخول المرجح (Entry Range)
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <span className="text-[10px] text-slate-400 font-bold block mb-0.5">الحد الأدنى (Min)</span>
+                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">الحد الأدنى (Min)</span>
                       <input 
                         type="number" 
-                        step="any"
+                        step="0.01" 
                         value={selectedPlan.entryZone?.min || ''} 
                         onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
+                          const min = parseFloat(e.target.value) || 0;
                           setSelectedPlan({
-                            ...selectedPlan, 
-                            entryZone: { min: val, max: selectedPlan.entryZone?.max || val }
+                            ...selectedPlan,
+                            entryZone: { min, max: selectedPlan.entryZone?.max || min }
                           });
-                        }} 
-                        className="w-full bg-blue-50/60 dark:bg-slate-800 border border-blue-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 font-black text-blue-800 dark:text-blue-300 outline-none text-center" 
+                        }}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono-num font-black text-slate-900 dark:text-white text-left focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900 outline-none"
+                        placeholder="0.00"
                         dir="ltr"
-                        placeholder="44.50"
                       />
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400 font-bold block mb-0.5">الحد الأقصى (Max)</span>
+                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">الحد الأقصى (Max)</span>
                       <input 
                         type="number" 
-                        step="any"
+                        step="0.01" 
                         value={selectedPlan.entryZone?.max || ''} 
                         onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
+                          const max = parseFloat(e.target.value) || 0;
                           setSelectedPlan({
-                            ...selectedPlan, 
-                            entryZone: { min: selectedPlan.entryZone?.min || val, max: val }
+                            ...selectedPlan,
+                            entryZone: { min: selectedPlan.entryZone?.min || max, max }
                           });
-                        }} 
-                        className="w-full bg-blue-50/60 dark:bg-slate-800 border border-blue-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 font-black text-blue-800 dark:text-blue-300 outline-none text-center" 
+                        }}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono-num font-black text-slate-900 dark:text-white text-left focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900 outline-none"
+                        placeholder="0.00"
                         dir="ltr"
-                        placeholder="46.00"
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Target and Stop Inputs */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-emerald-100 dark:border-emerald-900/60">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block mb-1">الهدف (Target)</label>
+                {/* Target and Stop Loss */}
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 block mb-1">الهدف (Target)</label>
                     <input 
                       type="number" 
-                      step="any"
+                      step="0.01" 
                       value={selectedPlan.target || ''} 
-                      onChange={(e) => setSelectedPlan({...selectedPlan, target: parseFloat(e.target.value) || 0})} 
-                      className="w-full bg-emerald-50 dark:bg-slate-800 border border-emerald-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 font-black text-emerald-700 dark:text-emerald-500 outline-none text-center" 
-                      dir="ltr" 
-                      placeholder="52.00"
+                      onChange={(e) => setSelectedPlan({...selectedPlan, target: parseFloat(e.target.value) || 0})}
+                      className="w-full bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3 py-2 text-xs font-mono-num font-black text-emerald-600 dark:text-emerald-400 text-left focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 dark:focus:ring-emerald-900 outline-none"
+                      placeholder="0.00"
+                      dir="ltr"
                     />
                   </div>
-
-                  <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-red-100 dark:border-red-900/60">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 block mb-1">الوقف (Stop)</label>
+                  <div>
+                    <label className="text-[10px] font-bold text-red-600 dark:text-red-400 block mb-1">الوقف (Stop)</label>
                     <input 
                       type="number" 
-                      step="any"
+                      step="0.01" 
                       value={selectedPlan.stop || ''} 
-                      onChange={(e) => setSelectedPlan({...selectedPlan, stop: parseFloat(e.target.value) || 0})} 
-                      className="w-full bg-red-50 dark:bg-slate-800 border border-red-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 font-black text-red-700 dark:text-red-500 outline-none text-center" 
-                      dir="ltr" 
-                      placeholder="42.50"
+                      onChange={(e) => setSelectedPlan({...selectedPlan, stop: parseFloat(e.target.value) || 0})}
+                      className="w-full bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2 text-xs font-mono-num font-black text-red-600 dark:text-red-400 text-left focus:border-red-500 focus:ring-2 focus:ring-red-100 dark:focus:ring-red-900 outline-none"
+                      placeholder="0.00"
+                      dir="ltr"
                     />
                   </div>
                 </div>
 
-                {/* Live RRR & Max Shares Auto-Calculation */}
-                <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-700/50">
-                    <label className="text-xs font-black text-slate-600 dark:text-slate-300">نسبة المخاطرة للعائد (RRR)</label>
-                    <span className="font-black text-base text-slate-900 dark:text-white font-mono-num" dir="ltr">
+                {/* Risk Calculations & RRR Live Preview */}
+                <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-slate-500 dark:text-slate-400">نسبة المخاطرة للعائد (RRR):</span>
+                    <span className="font-black text-slate-900 dark:text-white font-mono-num">
                       1 : {calculateRRR(selectedPlan)}
                     </span>
                   </div>
-                  
+
+                  {(() => {
+                    const { maxShares } = getRiskMetrics(selectedPlan);
+                    return (
+                      <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-100 dark:border-slate-800">
+                        <span className="font-bold text-slate-500 dark:text-slate-400">عدد الأسهم الأقصى المقترح:</span>
+                        <span className="font-black text-blue-600 dark:text-blue-400 font-mono-num">
+                          {maxShares.toLocaleString()} سهم
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* 📊 رادار السيولة اللحظية والمؤسسات (Market & Liquidity Radar) */}
+                <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-700">
                   <div className="flex justify-between items-center">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400">عدد الأسهم القصوى (Max Shares)</label>
-                    <div className="text-left">
-                      <span className="font-black text-sm text-blue-600 dark:text-blue-400 font-mono-num bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-lg border border-blue-100 dark:border-blue-800/50" dir="ltr">
-                        {getRiskMetrics(selectedPlan).maxShares.toLocaleString()} سهم
+                    <label className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Activity className="w-3.5 h-3.5 text-blue-500" />
+                      رادار السيولة اللحظية وحجم التداول (Market Radar)
+                    </label>
+                    <span className="text-[10px] font-bold text-slate-400">تأكيد التدفق المؤسسي</span>
+                  </div>
+
+                  {/* Buy vs Sell Flow Ratio with Live Visual Bar */}
+                  <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-600 dark:text-slate-300 text-[11px]">نسبة السيولة الشرائية:</span>
+                      <span className="font-black text-emerald-600 dark:text-emerald-400 font-mono-num">
+                        {selectedPlan.buyFlowRatio ?? 50}% شراء 🟢
                       </span>
-                      <p className="text-[9px] text-slate-400 mt-0.5 font-bold">بمخاطرة 1% من رأس المال</p>
                     </div>
-                  </div>
-                </div>
+                    
+                    <input 
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={selectedPlan.buyFlowRatio ?? 50}
+                      onChange={(e) => setSelectedPlan({ ...selectedPlan, buyFlowRatio: Number(e.target.value) })}
+                      className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg"
+                    />
 
-                {/* Status Selection */}
-                <div className="pt-2 mt-auto border-t border-slate-200 dark:border-slate-700">
-                  <label className="text-xs font-black text-slate-500 dark:text-slate-400 block mb-2 flex justify-between items-center">
-                    <span>حالة الخطة</span>
-                    {calculateScore(selectedPlan) < 6 && (
-                      <span className="text-[9px] text-rose-500 font-bold bg-rose-50 dark:bg-rose-900/30 px-1.5 py-0.5 rounded">يجب أن تكون الجودة 6 فما فوق للتنفيذ</span>
-                    )}
-                  </label>
-                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPlan(prev => prev ? {...prev, status: 'waiting'} : null)}
-                      className={`py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-                        selectedPlan.status === 'waiting'
-                          ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
-                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      <span>⏳ قيد التجهيز</span>
-                      <span className="text-[10px] opacity-80">(Setup)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (calculateScore(selectedPlan) >= 6) {
-                          setSelectedPlan(prev => prev ? {...prev, status: 'ready'} : null);
-                        }
-                      }}
-                      disabled={calculateScore(selectedPlan) < 6}
-                      className={`py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-                        selectedPlan.status === 'ready'
-                          ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-                          : calculateScore(selectedPlan) < 6 
-                            ? 'bg-slate-200/50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 cursor-not-allowed'
-                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                      }`}
-                      title={calculateScore(selectedPlan) < 6 ? "جودة الصفقة ضعيفة (أقل من 6). لا يمكن تفعيل الخطة." : "تفعيل الخطة"}
-                    >
-                      <span>{calculateScore(selectedPlan) < 6 ? '🔒' : '🎯'} جاهزة للتنفيذ</span>
-                      <span className="text-[10px] opacity-80">(Trigger)</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Left Column: Updates Feed & Chart */}
-              <div className="flex-1 flex flex-col min-h-[400px] border-r border-slate-100 dark:border-slate-800">
-                <div className="flex bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 p-2 gap-2">
-                  <button
-                    onClick={() => setModalLeftTab('updates')}
-                    className={`flex-1 py-2 text-xs font-black rounded-lg transition-colors ${modalLeftTab === 'updates' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                  >
-                    سجل الملاحظات
-                  </button>
-                  <button
-                    onClick={() => setModalLeftTab('chart')}
-                    className={`flex-1 py-2 text-xs font-black rounded-lg transition-colors flex justify-center items-center gap-1.5 ${modalLeftTab === 'chart' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                  >
-                    <LineChart className="w-3.5 h-3.5" />
-                    الشارت المباشر
-                  </button>
-                </div>
-                
-                <div className="flex-1 relative bg-slate-50 dark:bg-slate-900">
-                  {modalLeftTab === 'updates' ? (
-                    <div className="absolute inset-0 overflow-y-auto">
-                      <PlanUpdatesFeed 
-                        updates={selectedPlan.updates || []} 
-                        onChange={(updates) => setSelectedPlan({...selectedPlan, updates})}
+                    {/* Live Two-Tone Liquidity Bar matching EGX Screen */}
+                    <div className="w-full h-2.5 bg-rose-600 rounded-full overflow-hidden flex shadow-inner">
+                      <div 
+                        className="h-full bg-emerald-500 rounded-full transition-all duration-300" 
+                        style={{ width: `${selectedPlan.buyFlowRatio ?? 50}%` }} 
                       />
                     </div>
+                    <div className="flex justify-between text-[10px] font-bold font-mono-num">
+                      <span className="text-emerald-600 dark:text-emerald-400">{selectedPlan.buyFlowRatio ?? 50}% تدفق شرائي</span>
+                      <span className="text-rose-600 dark:text-rose-400">{100 - (selectedPlan.buyFlowRatio ?? 50)}% تدفق بيعي</span>
+                    </div>
+                  </div>
+
+                  {/* RVol & VWAP Inputs */}
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                        حجم التداول النسبي (RVol %)
+                      </span>
+                      <input 
+                        type="number"
+                        placeholder="مثال: 250"
+                        value={selectedPlan.rvol || ''}
+                        onChange={(e) => setSelectedPlan({ ...selectedPlan, rvol: parseFloat(e.target.value) || undefined })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono-num font-black text-slate-900 dark:text-white text-left focus:border-blue-500 outline-none"
+                        dir="ltr"
+                      />
+                      {(selectedPlan.rvol || 0) >= 150 && (
+                        <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 mt-1 block">
+                          🔥 سيولة انفجارية (اختراق مؤكد)
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                        السعر المرجح (VWAP)
+                      </span>
+                      <input 
+                        type="number"
+                        step="0.01"
+                        placeholder="مثال: 18.72"
+                        value={selectedPlan.vwap || ''}
+                        onChange={(e) => setSelectedPlan({ ...selectedPlan, vwap: parseFloat(e.target.value) || undefined })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono-num font-black text-slate-900 dark:text-white text-left focus:border-blue-500 outline-none"
+                        dir="ltr"
+                      />
+                      {selectedPlan.vwap && selectedPlan.entryZone?.min && selectedPlan.entryZone.min >= selectedPlan.vwap && (
+                        <span className="text-[9px] font-bold text-blue-600 dark:text-blue-400 mt-1 block">
+                          🟢 تداول مؤسسي فوق VWAP
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 52-Week Range Inputs */}
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                        أعلى 52 أسبوع (52W High)
+                      </span>
+                      <input 
+                        type="number"
+                        step="0.01"
+                        placeholder="مثال: 34.94"
+                        value={selectedPlan.week52High || ''}
+                        onChange={(e) => setSelectedPlan({ ...selectedPlan, week52High: parseFloat(e.target.value) || undefined })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono-num font-black text-slate-900 dark:text-white text-left focus:border-blue-500 outline-none"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                        أدنى 52 أسبوع (52W Low)
+                      </span>
+                      <input 
+                        type="number"
+                        step="0.01"
+                        placeholder="مثال: 18.10"
+                        value={selectedPlan.week52Low || ''}
+                        onChange={(e) => setSelectedPlan({ ...selectedPlan, week52Low: parseFloat(e.target.value) || undefined })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono-num font-black text-slate-900 dark:text-white text-left focus:border-blue-500 outline-none"
+                        dir="ltr"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Switcher inside Modal */}
+                <div className="pt-2">
+                  <label className="text-xs font-black text-slate-700 dark:text-slate-300 block mb-1.5">مرحلة الخطة الحالية</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button 
+                      type="button"
+                      onClick={() => setSelectedPlan({...selectedPlan, status: 'waiting'})}
+                      className={`py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 border ${
+                        selectedPlan.status === 'waiting' || !selectedPlan.status
+                          ? 'bg-slate-800 text-white border-slate-700' 
+                          : 'bg-white dark:bg-slate-900 text-slate-500 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      <Clock className="w-3.5 h-3.5" />
+                      1. قيد المتابعة
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setSelectedPlan({...selectedPlan, status: 'ready'})}
+                      className={`py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 border ${
+                        selectedPlan.status === 'ready'
+                          ? 'bg-amber-500 text-white border-amber-600 shadow-sm' 
+                          : 'bg-white dark:bg-slate-900 text-slate-500 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      <Target className="w-3.5 h-3.5" />
+                      2. جاهزة للتنفيذ 🎯
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Left Column: Live Chart & Updates Timeline */}
+              <div className="flex-1 flex flex-col min-h-[400px]">
+                <div className="flex border-b border-slate-200 dark:border-slate-700 mb-4 pb-2 gap-3">
+                  <button 
+                    type="button"
+                    onClick={() => setModalLeftTab('updates')}
+                    className={`pb-2 font-black text-xs transition-all flex items-center gap-1.5 border-b-2 ${
+                      modalLeftTab === 'updates' 
+                        ? 'border-blue-600 text-blue-600 dark:text-blue-400' 
+                        : 'border-transparent text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4" />
+                    سجل الملاحظات والتحديثات ({selectedPlan.updates?.length || 0})
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setModalLeftTab('chart')}
+                    className={`pb-2 font-black text-xs transition-all flex items-center gap-1.5 border-b-2 ${
+                      modalLeftTab === 'chart' 
+                        ? 'border-blue-600 text-blue-600 dark:text-blue-400' 
+                        : 'border-transparent text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    <LineChart className="w-4 h-4" />
+                    الشارت المباشر (TradingView)
+                  </button>
+                </div>
+
+                <div className="flex-1 min-h-[350px]">
+                  {modalLeftTab === 'updates' ? (
+                    <PlanUpdatesFeed 
+                      updates={selectedPlan.updates || []}
+                      onChange={(updates) => setSelectedPlan({ ...selectedPlan, updates })}
+                    />
                   ) : (
-                    <div className="absolute inset-0">
-                      <AdvancedRealTimeChart
-                        symbol={`EGX:${selectedPlan.symbol || 'COMI'}`}
+                    <div className="w-full h-full min-h-[450px] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
+                      <AdvancedRealTimeChart 
+                        symbol={selectedPlan.symbol ? `EGX:${selectedPlan.symbol}` : 'EGX:COMI'}
                         theme="dark"
                         autosize
-                        allow_symbol_change={false}
-                        hide_top_toolbar={false}
-                        hide_legend={false}
-                        save_image={true}
-                        timezone="Africa/Cairo"
                         locale="ar_AE"
+                        timezone="Africa/Cairo"
+                        hide_side_toolbar={false}
+                        allow_symbol_change={true}
+                        container_id="plan_tradingview_widget"
                       />
                     </div>
                   )}
@@ -708,13 +1005,13 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
             <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/70 flex justify-end gap-3">
               <button 
                 onClick={() => setIsModalOpen(false)} 
-                className="px-6 py-2.5 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors text-sm"
+                className="px-6 py-2.5 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors text-xs"
               >
                 إلغاء
               </button>
               <button 
                 onClick={() => handleSavePlan(selectedPlan)}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-black px-8 py-2.5 rounded-xl shadow-md transition-all flex items-center gap-2 text-sm"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-black px-8 py-2.5 rounded-xl shadow-md transition-all flex items-center gap-2 text-xs"
               >
                 <Save className="w-4 h-4" />
                 حفظ الخطة
@@ -726,7 +1023,7 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
 
       {/* Quick Buy Execution Modal */}
       {quickBuyPlan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 font-['Cairo']" dir="rtl">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setQuickBuyPlan(null)}></div>
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col p-6">
             
@@ -736,8 +1033,8 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
                   <Zap className="w-5 h-5 fill-current" />
                 </div>
                 <div>
-                  <h3 className="font-black text-lg text-slate-900 dark:text-white">
-                    تنفيذ شراء فوري
+                  <h3 className="font-black text-base text-slate-900 dark:text-white">
+                    تنفيذ شراء فوري ونقل للمحفظة
                   </h3>
                   <span className="text-xs font-black text-blue-600 dark:text-blue-400 font-mono-num" dir="ltr">
                     {quickBuyPlan.symbol}
@@ -752,8 +1049,8 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
               </button>
             </div>
 
-            <form onSubmit={handleConfirmQuickBuy} className="space-y-4 mt-5">
-              <div className="space-y-1.5">
+            <form onSubmit={handleConfirmQuickBuy} className="space-y-4 mt-4">
+              <div className="space-y-1">
                 <label className="text-xs font-black text-slate-700 dark:text-slate-300">سعر التنفيذ الفعلي (EGP)</label>
                 <input 
                   type="number"
@@ -762,13 +1059,13 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
                   value={quickBuyPrice}
                   onChange={e => setQuickBuyPrice(e.target.value)}
                   required
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-mono-num font-black focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-left"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-slate-900 dark:text-white font-mono-num font-black focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-left text-sm"
                   dir="ltr"
                   placeholder="0.00"
                 />
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label className="text-xs font-black text-slate-700 dark:text-slate-300">عدد الأسهم المشتراة</label>
                 <input 
                   type="number"
@@ -777,7 +1074,7 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
                   value={quickBuyShares}
                   onChange={e => setQuickBuyShares(e.target.value)}
                   required
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-mono-num font-black focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-left"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-slate-900 dark:text-white font-mono-num font-black focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-left text-sm"
                   dir="ltr"
                   placeholder="100"
                 />
@@ -794,14 +1091,14 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
                 <button 
                   type="button"
                   onClick={() => setQuickBuyPlan(null)} 
-                  className="flex-1 py-3 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-xs"
+                  className="flex-1 py-2.5 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-xs"
                 >
                   إلغاء
                 </button>
                 <button 
                   type="submit"
                   disabled={isExecutingBuy || !quickBuyPrice || !quickBuyShares}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3 rounded-xl shadow-md shadow-emerald-500/20 transition-all text-xs disabled:opacity-50"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2.5 rounded-xl shadow-md shadow-emerald-500/20 transition-all text-xs disabled:opacity-50"
                 >
                   {isExecutingBuy ? 'جاري التنفيذ...' : 'تأكيد الشراء والتمركز'}
                 </button>
@@ -812,5 +1109,4 @@ export default memo(function Watchlist({ onMoveToJournal }: { onMoveToJournal: (
       )}
     </div>
   );
-}
-)
+});

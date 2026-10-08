@@ -71,8 +71,8 @@ export default function Analytics() {
     return list;
   }, [filteredPositions, commissionRate]);
 
-  const wonEvents = allRealizedEvents.filter(e => e.netPnL > 0);
-  const lostEvents = allRealizedEvents.filter(e => e.netPnL < 0);
+  const wonEvents = allRealizedEvents.filter(e => e.type === 'sell' && e.netPnL > 0);
+  const lostEvents = allRealizedEvents.filter(e => e.type === 'sell' && e.netPnL < 0);
 
   const totalDecisions = wonEvents.length + lostEvents.length;
   const winRateNum = totalDecisions > 0 ? (wonEvents.length / totalDecisions) * 100 : 0;
@@ -172,6 +172,42 @@ export default function Analytics() {
       pnl: stats[key].pnl,
       winRate: stats[key].count > 0 ? (stats[key].won / stats[key].count) * 100 : 0,
     })).filter(s => s.count > 0);
+  }, [positionsWithRealizedPnL, commissionRate]);
+
+  // Quantified Discipline & Emotion Impact Report
+  const psychologyPnLReport = useMemo(() => {
+    let disciplinedPnL = 0;
+    let disciplinedCount = 0;
+    let emotionalPnL = 0;
+    let emotionalCount = 0;
+
+    positionsWithRealizedPnL.forEach(p => {
+      const metrics = computePositionMetrics(p, commissionRate);
+      const isRuleBreaker = p.journal?.isRuleBreaker;
+      const em = p.journal?.emotion || 'neutral';
+      const isEmotional = isRuleBreaker || em === 'fomo' || em === 'revenge' || em === 'fear';
+
+      if (isEmotional) {
+        emotionalCount++;
+        emotionalPnL += metrics.netRealizedPnL;
+      } else {
+        disciplinedCount++;
+        disciplinedPnL += metrics.netRealizedPnL;
+      }
+    });
+
+    const netRealized = disciplinedPnL + emotionalPnL;
+    const lostGrowthMultiplier = disciplinedPnL > 0 && emotionalPnL < 0 
+      ? Math.round((Math.abs(emotionalPnL) / (netRealized > 0 ? netRealized : disciplinedPnL)) * 100)
+      : 0;
+
+    return {
+      disciplinedPnL,
+      disciplinedCount,
+      emotionalPnL,
+      emotionalCount,
+      lostGrowthMultiplier
+    };
   }, [positionsWithRealizedPnL, commissionRate]);
 
   // Top Best and Worst Trades
@@ -387,6 +423,59 @@ export default function Analytics() {
       {activeSubTab === 'psychology' && (
         <div className="space-y-6">
           
+          {/* 🧠 كاشف التكلفة المالية الحقيقية للعواطف (Quantified Emotion Impact) */}
+          <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-3xl p-6 border border-indigo-900/50 shadow-xl relative overflow-hidden">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-300">
+                <BrainCircuit className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white flex items-center gap-2">
+                  كاشف الأثر المالي للانضباط النفسي
+                  <span className="text-[10px] bg-indigo-500/30 text-indigo-300 px-2.5 py-0.5 rounded-full font-bold">
+                    Quantified Discipline Impact
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-300 font-bold">تحويل الانفعال والمخالفات إلى أرقام مالية صريحة</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-emerald-950/40 border border-emerald-500/30 p-4 rounded-2xl">
+                <span className="text-xs font-bold text-emerald-400 block mb-1">الصفقات المخططة المنضبطة 🛡️</span>
+                <span className="text-2xl font-black text-emerald-300 font-mono-num block" dir="ltr">
+                  {psychologyPnLReport.disciplinedPnL > 0 ? '+' : ''}{formatEGP(psychologyPnLReport.disciplinedPnL)} EGP
+                </span>
+                <span className="text-[10px] text-slate-400 font-bold mt-1 block">
+                  من {psychologyPnLReport.disciplinedCount} صفقات بدون مخالفات
+                </span>
+              </div>
+
+              <div className="bg-rose-950/40 border border-rose-500/30 p-4 rounded-2xl">
+                <span className="text-xs font-bold text-rose-400 block mb-1">صفقات الاستعجال والانتقام (FOMO) 😡</span>
+                <span className="text-2xl font-black text-rose-300 font-mono-num block" dir="ltr">
+                  {psychologyPnLReport.emotionalPnL > 0 ? '+' : ''}{formatEGP(psychologyPnLReport.emotionalPnL)} EGP
+                </span>
+                <span className="text-[10px] text-slate-400 font-bold mt-1 block">
+                  من {psychologyPnLReport.emotionalCount} صفقات عاطفية أو مخالفة
+                </span>
+              </div>
+
+              <div className="bg-indigo-950/50 border border-indigo-500/40 p-4 rounded-2xl flex flex-col justify-center">
+                <span className="text-xs font-bold text-indigo-300 block mb-1">عائد الانضباط التام 🚀</span>
+                {psychologyPnLReport.lostGrowthMultiplier > 0 ? (
+                  <p className="text-xs font-bold text-slate-200 leading-relaxed">
+                    انضباطك التام كان كفيلاً بزيادة أرباح محفظتك بنسبة <span className="font-black text-amber-400 font-mono-num text-sm">+{psychologyPnLReport.lostGrowthMultiplier}%</span> إضافية!
+                  </p>
+                ) : (
+                  <p className="text-xs font-bold text-emerald-300 leading-relaxed">
+                    أداؤك النفسي ممتاز ولم تسجل خسائر ناتجة عن صفقات عاطفية!
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Behavioral Deviations (Cost of Emotions) */}
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm mb-6">
             <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2 mb-6">
