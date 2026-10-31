@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Plus, Trash2, EyeOff, Eye, Landmark, Users, ArrowUp, ArrowDown, AlertOctagon } from 'lucide-react';
 import { Modal, Field, inputCls, Segmented, cx } from './ui';
 import { useVault } from './VaultContext';
-import { PORTFOLIO_COLORS } from './types';
+import { PORTFOLIO_COLORS, ASSET_KEYS, ASSET_META } from './types';
+import type { AssetKey } from './types';
 import type { VaultCashflow } from './types';
 import { todayStr, fmt } from './calc';
 
@@ -130,7 +131,20 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
                   </button>
                 </div>
                 <input type="color" value={p.color} onChange={e => upd({ portfolios: settings.portfolios.map(x => x.id === p.id ? { ...x, color: e.target.value } : x) })} className="w-8 h-8 rounded-lg border-0 bg-transparent cursor-pointer shrink-0" />
-                <input value={p.name} onChange={e => upd({ portfolios: settings.portfolios.map(x => x.id === p.id ? { ...x, name: e.target.value } : x) })} className={cx(inputCls, '!py-2 flex-1')} />
+                <input value={p.name} onChange={e => upd({ portfolios: settings.portfolios.map(x => x.id === p.id ? { ...x, name: e.target.value } : x) })} className={cx(inputCls, '!py-2 flex-1 min-w-0')} />
+                <select
+                  value={p.pinnedAsset ?? ''}
+                  onChange={e => upd({
+                    portfolios: settings.portfolios.map(x => x.id === p.id ? { ...x, pinnedAsset: (e.target.value as AssetKey) || undefined } : x)
+                  })}
+                  className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-2 text-[11px] font-black text-slate-700 dark:text-slate-200 shrink-0 outline-none"
+                  title="تثبيت الأصل التلقائي (100% من المحفظة)"
+                >
+                  <option value="">يدوي (بدون تثبيت)</option>
+                  {ASSET_KEYS.map(k => (
+                    <option key={k} value={k}>📌 {ASSET_META[k].label}</option>
+                  ))}
+                </select>
                 <button title={p.active ? 'إخفاء' : 'إظهار'} onClick={() => upd({ portfolios: settings.portfolios.map(x => x.id === p.id ? { ...x, active: !x.active } : x) })} className="p-2 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0">
                   {p.active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                 </button>

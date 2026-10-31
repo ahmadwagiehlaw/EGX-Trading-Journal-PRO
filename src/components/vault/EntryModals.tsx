@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Check, Plus, AlertTriangle } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Check, Plus, AlertTriangle, Pin } from 'lucide-react';
 import { Modal, Field, inputCls, Segmented, cx } from './ui';
 import { useVault } from './VaultContext';
 import { ASSET_KEYS, ASSET_META } from './types';
@@ -25,7 +25,8 @@ function PortfolioPills({ value, onChange }: { value: string; onChange: (id: str
           style={value === p.id ? { background: p.color, borderColor: p.color } : undefined}
         >
           <i className="w-2 h-2 rounded-full" style={{ background: value === p.id ? '#fff' : p.color }} />
-          {p.name}
+          <span>{p.name}</span>
+          {p.pinnedAsset && <Pin className="w-2.5 h-2.5 opacity-80 rotate-45" />}
         </button>
       ))}
     </div>
@@ -34,7 +35,7 @@ function PortfolioPills({ value, onChange }: { value: string; onChange: (id: str
 
 /* ───────── Snapshot (market value) ───────── */
 export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { open: boolean; onClose: () => void; initialPortfolio?: string; editDate?: string }) {
-  const { settings, snapshots, saveSnapshot } = useVault();
+  const { settings, snapshots, saveSnapshot, saveSettings } = useVault();
   const active = settings.portfolios.filter(p => p.active);
   const [mode, setMode] = useState<'quick' | 'detail'>('quick');
   const [date, setDate] = useState(todayStr());
@@ -58,6 +59,25 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
   const existing = (id: string) => snapshots.find(s => s.portfolioId === id && s.date === date);
   const latest = (id: string) => snapshots.filter(s => s.portfolioId === id).sort((a, b) => b.date.localeCompare(a.date))[0];
   const latestWithBreakdown = (id: string) => snapshots.filter(s => s.portfolioId === id && s.breakdown && Object.keys(s.breakdown).length > 0 && s.date !== date).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const togglePinAsset = async (targetPid: string, assetKey: AssetKey) => {
+    const pObj = settings.portfolios.find(p => p.id === targetPid);
+    if (!pObj) return;
+    const newPinned = pObj.pinnedAsset === assetKey ? undefined : assetKey;
+    const newPortfolios = settings.portfolios.map(p =>
+      p.id === targetPid ? { ...p, pinnedAsset: newPinned } : p
+    );
+    await saveSettings({ ...settings, portfolios: newPortfolios });
+
+    if (newPinned) {
+      const curVal = totals[targetPid] ? num(totals[targetPid]) : detailSum > 0 ? detailSum : 0;
+      if (curVal > 0) {
+        const next: Record<string, string> = { [assetKey]: String(curVal) };
+        setParts(next);
+        syncDetailToTotals(next);
+      }
+    }
+  };
+
   const prevBreakdown = latestWithBreakdown(pid);
   const copyPrevBreakdown = () => {
     if (!prevBreakdown?.breakdown) return;
@@ -77,7 +97,15 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
     setTotals(t);
     const e = snapshots.find(s => s.portfolioId === pid && s.date === date);
     const pp: Record<string, string> = {};
-    if (e?.breakdown) ASSET_KEYS.forEach(k => { if (e.breakdown?.[k]) pp[k] = String(e.breakdown[k]); });
+    const curP = active.find(p => p.id === pid);
+    if (e?.breakdown && Object.keys(e.breakdown).length > 0) {
+      ASSET_KEYS.forEach(k => { if (e.breakdown?.[k]) pp[k] = String(e.breakdown[k]); });
+    } else if (curP?.pinnedAsset) {
+      const pVal = t[pid] || (latest(pid)?.total ? String(latest(pid)!.total) : '');
+      if (pVal && num(pVal) > 0) {
+        pp[curP.pinnedAsset] = pVal;
+      }
+    }
     setParts(pp);
     setNote(e?.note ?? '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -140,7 +168,14 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
           const raw = totals[p.id];
           if (raw === undefined || raw === '') continue;
           const prev = existing(p.id);
-          await saveSnapshot({ portfolioId: p.id, date, total: num(raw), breakdown: prev?.breakdown && num(raw) === prev.total ? prev.breakdown : undefined, note: prev?.note });
+          const val = num(raw);
+          const pObj = settings.portfolios.find(x => x.id === p.id);
+          const bd = pObj?.pinnedAsset
+            ? { [pObj.pinnedAsset]: val }
+            : prev?.breakdown && val === prev.total
+              ? prev.breakdown
+              : undefined;
+          await saveSnapshot({ portfolioId: p.id, date, total: val, breakdown: bd, note: prev?.note });
         }
       } else {
         const bd: Partial<Record<AssetKey, number>> = {};
@@ -229,24 +264,54 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
             <div className="grid grid-cols-2 gap-3">
               {ASSET_KEYS.map(k => {
                 const curVal = totals[pid] ? num(totals[pid]) : 0;
+                const currentP = active.find(p => p.id === pid);
+                const isPinned = currentP?.pinnedAsset === k;
                 return (
-                  <div key={k} className="rounded-2xl border border-slate-100 dark:border-slate-800 p-3" style={{ borderTopColor: ASSET_META[k].color, borderTopWidth: 3 }}>
+                  <div
+                    key={k}
+                    className={cx(
+                      'rounded-2xl border p-3 transition-all',
+                      isPinned
+                        ? 'border-amber-500/60 bg-amber-500/[0.04] shadow-sm ring-2 ring-amber-500/20'
+                        : 'border-slate-100 dark:border-slate-800'
+                    )}
+                    style={{ borderTopColor: ASSET_META[k].color, borderTopWidth: 3 }}
+                  >
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[11px] font-black text-slate-500 dark:text-slate-400">{ASSET_META[k].emoji} {ASSET_META[k].label}</span>
-                      {curVal > 0 && (
+                      <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 flex items-center gap-1 truncate">
+                        {ASSET_META[k].emoji} {ASSET_META[k].label}
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"
-                          title="إدراج كل قيمة المحفظة بالكامل في هذا الحقل"
-                          onClick={() => {
-                            const next = { ...parts, [k]: String(curVal) };
-                            setParts(next);
-                            syncDetailToTotals(next);
-                          }}
-                          className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-orange-500 hover:text-white text-slate-500 transition-all"
+                          onClick={() => togglePinAsset(pid, k)}
+                          title={isPinned ? 'إلغاء التثبيت التلقائي' : `تثبيت محفظة ${currentP?.name ?? ''} في ${ASSET_META[k].label} (100% تلقائي كل مرة)`}
+                          className={cx(
+                            'flex items-center gap-1 text-[10px] font-black px-1.5 py-0.5 rounded-lg transition-all',
+                            isPinned
+                              ? 'bg-amber-500 text-white shadow-sm'
+                              : 'text-slate-400 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          )}
                         >
-                          كل المحفظة
+                          <Pin className={cx('w-3 h-3', isPinned && 'fill-white rotate-45')} />
+                          {isPinned && <span className="text-[9px]">مثبت</span>}
                         </button>
-                      )}
+
+                        {curVal > 0 && (
+                          <button
+                            type="button"
+                            title="إدراج كل قيمة المحفظة بالكامل في هذا الحقل"
+                            onClick={() => {
+                              const next = { ...parts, [k]: String(curVal) };
+                              setParts(next);
+                              syncDetailToTotals(next);
+                            }}
+                            className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-orange-500 hover:text-white text-slate-500 transition-all"
+                          >
+                            كل المحفظة
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <input
                       inputMode="decimal" dir="ltr"

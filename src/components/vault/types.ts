@@ -18,6 +18,7 @@ export interface VaultPortfolio {
   name: string;
   color: string;
   active: boolean;
+  pinnedAsset?: AssetKey;
 }
 
 export interface VaultTag {
