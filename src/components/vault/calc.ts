@@ -2,7 +2,21 @@ import type { VaultSnapshot, VaultCashflow, VaultPortfolio, AssetKey, VaultMonth
 import { ASSET_META, ASSET_KEYS, UNCLASSIFIED } from './types';
 
 /* ───────── Date helpers ───────── */
-export const dayNum = (d: string) => Math.floor(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 86400000);
+export const dayNum = (d: string) => {
+  if (!d) return 0;
+  if (d.includes('-')) {
+    const [y, m, day] = d.split('-');
+    if (y && m && day) return Math.floor(Date.UTC(+y, +m - 1, +day) / 86400000);
+  }
+  if (d.includes('/')) {
+    const p = d.split('/');
+    if (p.length === 3) {
+      const y = +p[2], m = +p[0], day = +p[1];
+      if (y > 2000) return Math.floor(Date.UTC(y, m - 1, day) / 86400000);
+    }
+  }
+  return 0;
+};
 export const numToDate = (n: number) => new Date(n * 86400000).toISOString().slice(0, 10);
 export const todayStr = () => {
   const n = new Date();

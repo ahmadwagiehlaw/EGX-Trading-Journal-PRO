@@ -4,7 +4,7 @@ import { Modal, Field, inputCls, Segmented, cx } from './ui';
 import { useVault } from './VaultContext';
 import { ASSET_KEYS, ASSET_META } from './types';
 import type { AssetKey, VaultCashflow } from './types';
-import { todayStr, fmt } from './calc';
+import { todayStr, fmt, fmtDate } from './calc';
 
 const num = (s: string) => {
   const n = parseFloat(s.replace(/,/g, ''));
@@ -57,6 +57,17 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
 
   const existing = (id: string) => snapshots.find(s => s.portfolioId === id && s.date === date);
   const latest = (id: string) => snapshots.filter(s => s.portfolioId === id).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const latestWithBreakdown = (id: string) => snapshots.filter(s => s.portfolioId === id && s.breakdown && Object.keys(s.breakdown).length > 0 && s.date !== date).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const prevBreakdown = latestWithBreakdown(pid);
+  const copyPrevBreakdown = () => {
+    if (!prevBreakdown?.breakdown) return;
+    const next: Record<string, string> = {};
+    ASSET_KEYS.forEach(k => {
+      if (prevBreakdown.breakdown?.[k]) next[k] = String(prevBreakdown.breakdown[k]);
+    });
+    setParts(next);
+    syncDetailToTotals(next);
+  };
 
   // prefill when date / mode / portfolio changes
   useEffect(() => {
@@ -202,6 +213,19 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
                 </span>
               )}
             </div>
+
+            {prevBreakdown && (!parts || Object.values(parts).every(v => !v || v === '0')) && (
+              <div className="flex items-center justify-between rounded-2xl bg-orange-500/10 border border-orange-500/20 px-3.5 py-2.5 text-xs font-black text-orange-600 dark:text-orange-400">
+                <span className="truncate">توجد تفاصيل أصول سابقة بتاريخ ({fmtDate(prevBreakdown.date)})</span>
+                <button
+                  type="button"
+                  onClick={copyPrevBreakdown}
+                  className="rounded-xl bg-gradient-to-l from-orange-500 to-amber-500 text-white px-3 py-1 text-[11px] font-black shadow-sm shadow-orange-500/20 hover:brightness-110 transition shrink-0"
+                >
+                  نسخ تفاصيل آخر تسجيل ⚡
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               {ASSET_KEYS.map(k => {
                 const curVal = totals[pid] ? num(totals[pid]) : 0;

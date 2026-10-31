@@ -3,7 +3,7 @@ import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, 
 import { ArrowDownLeft, ArrowUpRight, Download, LineChart as LineIcon, Trash2, Printer } from 'lucide-react';
 import { Card, ChartTip, Empty, Segmented, cx, tone } from './ui';
 import { useVault } from './VaultContext';
-import { flowsByMonth, flowsByTag, fmt, fmtCompact, fmtDate, fmtSigned, monthLabel, MONTHS_AR } from './calc';
+import { dayNum, flowsByMonth, flowsByTag, fmt, fmtCompact, fmtDate, fmtSigned, monthLabel, MONTHS_AR } from './calc';
 
 type Filter = 'all' | 'deposit' | 'withdrawal' | 'nav';
 
@@ -29,7 +29,12 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
     return [...a, ...b]
       .filter(r => filter === 'all' || r.kind === filter)
       .filter(r => !tagFilter || r.label === tagFilter)
-      .sort((x, y) => y.date.localeCompare(x.date) || y.ts - x.ts);
+      .sort((x, y) => {
+        const dx = dayNum(x.date) || 0;
+        const dy = dayNum(y.date) || 0;
+        if (dy !== dx) return dy - dx;
+        return (y.ts || 0) - (x.ts || 0);
+      });
   }, [flows, snapshots, scopeIds, filter, tagFilter]);
 
   const exportPdf = () => {
