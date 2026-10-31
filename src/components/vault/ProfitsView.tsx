@@ -4,7 +4,7 @@ import { Check, Trash2, PiggyBank, HandCoins, Percent } from 'lucide-react';
 import { Card, ChartTip, Empty, Field, inputCls, cx } from './ui';
 import { useVault } from './VaultContext';
 import type { PeriodRet } from './calc';
-import { fmt, fmtCompact, fmtPct, monthLabel, MONTHS_AR, profitTotals } from './calc';
+import { fmt, fmtCompact, fmtPct, monthLabel, MONTHS_EN, profitTotals } from './calc';
 
 const monthNow = () => {
   const d = new Date();
@@ -74,7 +74,7 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
-                  <XAxis dataKey="key" tickFormatter={(k: string) => MONTHS_AR[+k.slice(5, 7) - 1].slice(0, 3)} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="key" tickFormatter={(k: string) => MONTHS_EN[+k.slice(5, 7) - 1]} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                   <YAxis orientation="right" tickFormatter={fmtCompact} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={46} />
                   <Tooltip cursor={{ fill: 'rgba(148,163,184,0.1)' }} content={<ChartTip labelFmt={monthLabel} rows={p => fields.filter(x => x.show).map(x => ({ name: x.label, value: fmt(+p[x.k]), color: x.color }))} />} />
                   {fields.filter(x => x.show).map(x => <Bar key={x.k} dataKey={x.k} stackId="a" fill={x.color} maxBarSize={32} />)}

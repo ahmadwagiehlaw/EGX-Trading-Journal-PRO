@@ -3,7 +3,7 @@ import { Bar, CartesianGrid, Cell, ComposedChart, Line, ReferenceLine, Responsiv
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, ChartTip, Empty, Segmented, cx } from './ui';
 import type { Point, PeriodRet } from './calc';
-import { MONTHS_AR, monthLabel, monthlyReturns, weeklyReturns, yearlyReturns, fmt, fmtPct, fmtSigned, fmtDate } from './calc';
+import { MONTHS_AR, MONTHS_EN, monthLabel, monthlyReturns, weeklyReturns, yearlyReturns, fmt, fmtPct, fmtSigned, fmtDate } from './calc';
 
 type Mode = 'month' | 'week' | 'year';
 
@@ -106,7 +106,7 @@ export function CalendarView({ pts }: { pts: Point[] }) {
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
-              <XAxis dataKey="key" tickFormatter={(k: string) => MONTHS_AR[+k.slice(5, 7) - 1].slice(0, 3)} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="key" tickFormatter={(k: string) => MONTHS_EN[+k.slice(5, 7) - 1]} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
               <YAxis orientation="right" tickFormatter={(v: number) => `${v.toFixed(0)}%`} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={40} />
               <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.5} />
               <Tooltip cursor={{ fill: 'rgba(148,163,184,0.1)' }} content={<ChartTip labelFmt={monthLabel} rows={p => [

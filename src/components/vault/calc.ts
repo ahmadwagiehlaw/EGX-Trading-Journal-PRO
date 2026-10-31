@@ -24,12 +24,13 @@ export const todayStr = () => {
 };
 export const lastDayOfMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
 export const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+export const MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const monthLabel = (key: string) => `${MONTHS_AR[+key.slice(5, 7) - 1]} ${key.slice(0, 4)}`;
 export const fmtDate = (d: string) => {
   const [y, m, day] = d.split('-');
   return `${+day} ${MONTHS_AR[+m - 1]} ${y}`;
 };
-export const shortDate = (d: string) => `${+d.slice(8, 10)} ${MONTHS_AR[+d.slice(5, 7) - 1].slice(0, 3)}`;
+export const shortDate = (d: string) => `${+d.slice(8, 10)} ${MONTHS_EN[+d.slice(5, 7) - 1]}`;
 
 /* ───────── Number formatting ───────── */
 export const fmt = (n: number, digits = 0) =>
