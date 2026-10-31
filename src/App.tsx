@@ -5,9 +5,10 @@ import StickyNotesPanel from './components/StickyNotesPanel';
 import { Pin } from 'lucide-react';
 import Watchlist from './components/Watchlist';
 import TradesJournal from './components/TradesJournal';
-import CashLedger from './components/CashLedger';
+import Vault from './components/vault/Vault';
 import CommandPalette from './components/CommandPalette';
 import ReloadPrompt from './components/ReloadPrompt';
+import InstallAppBanner from './components/InstallAppBanner';
 import { Target } from 'lucide-react';
 
 // Lazy load heavy analytics and tradingview widgets for instantaneous startup
@@ -73,7 +74,7 @@ export default function App() {
           <div className="py-20 text-center font-bold text-slate-400">جاري التحميل...</div>
         }>
           {activeTab === 'التحليلات' && <Analytics />}
-          {(activeTab === 'الخزينة' || activeTab === 'المركز المالي') && <CashLedger />}
+          {(activeTab === 'الخزينة' || activeTab === 'المركز المالي') && <Vault />}
           {activeTab === 'الإعدادات' && <Settings />}
         </Suspense>
         
@@ -115,6 +116,7 @@ export default function App() {
 
       {/* PWA Background Update Notification */}
       <ReloadPrompt />
+      <InstallAppBanner />
       <button 
         onClick={() => setIsNotesOpen(true)}
         className="fixed bottom-40 left-4 md:bottom-28 md:left-8 z-40 p-3.5 md:p-4 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center"

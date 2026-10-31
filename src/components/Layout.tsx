@@ -49,12 +49,12 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
   }, []);
 
   const allNavigation = [
-    { name: 'لوحة القيادة', icon: LayoutDashboard, color: 'text-blue-600 dark:text-blue-400', activeBg: 'bg-blue-600 text-white shadow-blue-500/20' },
-    { name: 'سجل الصفقات', icon: BookOpen, color: 'text-emerald-600 dark:text-emerald-500', activeBg: 'bg-emerald-600 text-white shadow-emerald-500/20' },
-    { name: 'استراتيجيات التداول', icon: Target, color: 'text-orange-600 dark:text-orange-400', activeBg: 'bg-orange-600 text-white shadow-orange-500/20' },
-    { name: 'الخزينة', icon: Wallet, color: 'text-amber-600 dark:text-amber-400', activeBg: 'bg-amber-600 text-white shadow-amber-500/20' },
-    { name: 'التحليلات', icon: BarChart2, color: 'text-purple-600 dark:text-purple-400', activeBg: 'bg-purple-600 text-white shadow-purple-500/20' },
-    { name: 'الإعدادات', icon: Settings, color: 'text-slate-600 dark:text-slate-400', activeBg: 'bg-slate-800 dark:bg-slate-700 text-white' },
+    { id: 'dashboard', name: 'لوحة القيادة', shortLabel: 'الرئيسية', icon: LayoutDashboard, color: 'text-blue-600 dark:text-blue-400', activeBg: 'bg-blue-600 text-white shadow-blue-500/20' },
+    { id: 'journal', name: 'سجل الصفقات', shortLabel: 'الصفقات', icon: BookOpen, color: 'text-emerald-600 dark:text-emerald-500', activeBg: 'bg-emerald-600 text-white shadow-emerald-500/20' },
+    { id: 'vault', name: 'الخزينة', shortLabel: 'الخزنة', icon: Wallet, color: 'text-amber-600 dark:text-amber-400', activeBg: 'bg-amber-600 text-white shadow-amber-500/20', isCenter: true },
+    { id: 'plans', name: 'استراتيجيات التداول', shortLabel: 'الخطط', icon: Target, color: 'text-orange-600 dark:text-orange-400', activeBg: 'bg-orange-600 text-white shadow-orange-500/20' },
+    { id: 'analytics', name: 'التحليلات', shortLabel: 'التحليلات', icon: BarChart2, color: 'text-purple-600 dark:text-purple-400', activeBg: 'bg-purple-600 text-white shadow-purple-500/20' },
+    { id: 'settings', name: 'الإعدادات', shortLabel: 'الإعدادات', icon: Settings, color: 'text-slate-600 dark:text-slate-400', activeBg: 'bg-slate-800 dark:bg-slate-700 text-white', desktopOnly: true },
   ];
 
   const navigation = allNavigation.filter(item => item.name !== 'الخزينة' || showTreasuryTab);
@@ -207,24 +207,49 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
 
       </div>
 
-      {/* Mobile Bottom Navigation Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 pb-safe shadow-lg">
-        <div className="flex items-center justify-around h-16 px-1">
-          {navigation.map((item) => {
+      {/* Mobile Bottom Navigation Bar with Perfectly Centered Vault Button */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800 pb-safe shadow-[0_-4px_30px_rgba(0,0,0,0.08)]">
+        <div className="grid grid-cols-5 items-end h-16 px-1 relative max-w-lg mx-auto">
+          {navigation.filter((item: any) => !item.desktopOnly).map((item: any) => {
             const isActive = activeTab === item.name;
+            const isCenter = item.isCenter;
+
+            if (isCenter) {
+              return (
+                <div key={item.name} className="flex flex-col items-center justify-center -translate-y-3">
+                  <button
+                    onClick={() => setActiveTab(item.name)}
+                    className={`w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-90 shadow-xl ${
+                      isActive
+                        ? "bg-gradient-to-tr from-amber-500 via-orange-500 to-amber-400 text-white shadow-orange-500/50 ring-4 ring-white dark:ring-slate-900 scale-105"
+                        : "bg-white dark:bg-slate-800 text-amber-500 border-2 border-amber-500/40 ring-4 ring-slate-100/80 dark:ring-slate-900 shadow-slate-900/10 hover:border-amber-500"
+                    }`}
+                    title="الخزنة والمركز المالي"
+                  >
+                    <item.icon className="w-6 h-6 drop-shadow-sm" />
+                  </button>
+                  <span className={`text-[11px] font-black mt-1 ${
+                    isActive ? "text-amber-600 dark:text-amber-400" : "text-slate-600 dark:text-slate-400"
+                  }`}>
+                    {item.shortLabel}
+                  </span>
+                </div>
+              );
+            }
+
             return (
               <button
                 key={item.name}
                 onClick={() => setActiveTab(item.name)}
-                className={`flex flex-col items-center justify-center flex-1 h-full py-1 transition-all ${
-                  isActive ? item.color : 'text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300'
+                className={`flex flex-col items-center justify-center h-full py-1 transition-all active:scale-95 ${
+                  isActive ? item.color : "text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
                 }`}
               >
-                <div className={`p-1.5 rounded-xl transition-all ${isActive ? 'bg-slate-100 dark:bg-slate-800 scale-110' : ''}`}>
-                  <item.icon className="w-5 h-5" />
+                <div className={`p-1.5 rounded-xl transition-all ${isActive ? "bg-slate-100 dark:bg-slate-800 scale-110" : ""}`}>
+                  <item.icon className="w-5 h-5 stroke-[2.2]" />
                 </div>
-                <span className={`text-[10px] font-black mt-0.5 ${isActive ? 'opacity-100' : 'opacity-70'}`}>
-                  {item.name}
+                <span className={`text-[11px] font-bold mt-0.5 tracking-tight ${isActive ? "font-black opacity-100" : "opacity-75"}`}>
+                  {item.shortLabel}
                 </span>
               </button>
             );

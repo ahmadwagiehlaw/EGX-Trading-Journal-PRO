@@ -505,7 +505,7 @@ if (!position || !metrics) return null;
 
   return (
     <div className="w-full space-y-6" dir="rtl">
-      <div className={isChartExpanded ? "flex flex-col" : "grid lg:grid-cols-2 gap-6 items-stretch"}>
+      <div className={isChartExpanded ? "flex flex-col" : "grid lg:grid-cols-2 gap-6 items-start"}>
         
         {/* Right Column: Live TradingView Chart OR Ledger */}
         <div className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col relative z-10 transition-all duration-300 ${isChartExpanded ? 'h-[80vh]' : 'min-h-[520px]'}`}>
@@ -762,10 +762,9 @@ if (!position || !metrics) return null;
         </div>
 
         {/* Left Column: Trailing Stop Engine & Ledger Control */}
-        <div className={`bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 flex-col justify-between shadow-sm ${isChartExpanded ? 'hidden' : 'flex'}`}>
+        <div className={`bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 flex-col space-y-6 shadow-sm ${isChartExpanded ? 'hidden' : 'flex'}`}>
 
-          <div>
-            {/* Header / Ticker Summary */}
+          {/* Header / Ticker Summary */}
             <div className="mb-4">
               <div className="flex justify-between items-start mb-4">
                 <div>
@@ -994,7 +993,6 @@ if (!position || !metrics) return null;
 
 
 
-            </div> {/* CLOSE INNER DIV FOR HEADER/PILLS */}
 
           {/* TABS HEADER */}
           <div className="flex overflow-x-auto items-center gap-4 mt-0 mb-4 border-b border-slate-200 dark:border-slate-800 w-full [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
