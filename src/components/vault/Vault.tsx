@@ -125,7 +125,7 @@ function VaultInner() {
           {tab === 'overview' && (
             <div className="space-y-4">
               <Hero pts={pts} stats={stats} scopeLabel={scopeP?.name ?? 'المحفظة المجمعة'} lensLabel={lensLabel} />
-              <MainChart pts={pts} accent={scopeP?.color ?? '#f97316'} />
+              <MainChart pts={pts} accent={scopeP?.color ?? '#f97316'} dir={settings.chartDirection ?? 'rtl'} />
               <KpiGrid stats={stats} />
               <Insights stats={stats} />
             </div>

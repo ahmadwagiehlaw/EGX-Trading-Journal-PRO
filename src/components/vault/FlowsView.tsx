@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from 'recharts';
-import { ArrowDownLeft, ArrowUpRight, Download, LineChart as LineIcon, Trash2 } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Download, LineChart as LineIcon, Trash2, Printer } from 'lucide-react';
 import { Card, ChartTip, Empty, Segmented, cx, tone } from './ui';
 import { useVault } from './VaultContext';
 import { flowsByMonth, flowsByTag, fmt, fmtCompact, fmtDate, fmtSigned, monthLabel, MONTHS_AR } from './calc';
@@ -15,10 +15,11 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
   const pname = (id: string) => settings.portfolios.find(p => p.id === id);
 
   const flows = useMemo(() => cashflows.filter(c => scopeIds.includes(c.portfolioId)), [cashflows, scopeIds]);
-  const dep = flows.filter(f => f.type === 'deposit').reduce((a, f) => a + f.amount, 0);
-  const wd = flows.filter(f => f.type === 'withdrawal').reduce((a, f) => a + f.amount, 0);
-  const byMonth = useMemo(() => flowsByMonth(flows), [flows]);
-  const byTag = useMemo(() => flowsByTag(flows), [flows]);
+  const portfolioFlows = useMemo(() => flows.filter(f => !f.partner), [flows]);
+  const dep = portfolioFlows.filter(f => f.type === 'deposit').reduce((a, f) => a + f.amount, 0);
+  const wd = portfolioFlows.filter(f => f.type === 'withdrawal').reduce((a, f) => a + f.amount, 0);
+  const byMonth = useMemo(() => flowsByMonth(portfolioFlows), [portfolioFlows]);
+  const byTag = useMemo(() => flowsByTag(portfolioFlows), [portfolioFlows]);
   const maxTag = Math.max(...byTag.map(t => Math.max(t.deposit, t.withdrawal)), 1);
 
   type Row = { id: string; kind: 'deposit' | 'withdrawal' | 'nav'; date: string; ts: number; pid: string; label: string; emoji: string; amount: number; note?: string };
@@ -30,6 +31,161 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
       .filter(r => !tagFilter || r.label === tagFilter)
       .sort((x, y) => y.date.localeCompare(x.date) || y.ts - x.ts);
   }, [flows, snapshots, scopeIds, filter, tagFilter]);
+
+  const exportPdf = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const rowsHtml = rows.map((r, i) => {
+      const p = pname(r.pid);
+      const isDep = r.kind === 'deposit';
+      const isWd = r.kind === 'withdrawal';
+      const typeLabel = isDep ? 'إيداع' : isWd ? 'سحب' : 'قيمة سوقية';
+      const color = isDep ? '#10b981' : isWd ? '#f43f5e' : '#6366f1';
+      const sign = isDep ? '+' : isWd ? '−' : '';
+      return `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 10px 12px; font-size: 12px; color: #64748b;">${i + 1}</td>
+          <td style="padding: 10px 12px; font-weight: bold; font-size: 13px;">${fmtDate(r.date)}</td>
+          <td style="padding: 10px 12px;">
+            <span style="display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; background: ${color}15; color: ${color};">
+              ${typeLabel}
+            </span>
+          </td>
+          <td style="padding: 10px 12px; font-weight: bold;">
+            <span style="display: inline-flex; align-items: center; gap: 5px;">
+              <span style="width: 8px; height: 8px; border-radius: 50%; background: ${p?.color || '#cbd5e1'};"></span>
+              ${p?.name || '—'}
+            </span>
+          </td>
+          <td style="padding: 10px 12px; font-size: 13px; font-weight: bold;">${r.emoji} ${r.label}</td>
+          <td style="padding: 10px 12px; font-size: 13px; font-weight: 800; direction: ltr; text-align: left; color: ${color};">
+            ${sign}${fmt(r.amount)} ج.م
+          </td>
+          <td style="padding: 10px 12px; font-size: 11px; color: #64748b;">${r.note || '—'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="utf-8">
+          <title>تقرير حركات الخزنة والمركز المالي</title>
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+          <style>
+            body {
+              font-family: 'Cairo', -apple-system, BlinkMacSystemFont, sans-serif;
+              padding: 24px;
+              color: #0f172a;
+              background: #fff;
+              margin: 0;
+            }
+            .header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-bottom: 2px solid #e2e8f0;
+              padding-bottom: 16px;
+              margin-bottom: 24px;
+            }
+            .logo-area h1 { margin: 0; font-size: 22px; font-weight: 900; color: #ea580c; }
+            .logo-area p { margin: 2px 0 0; font-size: 12px; color: #64748b; font-weight: bold; }
+            .kpis {
+              display: grid;
+              grid-template-columns: repeat(4, 1fr);
+              gap: 12px;
+              margin-bottom: 24px;
+            }
+            .kpi-box {
+              border: 1px solid #e2e8f0;
+              border-radius: 12px;
+              padding: 12px;
+              background: #f8fafc;
+            }
+            .kpi-box .lbl { font-size: 11px; color: #64748b; font-weight: bold; }
+            .kpi-box .val { font-size: 18px; font-weight: 900; margin-top: 4px; direction: ltr; text-align: left; }
+            table { width: 100%; border-collapse: collapse; text-align: right; }
+            th {
+              background: #f1f5f9;
+              padding: 10px 12px;
+              font-size: 11px;
+              font-weight: 900;
+              color: #475569;
+              border-bottom: 2px solid #cbd5e1;
+            }
+            @media print {
+              body { padding: 0; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="logo-area">
+              <h1>🏛️ تقرير المركز المالي والخزنة</h1>
+              <p>EGX Trading Journal PRO · تاريخ الإصدار: ${new Date().toLocaleDateString('ar-EG')}</p>
+            </div>
+            <div class="no-print">
+              <button onclick="window.print()" style="background: #ea580c; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-family: inherit; font-weight: bold; cursor: pointer; font-size: 13px;">
+                🖨️ طباعة / حفظ كـ PDF
+              </button>
+            </div>
+          </div>
+
+          <div class="kpis">
+            <div class="kpi-box">
+              <div class="lbl">إجمالي الإيداعات</div>
+              <div class="val" style="color: #10b981;">+${fmt(dep)} ج.م</div>
+            </div>
+            <div class="kpi-box">
+              <div class="lbl">إجمالي السحوبات</div>
+              <div class="val" style="color: #f43f5e;">−${fmt(wd)} ج.م</div>
+            </div>
+            <div class="kpi-box">
+              <div class="lbl">صافي التدفق</div>
+              <div class="val" style="color: #4f46e5;">${fmtSigned(dep - wd)} ج.م</div>
+            </div>
+            <div class="kpi-box">
+              <div class="lbl">عدد العمليات بالسجل</div>
+              <div class="val" style="color: #0f172a;">${rows.length} عملية</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 30px;">#</th>
+                <th>التاريخ</th>
+                <th>النوع</th>
+                <th>المحفظة</th>
+                <th>التصنيف</th>
+                <th style="direction: ltr; text-align: left;">المبلغ</th>
+                <th>ملاحظات</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 400);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
 
   const exportCsv = () => {
     const head = 'التاريخ,النوع,المحفظة,التصنيف,المبلغ,ملاحظة';
@@ -94,7 +250,8 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
         right={
           <div className="flex items-center gap-2">
             <Segmented size="sm" value={filter} onChange={setFilter} options={[{ v: 'all', label: 'الكل' }, { v: 'deposit', label: 'إيداع' }, { v: 'withdrawal', label: 'سحب' }, { v: 'nav', label: 'قيم سوقية' }]} />
-            <button onClick={exportCsv} title="تصدير CSV" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white"><Download className="w-4 h-4" /></button>
+            <button onClick={exportPdf} title="طباعة / تصدير PDF" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"><Printer className="w-4 h-4" /></button>
+            <button onClick={exportCsv} title="تصدير CSV" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"><Download className="w-4 h-4" /></button>
           </div>
         }
         pad={false}

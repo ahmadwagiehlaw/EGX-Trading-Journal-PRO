@@ -19,7 +19,7 @@ const RiskCalculatorModal = lazy(() => import('./components/RiskCalculatorModal'
 
 export default function App() {
   const [isNotesOpen, setIsNotesOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('لوحة القيادة');
+  const [activeTab, setActiveTab] = useState('الخزينة');
   const [draftTrade, setDraftTrade] = useState<any>(null);
   const [isNewTradeModalOpen, setIsNewTradeModalOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);

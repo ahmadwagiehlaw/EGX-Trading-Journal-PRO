@@ -48,7 +48,7 @@ const signed = (f: VaultCashflow) => (f.type === 'deposit' ? f.amount : -f.amoun
 export function buildSeries(snaps: VaultSnapshot[], flows: VaultCashflow[], ids: string[]): Point[] {
   const sel = new Set(ids);
   const S = snaps.filter(s => sel.has(s.portfolioId)).sort((a, b) => a.date.localeCompare(b.date));
-  const F = flows.filter(f => sel.has(f.portfolioId));
+  const F = flows.filter(f => sel.has(f.portfolioId) && !f.partner);
   const dates = Array.from(new Set([...S.map(s => s.date), ...F.map(f => f.date)])).sort();
   if (!dates.length) return [];
 
@@ -110,7 +110,7 @@ export interface ChartPoint extends Point {
   pDd: number; // drawdown % inside window
 }
 
-export function windowSeries(pts: Point[], period: Period): ChartPoint[] {
+export function windowSeries(pts: Point[], period: Period, dir: 'rtl' | 'ltr' = 'rtl'): ChartPoint[] {
   if (!pts.length) return [];
   const lastN = dayNum(pts[pts.length - 1].date);
   const cutoff = PERIOD_DAYS[period] === 0 ? -Infinity : lastN - PERIOD_DAYS[period];
@@ -119,11 +119,13 @@ export function windowSeries(pts: Point[], period: Period): ChartPoint[] {
   const before = [...pts].reverse().find(p => dayNum(p.date) < cutoff);
   const base = before ?? win[0];
   let peak = 0;
-  return win.map(p => {
+  const mapped = win.map(p => {
     const rel = p.index / base.index;
     peak = Math.max(peak, rel);
     return { ...p, pProfit: p.profit - base.profit, pTwr: (rel - 1) * 100, pDd: (rel / peak - 1) * 100 };
   });
+
+  return dir === 'rtl' ? [...mapped].reverse() : mapped;
 }
 
 /* ───────── Period returns (Modified Dietz) ───────── */

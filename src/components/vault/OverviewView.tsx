@@ -91,12 +91,12 @@ function Mini({ label, value, color }: { label: string; value: string; color?: s
   );
 }
 
-export function MainChart({ pts, accent = '#f97316' }: { pts: Point[]; accent?: string }) {
+export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point[]; accent?: string; dir?: 'rtl' | 'ltr' }) {
   const [mode, setMode] = useState<Mode>('capital');
   const [period, setPeriod] = useState<Period>('3M');
-  const data = useMemo(() => windowSeries(pts, period), [pts, period]);
-  const first = data[0];
-  const last = data[data.length - 1];
+  const data = useMemo(() => windowSeries(pts, period, dir), [pts, period, dir]);
+  const first = dir === 'rtl' ? data[data.length - 1] : data[0];
+  const last = dir === 'rtl' ? data[0] : data[data.length - 1];
 
   const header = last && (
     mode === 'capital' ? { label: 'القيمة السوقية', value: `${fmt(last.nav)} ج.م`, sub: `صافي الإيداعات ${fmt(last.deposits)}`, n: 0 }

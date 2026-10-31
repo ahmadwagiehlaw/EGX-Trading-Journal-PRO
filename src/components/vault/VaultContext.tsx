@@ -40,6 +40,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           portfolios: v.portfolios?.length ? v.portfolios : DEFAULT_SETTINGS.portfolios,
           partner: { ...DEFAULT_SETTINGS.partner, ...(v.partner ?? {}) },
           tags: { deposit: v.tags?.deposit ?? DEFAULT_SETTINGS.tags.deposit, withdrawal: v.tags?.withdrawal ?? DEFAULT_SETTINGS.tags.withdrawal },
+          chartDirection: v.chartDirection ?? 'rtl',
         });
       }
       setReady(r => ({ ...r, s: true }));

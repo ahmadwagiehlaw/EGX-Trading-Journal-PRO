@@ -29,6 +29,7 @@ export interface VaultSettings {
   portfolios: VaultPortfolio[];
   partner: { enabled: boolean; name: string };
   tags: { deposit: VaultTag[]; withdrawal: VaultTag[] };
+  chartDirection?: 'rtl' | 'ltr'; // افتراضياً rtl
 }
 
 export interface VaultSnapshot {
@@ -90,5 +91,6 @@ export const DEFAULT_SETTINGS: VaultSettings = {
       { label: 'تخفيض رأس المال', emoji: '🔻' },
     ],
   },
+  chartDirection: 'rtl',
 };
 

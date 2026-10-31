@@ -6,7 +6,7 @@ import { PORTFOLIO_COLORS } from './types';
 import type { VaultCashflow } from './types';
 import { todayStr, fmt } from './calc';
 
-type Tab = 'portfolios' | 'capital' | 'partner' | 'tags' | 'danger';
+type Tab = 'portfolios' | 'capital' | 'partner' | 'tags' | 'display' | 'danger';
 
 function TagChip({ label, emoji, onRename, onRemove }: { label: string; emoji: string; onRename: (to: string) => void; onRemove: () => void }) {
   const [v, setV] = useState(label);
@@ -102,7 +102,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
     <Modal open={open} onClose={onClose} title="إعدادات الخزنة" wide>
       <div className="space-y-5">
         <Segmented value={tab} onChange={setTab} options={[
-          { v: 'portfolios', label: 'المحافظ' }, { v: 'capital', label: 'رأس المال الأساسي' }, { v: 'partner', label: 'الشريك' }, { v: 'tags', label: 'التصنيفات' }, { v: 'danger', label: 'إعادة ضبط الخزنة' }
+          { v: 'portfolios', label: 'المحافظ' }, { v: 'capital', label: 'رأس المال الأساسي' }, { v: 'partner', label: 'الشريك' }, { v: 'tags', label: 'التصنيفات' }, { v: 'display', label: 'طريقة العرض والشارت' }, { v: 'danger', label: 'إعادة ضبط الخزنة' }
         ]} />
 
         {tab === 'portfolios' && (
@@ -181,7 +181,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
             <Field label="اسم الشريك"><input value={settings.partner.name} onChange={e => upd({ partner: { ...settings.partner, name: e.target.value } })} className={inputCls} /></Field>
 
             <div className="rounded-2xl bg-violet-500/5 border border-violet-500/20 p-4 text-[11px] font-bold leading-6 text-violet-700 dark:text-violet-300">
-              فلوس الشريك بتتسجل كإيداع فعلي في المحفظة (بتدخل في صافي الإيداعات) ومعلّمة "شريك". الحساب بالوحدات من تاريخ دخوله بالظبط: الأرباح اللي قبل دخوله ليك لوحدك، وبعدها بنفس نسب العوائد. تقدر تضيف أكتر من دفعة بتواريخ مختلفة.
+              أموال الشريك هي جزء مقتطع من رأس مال المحفظة الأساسي (لا تزيد صافي إيداعات المحفظة العامة). يتم تتبع رأس ماله وحساب نسبته وأرباحه بشكل مستقل ودقيق في عرض "الشريك" و"حصتي" فقط دون التأثير على إجمالي المحفظة.
             </div>
 
             <div className="flex items-center justify-between rounded-2xl bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
@@ -240,6 +240,27 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
               <button
                 onClick={() => { const l = tagLabel.trim(); if (!l) return; upd({ tags: { ...settings.tags, [tagType]: [...settings.tags[tagType], { label: l, emoji: tagEmoji || '🏷️' }] } }); setTagLabel(''); }}
                 className="shrink-0 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 text-xs font-black">إضافة</button>
+            </div>
+          </div>
+        )}
+
+        {tab === 'display' && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-4 space-y-3">
+              <div className="text-sm font-black text-slate-800 dark:text-slate-100">اتجاه قراءة الرسوم البيانية والشارت</div>
+              <p className="text-xs font-bold leading-6 text-slate-500 dark:text-slate-400">
+                في اللغة العربية، القراءة الطبيعية للتواريخ تبدأ من اليمين (التاريخ الأقدم) وصولاً إلى اليسار (التاريخ الأحدث الآن). يمكنك التبديل للوضع المفضل لديك:
+              </p>
+              <div className="pt-2">
+                <Segmented
+                  value={settings.chartDirection ?? 'rtl'}
+                  onChange={dir => upd({ chartDirection: dir })}
+                  options={[
+                    { v: 'rtl', label: 'الافتراضي العربي (من اليمين إلى اليسار ➡️)' },
+                    { v: 'ltr', label: 'الوضع الغربي (من اليسار إلى اليمين ⬅️)' },
+                  ]}
+                />
+              </div>
             </div>
           </div>
         )}
