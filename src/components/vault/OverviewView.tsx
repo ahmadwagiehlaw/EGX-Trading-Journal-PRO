@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
-import { Activity, Flame, Gauge, ShieldAlert, Sparkles, Target, TrendingDown, TrendingUp, Trophy, Wallet } from 'lucide-react';
+import { Activity, Flame, ShieldAlert, ShieldCheck, Sparkles, Target, TrendingDown, TrendingUp, Trophy, Calendar, ArrowUpRight, ArrowDownRight, Zap, Compass } from 'lucide-react';
 import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone } from './ui';
 import type { Point, Stats, Period } from './calc';
 import { PERIODS, windowSeries, fmt, fmtCompact, fmtPct, fmtSigned, fmtDate, shortDate, monthLabel } from './calc';
@@ -190,58 +190,296 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
 
 export function KpiGrid({ stats }: { stats: Stats }) {
   const s = stats;
-  const items = [
-    { icon: <Target className="w-4 h-4" />, label: 'الشهور الرابحة', ring: s.winRate, ringColor: '#10b981', ringText: s.winRate === null ? '—' : `${s.winRate.toFixed(0)}%`, sub: `${s.months.filter(m => m.gain >= 0).length} من ${s.months.length} شهر` },
-    { icon: <ShieldAlert className="w-4 h-4" />, label: 'أقصى هبوط', ring: Math.min(100, Math.abs(s.maxDD) * 4), ringColor: '#f43f5e', ringText: `${Math.abs(s.maxDD).toFixed(1)}%`, sub: 'من القمة السابقة' },
-    { icon: <Gauge className="w-4 h-4" />, label: 'متوسط الشهر', value: s.avgMonth === null ? '—' : fmtPct(s.avgMonth), n: s.avgMonth ?? 0, sub: s.vol === null ? 'التذبذب —' : `التذبذب ±${s.vol.toFixed(1)}%` },
-    { icon: <Flame className="w-4 h-4" />, label: 'السلسلة الحالية', value: s.streak === 0 ? '—' : `${Math.abs(s.streak)} ${s.streak > 0 ? 'شهور رابحة' : 'شهور خاسرة'}`, n: s.streak, sub: s.ratio === null ? 'نسبة العائد/التذبذب —' : `نسبة العائد/التذبذب ${s.ratio.toFixed(2)}` },
-    { icon: <Trophy className="w-4 h-4" />, label: 'أفضل شهر', value: s.best ? fmtPct(s.best.pct) : '—', n: s.best?.pct ?? 0, sub: s.best ? monthLabel(s.best.key) : '' },
-    { icon: <TrendingDown className="w-4 h-4" />, label: 'أسوأ شهر', value: s.worst ? fmtPct(s.worst.pct) : '—', n: s.worst?.pct ?? 0, sub: s.worst ? monthLabel(s.worst.key) : '' },
-    { icon: <Sparkles className="w-4 h-4" />, label: 'عامل الربحية', value: s.profitFactor === null ? '—' : s.profitFactor === Infinity ? '∞' : s.profitFactor.toFixed(2), n: s.profitFactor === null ? 0 : s.profitFactor >= 1 ? 1 : -1, sub: 'أرباح الشهور ÷ خسائرها' },
-    { icon: <Wallet className="w-4 h-4" />, label: 'ربح لكل 1000 مودعة', value: s.netDeposits > 0 ? fmtSigned((s.profit / s.netDeposits) * 1000) : '—', n: s.profit, sub: `خلال ${s.days} يوم` },
-  ];
+  const absDD = Math.abs(s.maxDD);
+  const ddStatus = absDD < 10 ? { text: 'مخاطر منخفضة', color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
+    : absDD <= 20 ? { text: 'تصحيح معتاد في الأسهم', color: 'text-amber-500', bg: 'bg-amber-500/10' }
+    : { text: 'تراجع حاد يتطلب حذر', color: 'text-rose-500', bg: 'bg-rose-500/10' };
+
+  // Calculate recovery to peak
+  const hasDD = s.maxDD < -0.5 && s.nav > 0;
+  const peakNav = hasDD ? s.nav / (1 + s.maxDD / 100) : s.nav;
+  const recoveryAmt = Math.max(0, peakNav - s.nav);
+  const recoveryPct = s.nav > 0 && hasDD ? ((peakNav / s.nav) - 1) * 100 : 0;
+
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      {items.map(i => (
-        <div key={i.label} className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-4 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-[11px] font-black text-slate-400">{i.icon}{i.label}</div>
-            {'ring' in i
-              ? <div className="mt-1 text-[11px] font-bold text-slate-500 dark:text-slate-400">{i.sub}</div>
-              : <>
-                <div dir="ltr" className={cx('mt-1 text-lg font-black tabular-nums text-right truncate', tone(i.n as number))}>{i.value}</div>
-                <div className="text-[10px] font-bold text-slate-400 truncate">{i.sub}</div>
-              </>}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* 1. Risk & Capital Defense Cockpit */}
+      <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900/90 dark:via-slate-900/40 dark:to-slate-900/90 p-5 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center">
+              <ShieldAlert className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">حماية رأس المال والمخاطر</h3>
+              <p className="text-[10px] font-bold text-slate-400">تقييم سلامة المحفظة والهبوط</p>
+            </div>
           </div>
-          {'ring' in i && <Ring value={i.ring ?? 0} color={i.ringColor as string}>{i.ringText}</Ring>}
+          <span className={cx('text-[10px] font-black px-2.5 py-1 rounded-full', ddStatus.bg, ddStatus.color)}>
+            {ddStatus.text}
+          </span>
         </div>
-      ))}
+
+        {/* Max Drawdown Progress Bar */}
+        <div className="bg-slate-100/80 dark:bg-slate-800/60 rounded-2xl p-4 space-y-2 border border-slate-200/50 dark:border-slate-800/40">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">أقصى هبوط من القمة السابقة</span>
+            <span dir="ltr" className="text-xl font-black text-rose-500 tabular-nums">
+              {s.maxDD === 0 ? '0.0%' : `${s.maxDD.toFixed(1)}%`}
+            </span>
+          </div>
+          <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700/60 overflow-hidden flex">
+            <div
+              className="h-full bg-gradient-to-r from-amber-500 to-rose-500 transition-all duration-700"
+              style={{ width: `${Math.min(100, (absDD / 30) * 100)}%` }}
+            />
+          </div>
+          {hasDD && recoveryAmt > 0 && (
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-300 pt-1">
+              <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span>مستهدف استعادة القمة: <b dir="ltr" className="font-black text-orange-500">+{fmt(recoveryAmt)} ج.م</b> (+{recoveryPct.toFixed(1)}%)</span>
+            </div>
+          )}
+        </div>
+
+        {/* 3 Sub-Metrics */}
+        <div className="grid grid-cols-3 gap-2.5 pt-1">
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-3 text-center">
+            <div className="text-[10px] font-bold text-slate-400">عامل الربحية</div>
+            <div dir="ltr" className="text-base font-black text-slate-800 dark:text-slate-100 tabular-nums mt-0.5">
+              {s.profitFactor === null ? '—' : s.profitFactor === Infinity ? '∞' : s.profitFactor.toFixed(2)}
+            </div>
+            <div className="text-[9px] font-black text-slate-400 mt-0.5">
+              {s.profitFactor === null ? '—' : s.profitFactor >= 1.5 ? 'ممتاز' : s.profitFactor >= 1 ? 'متوازن' : 'تحت الضغط'}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-3 text-center">
+            <div className="text-[10px] font-bold text-slate-400">التذبذب الشهري</div>
+            <div dir="ltr" className="text-base font-black text-slate-800 dark:text-slate-100 tabular-nums mt-0.5">
+              {s.vol === null ? '—' : `±${s.vol.toFixed(1)}%`}
+            </div>
+            <div className="text-[9px] font-black text-slate-400 mt-0.5">
+              {s.vol === null ? '—' : s.vol <= 5 ? 'هادئ ومستقر' : 'تذبذب نشط'}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-3 text-center">
+            <div className="text-[10px] font-bold text-slate-400">لكل 1000 ج.م</div>
+            <div dir="ltr" className={cx('text-base font-black tabular-nums mt-0.5', tone(s.profit))}>
+              {s.netDeposits > 0 ? fmtSigned((s.profit / s.netDeposits) * 1000) : '—'}
+            </div>
+            <div className="text-[9px] font-black text-slate-400 mt-0.5 truncate">
+              خلال {s.days} يوم
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Monthly Rhythm & Consistency Cockpit */}
+      <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900/90 dark:via-slate-900/40 dark:to-slate-900/90 p-5 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">نبض الأداء والاتساق الشهري</h3>
+              <p className="text-[10px] font-bold text-slate-400">متابعة ثبات الأداء واستمرارية النتائج</p>
+            </div>
+          </div>
+
+          {s.streak !== 0 && (
+            <span className={cx('text-[10px] font-black px-2.5 py-1 rounded-full flex items-center gap-1', s.streak > 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500')}>
+              <Flame className="w-3 h-3" />
+              {s.streak > 0 ? `${s.streak} شهور رابحة` : `${Math.abs(s.streak)} شهور تصحيح`}
+            </span>
+          )}
+        </div>
+
+        {/* Win Rate & Monthly Summary */}
+        <div className="flex items-center justify-between gap-4 bg-slate-100/80 dark:bg-slate-800/60 rounded-2xl p-4 border border-slate-200/50 dark:border-slate-800/40">
+          <div className="flex items-center gap-3">
+            <Ring value={s.winRate ?? 0} color={s.winRate && s.winRate >= 50 ? '#10b981' : '#f43f5e'} size={50}>
+              {s.winRate === null ? '—' : `${s.winRate.toFixed(0)}%`}
+            </Ring>
+            <div>
+              <div className="text-xs font-black text-slate-800 dark:text-slate-100">نسبة الشهور الرابحة</div>
+              <div className="text-[10px] font-bold text-slate-400 mt-0.5">
+                {s.months.filter(m => m.gain >= 0).length} من إجمالي {s.months.length} شهر
+              </div>
+            </div>
+          </div>
+
+          <div className="text-left border-r border-slate-200 dark:border-slate-700 pr-4">
+            <div className="text-[10px] font-bold text-slate-400">متوسط عائد الشهر</div>
+            <div dir="ltr" className={cx('text-lg font-black tabular-nums', s.avgMonth !== null && tone(s.avgMonth))}>
+              {s.avgMonth === null ? '—' : fmtPct(s.avgMonth)}
+            </div>
+          </div>
+        </div>
+
+        {/* Monthly Breakdown Capsules */}
+        <div className="space-y-1.5">
+          <div className="text-[10px] font-black text-slate-400 px-1">سجل أداء الشهور المسجلة:</div>
+          <div className="grid grid-cols-2 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto pr-1">
+            {s.months.length === 0 ? (
+              <p className="col-span-2 text-center text-xs font-bold text-slate-400 py-3">لا توجد أشهر كافية مكتملة بعد</p>
+            ) : (
+              s.months.map(m => {
+                const isGain = m.gain >= 0;
+                return (
+                  <div
+                    key={m.key}
+                    className={cx(
+                      'flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-bold transition-all',
+                      isGain
+                        ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400'
+                        : 'border-rose-500/30 bg-rose-500/5 text-rose-600 dark:text-rose-400'
+                    )}
+                  >
+                    <span className="text-[11px] font-black text-slate-800 dark:text-slate-200">{monthLabel(m.key)}</span>
+                    <div className="text-left">
+                      <span dir="ltr" className="font-black tabular-nums block text-[11px]">{fmtPct(m.pct)}</span>
+                      <span dir="ltr" className="text-[9px] font-bold opacity-80 block">{fmtSigned(m.gain)} ج.م</span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Best vs Worst Comparison */}
+        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/60">
+          <div className="flex items-center gap-2">
+            <Trophy className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <div className="min-w-0">
+              <span className="text-[10px] font-bold text-slate-400 block truncate">أفضل شهر</span>
+              <span className="text-xs font-black text-slate-800 dark:text-slate-200 truncate block">
+                {s.best ? `${monthLabel(s.best.key)} (${fmtPct(s.best.pct)})` : '—'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <TrendingDown className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+            <div className="min-w-0">
+              <span className="text-[10px] font-bold text-slate-400 block truncate">أضعف شهر</span>
+              <span className="text-xs font-black text-slate-800 dark:text-slate-200 truncate block">
+                {s.worst ? `${monthLabel(s.worst.key)} (${fmtPct(s.worst.pct)})` : '—'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 export function Insights({ stats }: { stats: Stats }) {
   const s = stats;
-  const lines: { t: string; good?: boolean }[] = [];
+  const cards: { icon: any; title: string; desc: string; tag: string; color: string; border: string; bg: string }[] = [];
+
+  // 1. Current Month Assessment
   if (s.months.length) {
     const last = s.months[s.months.length - 1];
-    lines.push({ t: `${monthLabel(last.key)}: ${fmtPct(last.pct)} (${fmtSigned(last.gain)} ج.م)`, good: last.gain >= 0 });
+    const prev = s.months.length > 1 ? s.months[s.months.length - 2] : null;
+    const isGain = last.gain >= 0;
+    const improved = prev && last.pct > prev.pct;
+    cards.push({
+      icon: isGain ? <ArrowUpRight className="w-4 h-4 text-emerald-500" /> : <ArrowDownRight className="w-4 h-4 text-rose-500" />,
+      title: `تقييم شهر ${monthLabel(last.key)}`,
+      desc: isGain
+        ? `حقق الشهر أداءً إيجابياً بنمو ${fmtPct(last.pct)} وأرباح ${fmtSigned(last.gain)} ج.م تدعم نمو المحفظة الإجمالي.`
+        : `سجل الشهر تراجعاً قدره ${fmtPct(last.pct)} (${fmtSigned(last.gain)} ج.م)${improved ? '، مع تماسك وتقليص ملحوظ في حدة التراجع مقارنة بالشهر السابق.' : '.'}`,
+      tag: isGain ? 'نمو إيجابي' : improved ? 'تماسك وتقليص هبوط' : 'تصحيح سعري',
+      color: isGain ? 'text-emerald-500' : 'text-rose-500',
+      border: isGain ? 'border-emerald-500/25' : 'border-rose-500/25',
+      bg: isGain ? 'bg-emerald-500/5' : 'bg-rose-500/5',
+    });
   }
-  if (s.best && s.months.length > 1) lines.push({ t: `أقوى شهر ${monthLabel(s.best.key)} بنمو ${fmtPct(s.best.pct)}`, good: true });
-  if (s.worst && s.months.length > 1 && s.worst.pct < 0) lines.push({ t: `أضعف شهر ${monthLabel(s.worst.key)} بتراجع ${fmtPct(s.worst.pct)}`, good: false });
-  if (s.maxDD < -0.5) lines.push({ t: `أقصى هبوط من القمة ${s.maxDD.toFixed(1)}%`, good: false });
-  if (s.annualized !== null) lines.push({ t: `بالمعدل الحالي العائد السنوي المركب ≈ ${fmtPct(s.annualized, 1)}`, good: s.annualized >= 0 });
-  if (Math.abs(s.streak) >= 2) lines.push({ t: `${Math.abs(s.streak)} شهور ${s.streak > 0 ? 'رابحة' : 'خاسرة'} متتالية`, good: s.streak > 0 });
-  if (!lines.length) return null;
+
+  // 2. Risk & Drawdown Advice
+  if (s.maxDD < -0.5) {
+    const absDD = Math.abs(s.maxDD);
+    cards.push({
+      icon: <ShieldCheck className="w-4 h-4 text-amber-500" />,
+      title: 'حزام الأمان وإدارة المخاطر',
+      desc: absDD <= 15
+        ? `أقصى هبوط مسجل (${s.maxDD.toFixed(1)}%) يعتبر ضمن النطاق الطبيعي لتصحيحات البورصة المصرية EGX، ومؤشر أمان السيولة مستقر.`
+        : `تراجع المحفظة وصل لـ ${s.maxDD.toFixed(1)}%؛ يُنصح بمراجعة تنويع الأصول والالتزام بوقف الخسائر للصفقات النشطة.`,
+      tag: absDD <= 15 ? 'هبوط آمن وطبيعي' : 'تنبيه إدارة مخاطر',
+      color: 'text-amber-500',
+      border: 'border-amber-500/25',
+      bg: 'bg-amber-500/5',
+    });
+  }
+
+  // 3. Peak Recovery Milestone
+  if (s.maxDD < -0.5 && s.nav > 0) {
+    const peakNav = s.nav / (1 + s.maxDD / 100);
+    const recAmt = peakNav - s.nav;
+    const recPct = ((peakNav / s.nav) - 1) * 100;
+    cards.push({
+      icon: <Target className="w-4 h-4 text-indigo-500" />,
+      title: 'مستهدف استعادة القمة (Peak Milestone)',
+      desc: `تحتاج المحفظة إلى نمو استثماري قدره ${recPct.toFixed(1)}% (حوالي ${fmt(recAmt)} ج.م) لاستعادة أعلى رصيد تاريخي وصلت إليه سابقاً.`,
+      tag: 'مستهدف رقمي',
+      color: 'text-indigo-500',
+      border: 'border-indigo-500/25',
+      bg: 'bg-indigo-500/5',
+    });
+  }
+
+  // 4. Annualized Growth Projection
+  if (s.annualized !== null) {
+    cards.push({
+      icon: <Compass className="w-4 h-4 text-purple-500" />,
+      title: 'مؤشر النمو السنوي المركب التقديري (CAGR)',
+      desc: `بناءً على وتيرة النشاط خلال ${s.days} يوماً الماضية، يُقدّر معدل النمو السنوي المركب المكافئ بحوالي ${fmtPct(s.annualized, 1)}.`,
+      tag: 'إسقاط سنوي',
+      color: 'text-purple-500',
+      border: 'border-purple-500/25',
+      bg: 'bg-purple-500/5',
+    });
+  }
+
+  if (!cards.length) return null;
+
   return (
-    <Card title={<span className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500" />قراءات سريعة</span>}>
-      <ul className="space-y-2">
-        {lines.map(l => (
-          <li key={l.t} className="flex items-start gap-2.5 text-xs font-bold text-slate-600 dark:text-slate-300">
-            <i className={cx('mt-1.5 w-1.5 h-1.5 rounded-full shrink-0', l.good ? 'bg-emerald-500' : 'bg-rose-500')} />{l.t}
-          </li>
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 px-1">
+        <Sparkles className="w-4 h-4 text-amber-500" />
+        <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">قراءات المستشار المالي وتحليل الأداء الذكي</h3>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {cards.map(c => (
+          <div
+            key={c.title}
+            className={cx(
+              'rounded-2xl p-4 border transition-all duration-200 flex flex-col justify-between gap-2.5',
+              c.bg,
+              c.border
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-white dark:bg-slate-900 shadow-sm flex items-center justify-center shrink-0">
+                  {c.icon}
+                </div>
+                <h4 className="text-xs font-black text-slate-900 dark:text-slate-100">{c.title}</h4>
+              </div>
+              <span className={cx('text-[10px] font-black px-2 py-0.5 rounded-md shrink-0 bg-white dark:bg-slate-900 shadow-sm', c.color)}>
+                {c.tag}
+              </span>
+            </div>
+            <p className="text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-300">
+              {c.desc}
+            </p>
+          </div>
         ))}
-      </ul>
-    </Card>
+      </div>
+    </div>
   );
 }
