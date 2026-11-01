@@ -452,51 +452,66 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
     }
   };
 
+  const grandTotal = useMemo(() => {
+    return active.reduce((sum, p) => sum + num(totals[p.id] ?? ''), 0);
+  }, [active, totals]);
+
   const canSave = mode === 'quick' ? Object.values(totals).some(v => v !== '') : detailSum > 0;
 
   return (
     <Modal open={open} onClose={onClose} title="تسجيل القيمة السوقية">
-      <div className="space-y-5">
-        <div className="flex items-center justify-between gap-3">
-          <Segmented value={mode} onChange={setMode} options={[{ v: 'quick', label: 'كل المحافظ' }, { v: 'detail', label: 'تفصيلي بالأصول' }]} />
-          <div className="flex items-center gap-1.5">
-            <input
-              type="date"
-              value={date}
-              max={todayStr()}
-              onChange={e => { setDate(e.target.value); setLastDate('snapshot', e.target.value); setSuccessMsg(null); }}
-              disabled={!!editDate}
-              className={cx(inputCls, '!w-auto')}
-            />
-            {!editDate && (
-              <button
-                type="button"
-                onClick={() => { setDate(todayStr()); setLastDate('snapshot', todayStr()); setSuccessMsg(null); }}
-                title="تعيين تاريخ اليوم"
-                className={cx(
-                  'p-2.5 rounded-xl border transition-all shrink-0',
-                  date === todayStr()
-                    ? 'border-orange-500/40 bg-orange-500/10 text-orange-500'
-                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 hover:text-orange-500 hover:border-orange-400'
-                )}
-              >
-                <Calendar className="w-4 h-4" />
-              </button>
-            )}
+      <div className="space-y-3.5">
+        {/* Top bar: Mode + Date + Grand Total Review Badge */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50 dark:bg-slate-800/40 p-2.5 sm:p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-2">
+            <Segmented size="sm" value={mode} onChange={setMode} options={[{ v: 'quick', label: 'كل المحافظ' }, { v: 'detail', label: 'تفصيلي بالأصول' }]} />
+            <div className="flex items-center gap-1">
+              <input
+                type="date"
+                value={date}
+                max={todayStr()}
+                onChange={e => { setDate(e.target.value); setLastDate('snapshot', e.target.value); setSuccessMsg(null); }}
+                disabled={!!editDate}
+                className={cx(inputCls, '!w-auto !py-1 text-xs')}
+              />
+              {!editDate && (
+                <button
+                  type="button"
+                  onClick={() => { setDate(todayStr()); setLastDate('snapshot', todayStr()); setSuccessMsg(null); }}
+                  title="تعيين تاريخ اليوم"
+                  className={cx(
+                    'p-1.5 rounded-xl border transition-all shrink-0',
+                    date === todayStr()
+                      ? 'border-orange-500/40 bg-orange-500/10 text-orange-500'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:text-orange-500 hover:border-orange-400'
+                  )}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Grand Total Review Badge */}
+          <div className="flex items-center justify-between sm:justify-end gap-2 pr-1">
+            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">إجمالي المحافظ:</span>
+            <span dir="ltr" className="text-base sm:text-lg font-black text-orange-500 dark:text-orange-400 tabular-nums bg-white dark:bg-slate-900 px-3 py-1 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-xs">
+              {fmt(grandTotal)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
+            </span>
           </div>
         </div>
 
         {mode === 'quick' ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between pb-1">
-              <span className="text-[11px] font-bold text-slate-400">سجل القيمة الجديدة لكل محفظة أو أدرج آخر قيمة بضغطة زر:</span>
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[11px] font-bold text-slate-400">قيم المحافظ:</span>
               <button
                 type="button"
                 onClick={fillAllLatest}
-                className="text-xs font-black text-orange-500 hover:text-orange-600 dark:hover:text-orange-400 bg-orange-500/10 hover:bg-orange-500/20 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5"
+                className="text-[11px] font-black text-orange-500 hover:text-orange-600 dark:hover:text-orange-400 bg-orange-500/10 hover:bg-orange-500/20 px-2.5 py-1 rounded-xl transition-all flex items-center gap-1"
               >
                 <span>نسخ آخر القيم للكل</span>
-                <span className="text-sm">⚡</span>
+                <span className="text-xs">⚡</span>
               </button>
             </div>
             {active.map(p => {
@@ -532,79 +547,66 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
                   </div>
 
                   {p.id === 'thndr' ? (
-                    /* 3 Smart Sub-boxes for Thndr */
-                    <div className="pt-1.5 space-y-1.5 border-t border-slate-100 dark:border-slate-800/60 mt-1">
-                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                        <span className="flex items-center gap-1.5">
-                          <span className="text-orange-500 font-black">⚡ تفصيل ثاندر:</span>
-                          <span className="text-[10px] text-slate-400 font-normal">متزامن تلقائياً مع الإجمالي</span>
-                        </span>
-                        {num(totals.thndr ?? '') > 0 && (
-                          <span className="text-[10px] font-mono text-slate-400">
-                            المجموع: <b dir="ltr" className="text-slate-700 dark:text-slate-200">{fmt(num(totals.thndr ?? ''))} ج.م</b>
-                          </span>
-                        )}
+                    /* 3 Compact Smart Sub-boxes for Thndr */
+                    <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/60 mt-1">
+                      {/* 1. الأسهم */}
+                      <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.03] p-1.5 space-y-0.5">
+                        <div className="flex items-center justify-between text-[10px] font-black text-emerald-600 dark:text-emerald-400">
+                          <span>📈 أسهم</span>
+                          {num(curBd?.stocks ?? '') > 0 && num(totals.thndr ?? '') > 0 && (
+                            <span className="text-[8px] opacity-75 font-mono">
+                              {((num(curBd.stocks ?? '') / num(totals.thndr ?? '')) * 100).toFixed(0)}%
+                            </span>
+                          )}
+                        </div>
+                        <input
+                          inputMode="decimal"
+                          dir="ltr"
+                          value={curBd?.stocks ?? ''}
+                          onChange={e => handleThndrSubChange('stocks', e.target.value)}
+                          placeholder="0"
+                          className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
+                        />
                       </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        {/* 1. الأسهم */}
-                        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.04] p-2 space-y-1">
-                          <div className="flex items-center justify-between text-[10px] font-black text-emerald-600 dark:text-emerald-400">
-                            <span>📈 أسهم</span>
-                            {num(curBd?.stocks ?? '') > 0 && num(totals.thndr ?? '') > 0 && (
-                              <span className="text-[9px] opacity-75 tabular-nums">
-                                {((num(curBd.stocks ?? '') / num(totals.thndr ?? '')) * 100).toFixed(0)}%
-                              </span>
-                            )}
-                          </div>
-                          <input
-                            inputMode="decimal"
-                            dir="ltr"
-                            value={curBd?.stocks ?? ''}
-                            onChange={e => handleThndrSubChange('stocks', e.target.value)}
-                            placeholder="0"
-                            className={cx(inputCls, '!py-1.5 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
-                          />
-                        </div>
 
-                        {/* 2. الكلاودز */}
-                        <div className="rounded-xl border border-violet-500/30 bg-violet-500/[0.04] p-2 space-y-1">
-                          <div className="flex items-center justify-between text-[10px] font-black text-violet-600 dark:text-violet-400">
-                            <span>☁️ كلاودز (دخل ثابت)</span>
-                            {num(curBd?.clouds ?? '') > 0 && num(totals.thndr ?? '') > 0 && (
-                              <span className="text-[9px] opacity-75 tabular-nums">
-                                {((num(curBd.clouds ?? '') / num(totals.thndr ?? '')) * 100).toFixed(0)}%
-                              </span>
-                            )}
-                          </div>
-                          <input
-                            inputMode="decimal"
-                            dir="ltr"
-                            value={curBd?.clouds ?? ''}
-                            onChange={e => handleThndrSubChange('clouds', e.target.value)}
-                            placeholder="0"
-                            className={cx(inputCls, '!py-1.5 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
-                          />
+                      {/* 2. الكلاودز */}
+                      <div className="rounded-xl border border-violet-500/25 bg-violet-500/[0.03] p-1.5 space-y-0.5">
+                        <div className="flex items-center justify-between text-[10px] font-black text-violet-600 dark:text-violet-400">
+                          <span>☁️ كلاودز</span>
+                          {num(curBd?.clouds ?? '') > 0 && num(totals.thndr ?? '') > 0 && (
+                            <span className="text-[8px] opacity-75 font-mono">
+                              {((num(curBd.clouds ?? '') / num(totals.thndr ?? '')) * 100).toFixed(0)}%
+                            </span>
+                          )}
                         </div>
+                        <input
+                          inputMode="decimal"
+                          dir="ltr"
+                          value={curBd?.clouds ?? ''}
+                          onChange={e => handleThndrSubChange('clouds', e.target.value)}
+                          placeholder="0"
+                          className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
+                        />
+                      </div>
 
-                        {/* 3. صناديق الاستثمار */}
-                        <div className="rounded-xl border border-teal-500/30 bg-teal-500/[0.04] p-2 space-y-1">
-                          <div className="flex items-center justify-between text-[10px] font-black text-teal-600 dark:text-teal-400">
-                            <span>🧺 صناديق</span>
-                            {num(curBd?.equityFunds ?? '') > 0 && num(totals.thndr ?? '') > 0 && (
-                              <span className="text-[9px] opacity-75 tabular-nums">
-                                {((num(curBd.equityFunds ?? '') / num(totals.thndr ?? '')) * 100).toFixed(0)}%
-                              </span>
-                            )}
-                          </div>
-                          <input
-                            inputMode="decimal"
-                            dir="ltr"
-                            value={curBd?.equityFunds ?? ''}
-                            onChange={e => handleThndrSubChange('equityFunds', e.target.value)}
-                            placeholder="0"
-                            className={cx(inputCls, '!py-1.5 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
-                          />
+                      {/* 3. صناديق الاستثمار */}
+                      <div className="rounded-xl border border-teal-500/25 bg-teal-500/[0.03] p-1.5 space-y-0.5">
+                        <div className="flex items-center justify-between text-[10px] font-black text-teal-600 dark:text-teal-400">
+                          <span>🧺 صناديق</span>
+                          {num(curBd?.equityFunds ?? '') > 0 && num(totals.thndr ?? '') > 0 && (
+                            <span className="text-[8px] opacity-75 font-mono">
+                              {((num(curBd.equityFunds ?? '') / num(totals.thndr ?? '')) * 100).toFixed(0)}%
+                            </span>
+                          )}
                         </div>
+                        <input
+                          inputMode="decimal"
+                          dir="ltr"
+                          value={curBd?.equityFunds ?? ''}
+                          onChange={e => handleThndrSubChange('equityFunds', e.target.value)}
+                          placeholder="0"
+                          className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
+                        />
                       </div>
                     </div>
                   ) : (
@@ -662,7 +664,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
                 </div>
               );
             })}
-            <p className="text-[11px] font-bold text-slate-400">اترك المحفظة فارغة لو مش عايز تسجل لها قيمة في هذا اليوم.</p>
+            
           </div>
         ) : (
           <div className="space-y-4">
@@ -755,24 +757,25 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
         )}
 
         {warnings.length > 0 && (
-          <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3.5 space-y-2">
-            <div className="flex items-center gap-2 text-xs font-black text-amber-600 dark:text-amber-400">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span>تنبيه: قفزة كبيرة في قيمة المحفظة مقارنة بآخر تسجيل!</span>
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-200">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
+            <div className="flex-1 text-[11px] font-bold leading-normal">
+              {warnings.map(w => (
+                <span key={w.name} className="block">
+                  قفزة في <b>{w.name}</b> بمقدار <b dir="ltr" className="text-emerald-600 dark:text-emerald-400">+{fmt(w.diff)} ج.م</b> (+{w.pct.toFixed(0)}%). تأكد من تسجيل أي إيداع نقدي جديد أولاً.
+                </span>
+              ))}
             </div>
-            {warnings.map(w => (
-              <div key={w.name} className="text-[11px] font-bold text-slate-700 dark:text-slate-300 leading-relaxed pr-6">
-                محفظة <b className="text-slate-900 dark:text-white">{w.name}</b> زادت بمقدار <span dir="ltr" className="text-emerald-500 font-black tabular-nums">+{fmt(w.diff)} ج.م</span> (+{w.pct.toFixed(1)}%).
-                <span className="block text-slate-500 dark:text-slate-400 text-[10px]">تأكد إذا كانت هذه الزيادة نتيجة إيداع نقدي جديد يجب تسجيله في "الحركات النقدية" أولاً لكي لا تُحسب كأرباح تداول بالخطأ.</span>
-              </div>
-            ))}
           </div>
         )}
 
         {successMsg && (
-          <div className="flex items-center gap-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs font-black text-emerald-600 dark:text-emerald-400 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>{successMsg}</span>
+          <div className="flex items-center justify-between gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-xs font-black text-emerald-600 dark:text-emerald-400 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{successMsg}</span>
+            </div>
+            <button type="button" onClick={() => setSuccessMsg(null)} className="text-emerald-500 hover:text-emerald-700 text-xs font-bold">✕</button>
           </div>
         )}
 
