@@ -767,7 +767,6 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
 /* ───────── Cashflow ───────── */
 export function CashflowModal({ open, onClose, initialType = 'deposit', editing }: { open: boolean; onClose: () => void; initialType?: 'deposit' | 'withdrawal'; editing?: VaultCashflow }) {
   const { settings, cashflows, addCashflow, updateCashflow, deleteCashflow, saveSettings } = useVault();
-  const [isPartner, setIsPartner] = useState(false);
   const active = settings.portfolios.filter(p => p.active);
   const [type, setType] = useState<'deposit' | 'withdrawal'>(initialType);
   const [pid, setPid] = useState(active[0]?.id ?? '');
@@ -796,7 +795,6 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
       setTag(editing.tag);
       setCustom('');
       setNote(editing.note ?? '');
-      setIsPartner(!!editing.partner);
     } else if (open) {
       setType(initialType);
       setTag('');
@@ -804,7 +802,6 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
       setNote('');
       setCustom('');
       setDate(getLastDate(initialType, getLatestDbDate(initialType)));
-      setIsPartner(false);
       if (!pid && active[0]) setPid(active[0].id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -831,9 +828,9 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
         emoji = '🏷️';
         await saveSettings({ ...settings, tags: { ...settings.tags, [type]: [...tags, { label, emoji }] } });
       }
-      const finalTag = label || (isPartner ? 'رأس مال الشريك' : isDep ? 'إيداع' : 'سحب');
-      if (editing) await updateCashflow(editing.id, { portfolioId: pid, type, amount: Math.abs(num(amount)), date, tag: finalTag, emoji, note: note || '', partner: isPartner });
-      else await addCashflow({ portfolioId: pid, type, amount: Math.abs(num(amount)), date, tag: finalTag, emoji, note: note || undefined, partner: isPartner || undefined });
+      const finalTag = label || (isDep ? 'إيداع' : 'سحب');
+      if (editing) await updateCashflow(editing.id, { portfolioId: pid, type, amount: Math.abs(num(amount)), date, tag: finalTag, emoji, note: note || '' });
+      else await addCashflow({ portfolioId: pid, type, amount: Math.abs(num(amount)), date, tag: finalTag, emoji, note: note || undefined });
       onClose();
     } finally { setBusy(false); }
   };
@@ -899,13 +896,6 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
         </Field>
 
         <Field label="ملاحظة"><input value={note} onChange={e => setNote(e.target.value)} className={inputCls} /></Field>
-
-        {settings.partner.enabled && (
-          <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-violet-500/30 bg-violet-500/5 px-4 py-3">
-            <span className="text-xs font-black text-violet-600 dark:text-violet-400">حركة تخص {settings.partner.name} (من رأس ماله)</span>
-            <input type="checkbox" checked={isPartner} onChange={e => setIsPartner(e.target.checked)} className="h-5 w-5 accent-violet-500" />
-          </label>
-        )}
 
         <div className="flex items-center gap-2">
           {editing && (

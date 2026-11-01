@@ -15,7 +15,7 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
   const pname = (id: string) => settings.portfolios.find(p => p.id === id);
 
   const flows = useMemo(() => cashflows.filter(c => scopeIds.includes(c.portfolioId)), [cashflows, scopeIds]);
-  const portfolioFlows = useMemo(() => flows.filter(f => !f.partner), [flows]);
+  const portfolioFlows = flows;
   const dep = portfolioFlows.filter(f => f.type === 'deposit').reduce((a, f) => a + f.amount, 0);
   const wd = portfolioFlows.filter(f => f.type === 'withdrawal').reduce((a, f) => a + f.amount, 0);
   const byMonth = useMemo(() => flowsByMonth(portfolioFlows), [portfolioFlows]);

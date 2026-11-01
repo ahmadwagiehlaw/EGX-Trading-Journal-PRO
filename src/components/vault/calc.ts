@@ -63,7 +63,7 @@ const signed = (f: VaultCashflow) => (f.type === 'deposit' ? f.amount : -f.amoun
 export function buildSeries(snaps: VaultSnapshot[], flows: VaultCashflow[], ids: string[]): Point[] {
   const sel = new Set(ids);
   const S = snaps.filter(s => sel.has(s.portfolioId)).sort((a, b) => a.date.localeCompare(b.date));
-  const F = flows.filter(f => sel.has(f.portfolioId) && !f.partner);
+  const F = flows.filter(f => sel.has(f.portfolioId));
   const dates = Array.from(new Set([...S.map(s => s.date), ...F.map(f => f.date)])).sort();
   if (!dates.length) return [];
 
@@ -132,9 +132,12 @@ export function buildSeries(snaps: VaultSnapshot[], flows: VaultCashflow[], ids:
   pts.forEach((p, i) => {
     if (i > 0) {
       const prev = pts[i - 1];
-      const denom = prev.nav + p.flow * 0.5;
-      const r = denom > 0 ? (p.nav - prev.nav - p.flow) / denom : 0;
-      idx *= 1 + Math.max(-0.9, Math.min(10, r));
+      const flow = p.flow;
+      const gain = p.nav - prev.nav - flow;
+      // Denominator using Modified Dietz with positive protection
+      const denom = prev.nav + (flow > 0 ? flow * 0.5 : 0);
+      const r = denom > 0 && prev.nav > 0 ? gain / denom : 0;
+      idx *= 1 + Math.max(-0.5, Math.min(2, r));
     }
     peak = Math.max(peak, idx);
     p.index = idx;
@@ -443,15 +446,21 @@ export function partnerSplit(
   // رأس مال الشريك المعتمد المرجعي فقط (افتراضياً 570 ألف ج.م)
   const partnerCap = partnerSettings?.partnerCapital ?? 570000;
 
-  // 1. حصة الشريك: رأس مال مرجعي مع تطبيق نفس نسب نمو المحفظة وأدائها الإجمالي التقديري
+  // تاريخ دخول الشريك الفعلي (فبراير 2026)
+  // قبل هذا التاريخ، كانت المحفظة بالكامل تخص المستخدم، وبعده يطبق التزام رأس مال الشريك
+  const PARTNER_START_DATE = '2026-02-01';
+
+  // 1. حصة الشريك: تبدأ من تاريخ دخوله، وتطبق عليها نفس نسبة نمو المحفظة الإجمالية كعرض تقديري
   const partner: Point[] = pts.map(p => {
-    const pProfit = partnerCap * (p.ret / 100);
-    const nav = partnerCap + pProfit;
+    const isJoined = p.date >= PARTNER_START_DATE;
+    const curCap = isJoined ? partnerCap : 0;
+    const pProfit = curCap > 0 ? curCap * (p.ret / 100) : 0;
+    const nav = curCap + pProfit;
     const k = p.nav > 0 ? nav / p.nav : 0;
     return {
       ...p,
       nav,
-      deposits: partnerCap,
+      deposits: curCap,
       flow: 0,
       profit: pProfit,
       ret: p.ret,
@@ -461,10 +470,12 @@ export function partnerSplit(
     };
   });
 
-  // 2. حصتي: المحفظة هي الأصل، وكل شيء فيها يخص المستخدم مخصوماً منه رأس مال الشريك المرجعي فقط
+  // 2. حصتي: المحفظة هي ملك المستخدم بالكامل، مخصوماً منها التزام رأس مال الشريك عند دخوله
   const mine: Point[] = pts.map(p => {
-    const nav = Math.max(0, p.nav - partnerCap);
-    const deposits = Math.max(0, p.deposits - partnerCap);
+    const isJoined = p.date >= PARTNER_START_DATE;
+    const curPartnerCap = isJoined ? partnerCap : 0;
+    const nav = Math.max(0, p.nav - curPartnerCap);
+    const deposits = Math.max(0, p.deposits - curPartnerCap);
     const profit = nav - deposits;
     const ret = deposits > 0 ? (profit / deposits) * 100 : p.ret;
     const k = p.nav > 0 ? nav / p.nav : 0;
