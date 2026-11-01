@@ -25,7 +25,7 @@ function TagChip({ label, emoji, onRename, onRemove }: { label: string; emoji: s
 }
 
 export function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { settings, saveSettings, cashflows, snapshots, months, deleteCashflow, renameTag, resetAllVaultData } = useVault();
+  const { settings, saveSettings, cashflows, snapshots, months, renameTag, resetAllVaultData } = useVault();
   const [tab, setTab] = useState<Tab>('portfolios');
   const [newName, setNewName] = useState('');
   const [tagType, setTagType] = useState<'deposit' | 'withdrawal'>('deposit');
@@ -33,8 +33,6 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const [tagEmoji, setTagEmoji] = useState('🏷️');
   const [confirmResetText, setConfirmResetText] = useState('');
   const [isResetting, setIsResetting] = useState(false);
-  const [isCleaning, setIsCleaning] = useState(false);
-  const [cleanDone, setCleanDone] = useState(false);
 
   const upd = (patch: Partial<typeof settings>) => saveSettings({ ...settings, ...patch });
   const hasData = (id: string) => cashflows.some(c => c.portfolioId === id) || snapshots.some(s => s.portfolioId === id);
@@ -56,9 +54,6 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
     upd({ portfolios: [...settings.portfolios, { id, name, color: PORTFOLIO_COLORS[settings.portfolios.length % PORTFOLIO_COLORS.length], active: true }] });
     setNewName('');
   };
-
-  /* ── الشريك ── */
-  const partnerFlows = cashflows.filter(c => c.partner);
 
   return (
     <Modal open={open} onClose={onClose} title="إعدادات الخزنة" wide>
@@ -128,72 +123,49 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
 
         {tab === 'partner' && (
           <div className="space-y-4">
-            <label className="flex items-center justify-between rounded-2xl border border-slate-100 dark:border-slate-800 p-4 cursor-pointer">
-              <span className="text-sm font-black text-slate-800 dark:text-slate-100">تفعيل عرض الشريك</span>
-              <input type="checkbox" checked={settings.partner.enabled} onChange={e => upd({ partner: { ...settings.partner, enabled: e.target.checked } })} className="w-5 h-5 accent-orange-500" />
-            </label>
-            <Field label="اسم الشريك"><input value={settings.partner.name} onChange={e => upd({ partner: { ...settings.partner, name: e.target.value } })} className={inputCls} /></Field>
-
-            <div className="rounded-2xl bg-indigo-500/5 border border-indigo-500/20 p-4 text-xs font-bold leading-6 text-indigo-700 dark:text-indigo-300">
-              💡 <b>حساب تلقائي ذكي وديناميكي:</b> أصل رأس مالك يُحسب تلقائياً من أقدم قيمة سوقية مسجلة في المحفظة + صافي التدفقات، وكل شيء في المحفظة يخصك بالكامل فيما عدا رأس مال الشريك المرجعي المعتمد فقط.
-            </div>
-
-            {/* حقل رأس مال الشريك المرجعي المعتمد */}
-            <div className="rounded-2xl border border-violet-500/30 p-4 space-y-2.5 bg-violet-500/[0.04]">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-violet-600 dark:text-violet-400">رأس مال الشريك المعتمد ({settings.partner.name})</span>
-                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-600 dark:text-violet-300">
-                  رقم مرجعي ثابت
-                </span>
+            <label className="flex items-center justify-between rounded-2xl border border-slate-100 dark:border-slate-800 p-4 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
+              <div>
+                <span className="text-sm font-black text-slate-800 dark:text-slate-100 block">تفعيل شاشة الشريك</span>
+                <span className="text-[11px] font-bold text-slate-400">إظهار تبويب الشريك في الخزنة وعرض تحليلات أمواله</span>
               </div>
               <input
-                inputMode="decimal"
-                dir="ltr"
-                value={settings.partner.partnerCapital ?? 570000}
-                onChange={e => upd({ partner: { ...settings.partner, partnerCapital: parseFloat(e.target.value) || 0 } })}
-                placeholder="570000"
-                className={cx(inputCls, 'text-left font-black tabular-nums text-lg !border-violet-300 dark:!border-violet-700')}
+                type="checkbox"
+                checked={settings.partner.enabled}
+                onChange={e => upd({ partner: { ...settings.partner, enabled: e.target.checked } })}
+                className="w-5 h-5 accent-orange-500 rounded"
               />
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold leading-5">
-                إجمالي رأس مال الشريك الثابت (مثلاً 570 ألف ج.م). يُخصم هذا المبلغ من إجمالي القيمة السوقية للمحفظة ليكون كل ما عداه هو حصتك الصافية ونمو ثروتك بالكامل.
-              </p>
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="اسم الشريك">
+                <input
+                  value={settings.partner.name}
+                  onChange={e => upd({ partner: { ...settings.partner, name: e.target.value } })}
+                  placeholder="لولو"
+                  className={inputCls}
+                />
+              </Field>
+
+              <Field label={`رأس مال الشريك المعتمد (${settings.partner.name})`}>
+                <div className="relative">
+                  <input
+                    inputMode="decimal"
+                    dir="ltr"
+                    value={settings.partner.partnerCapital ?? 570000}
+                    onChange={e => upd({ partner: { ...settings.partner, partnerCapital: parseFloat(e.target.value) || 0 } })}
+                    placeholder="570000"
+                    className={cx(inputCls, 'text-left font-black tabular-nums pl-12')}
+                  />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                    ج.م
+                  </span>
+                </div>
+              </Field>
             </div>
 
-            {/* تنظيف الحركات السابقة إن وجدت حتى لا تتداخل */}
-            {partnerFlows.length > 0 ? (
-              <div className="rounded-2xl border border-rose-200 dark:border-rose-900/40 p-4 space-y-3 bg-rose-50/50 dark:bg-rose-950/20">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <span className="text-xs font-black text-rose-700 dark:text-rose-300 block">
-                      تنظيف حركات الشريك القديمة
-                    </span>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold leading-5">
-                      توجد {partnerFlows.length} حركة مسجلة كحركات كاش للشريك. بما أن رأس مال الشريك أصبح رقماً مرجعياً معتمداً (570 ألف)، احذف هذه الحركات القديمة لتصفية السجل.
-                    </p>
-                  </div>
-                  <button
-                    disabled={isCleaning}
-                    onClick={async () => {
-                      setIsCleaning(true);
-                      try {
-                        for (const c of partnerFlows) await deleteCashflow(c.id);
-                        setCleanDone(true);
-                        setTimeout(() => setCleanDone(false), 4000);
-                      } finally {
-                        setIsCleaning(false);
-                      }
-                    }}
-                    className="shrink-0 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black transition disabled:opacity-50 shadow-sm shadow-rose-600/20"
-                  >
-                    {isCleaning ? 'جاري الحذف...' : 'حذف الحركات القديمة'}
-                  </button>
-                </div>
-              </div>
-            ) : cleanDone ? (
-              <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800 p-3 bg-emerald-50 dark:bg-emerald-950/30 text-xs font-black text-emerald-600 dark:text-emerald-400">
-                ✓ تم حذف وتصفية حركات الشريك القديمة بنجاح! السجل خالٍ الآن.
-              </div>
-            ) : null}
+            <p className="text-[11px] font-bold text-slate-400 px-1 leading-5">
+              رأس مال الشريك هو رقم مرجعي معتمد؛ المحفظة تُدار كوحدة واحدة، وحصتك تُحسب تلقائياً من نمو كامل المحفظة.
+            </p>
           </div>
         )}
 
