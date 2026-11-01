@@ -22,10 +22,49 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
   const byTag = useMemo(() => flowsByTag(portfolioFlows), [portfolioFlows]);
   const maxTag = Math.max(...byTag.map(t => Math.max(t.deposit, t.withdrawal)), 1);
 
-  type Row = { id: string; kind: 'deposit' | 'withdrawal' | 'nav'; date: string; ts: number; pid: string; label: string; emoji: string; amount: number; note?: string };
+  type Row =
+    | { id: string; kind: 'deposit' | 'withdrawal'; date: string; ts: number; pid: string; label: string; emoji: string; amount: number; note?: string }
+    | { id: string; kind: 'nav'; date: string; ts: number; label: string; emoji: string; amount: number; note?: string; items: { pid: string; total: number; note?: string }[] };
+
   const rows: Row[] = useMemo(() => {
-    const a: Row[] = flows.map(f => ({ id: f.id, kind: f.type, date: f.date, ts: f.createdAt, pid: f.portfolioId, label: f.tag, emoji: f.emoji ?? '', amount: f.amount, note: f.note }));
-    const b: Row[] = snapshots.filter(s => scopeIds.includes(s.portfolioId)).map(s => ({ id: s.id, kind: 'nav', date: s.date, ts: s.createdAt, pid: s.portfolioId, label: 'قيمة سوقية', emoji: '📊', amount: s.total, note: s.note }));
+    // 1. Individual Cashflows
+    const a: Row[] = flows.map(f => ({
+      id: f.id,
+      kind: f.type,
+      date: f.date,
+      ts: f.createdAt,
+      pid: f.portfolioId,
+      label: f.tag,
+      emoji: f.emoji ?? '',
+      amount: f.amount,
+      note: f.note,
+    }));
+
+    // 2. Group Snapshots by date
+    const scopedSnaps = snapshots.filter(s => scopeIds.includes(s.portfolioId));
+    const snapsByDate: Record<string, typeof scopedSnaps> = {};
+    scopedSnaps.forEach(s => {
+      if (!snapsByDate[s.date]) snapsByDate[s.date] = [];
+      snapsByDate[s.date].push(s);
+    });
+
+    const b: Row[] = Object.entries(snapsByDate).map(([date, items]) => {
+      const sum = items.reduce((acc, cur) => acc + cur.total, 0);
+      const maxTs = Math.max(...items.map(i => i.createdAt || 0), 0);
+      const note = items.map(i => i.note).filter(Boolean).join(' | ');
+      return {
+        id: `snap_group_${date}`,
+        kind: 'nav' as const,
+        date,
+        ts: maxTs,
+        label: 'تسجيل قيمة سوقية',
+        emoji: '📊',
+        amount: sum,
+        note: note || undefined,
+        items: items.map(i => ({ pid: i.portfolioId, total: i.total, note: i.note })),
+      };
+    });
+
     return [...a, ...b]
       .filter(r => filter === 'all' || r.kind === filter)
       .filter(r => !tagFilter || r.label === tagFilter)
@@ -42,12 +81,17 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
     if (!printWindow) return;
 
     const rowsHtml = rows.map((r, i) => {
-      const p = pname(r.pid);
       const isDep = r.kind === 'deposit';
       const isWd = r.kind === 'withdrawal';
+      const isNav = r.kind === 'nav';
       const typeLabel = isDep ? 'إيداع' : isWd ? 'سحب' : 'قيمة سوقية';
       const color = isDep ? '#10b981' : isWd ? '#f43f5e' : '#6366f1';
       const sign = isDep ? '+' : isWd ? '−' : '';
+      const p = !isNav ? pname(r.pid) : null;
+      const portfolioContent = isNav
+        ? r.items.map(it => `${pname(it.pid)?.name || ''}: ${fmt(it.total)}`).join(' | ')
+        : (p?.name || '—');
+
       return `
         <tr style="border-bottom: 1px solid #f1f5f9;">
           <td style="padding: 10px 12px; font-size: 12px; color: #64748b;">${i + 1}</td>
@@ -57,11 +101,8 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
               ${typeLabel}
             </span>
           </td>
-          <td style="padding: 10px 12px; font-weight: bold;">
-            <span style="display: inline-flex; align-items: center; gap: 5px;">
-              <span style="width: 8px; height: 8px; border-radius: 50%; background: ${p?.color || '#cbd5e1'};"></span>
-              ${p?.name || '—'}
-            </span>
+          <td style="padding: 10px 12px; font-weight: bold; font-size: 12px;">
+            ${portfolioContent}
           </td>
           <td style="padding: 10px 12px; font-size: 13px; font-weight: bold;">${r.emoji} ${r.label}</td>
           <td style="padding: 10px 12px; font-size: 13px; font-weight: 800; direction: ltr; text-align: left; color: ${color};">
@@ -194,7 +235,19 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
 
   const exportCsv = () => {
     const head = 'التاريخ,النوع,المحفظة,التصنيف,المبلغ,ملاحظة';
-    const lines = rows.map(r => [r.date, r.kind === 'deposit' ? 'إيداع' : r.kind === 'withdrawal' ? 'سحب' : 'قيمة سوقية', pname(r.pid)?.name ?? '', r.label, r.amount, (r.note ?? '').replace(/,/g, ' ')].join(','));
+    const lines = rows.map(r => {
+      const pName = r.kind === 'nav'
+        ? r.items.map(it => `${pname(it.pid)?.name || ''}: ${it.total}`).join(' | ')
+        : (pname(r.pid)?.name ?? '');
+      return [
+        r.date,
+        r.kind === 'deposit' ? 'إيداع' : r.kind === 'withdrawal' ? 'سحب' : 'قيمة سوقية',
+        `"${pName.replace(/"/g, '""')}"`,
+        r.label,
+        r.amount,
+        (r.note ?? '').replace(/,/g, ' '),
+      ].join(',');
+    });
     const blob = new Blob(['\ufeff' + [head, ...lines].join('\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -265,28 +318,99 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
         {!rows.length ? <Empty text="السجل فارغ" /> : (
           <ul className="divide-y divide-slate-100 dark:divide-slate-800/70 p-2">
             {rows.map(r => {
-              const p = pname(r.pid);
+              const isNav = r.kind === 'nav';
+              const p = !isNav ? pname(r.pid) : null;
               return (
-                <li key={r.kind + r.id} onClick={() => { if (r.kind === 'nav') onEditSnap(r.pid, r.date); else { const c = cashflows.find(x => x.id === r.id); if (c) onEditFlow(c); } }} className="flex cursor-pointer items-center gap-3 rounded-2xl px-3 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                  <div className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', r.kind === 'deposit' ? 'bg-emerald-500/10 text-emerald-500' : r.kind === 'withdrawal' ? 'bg-rose-500/10 text-rose-500' : 'bg-indigo-500/10 text-indigo-400')}>
+                <li
+                  key={r.kind + r.id}
+                  onClick={() => {
+                    if (isNav) {
+                      onEditSnap(r.items[0]?.pid || '', r.date);
+                    } else {
+                      const c = cashflows.find(x => x.id === r.id);
+                      if (c) onEditFlow(c);
+                    }
+                  }}
+                  className="flex cursor-pointer items-start gap-3 rounded-2xl px-3 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition group"
+                >
+                  <div className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl mt-0.5', r.kind === 'deposit' ? 'bg-emerald-500/10 text-emerald-500' : r.kind === 'withdrawal' ? 'bg-rose-500/10 text-rose-500' : 'bg-indigo-500/10 text-indigo-500 dark:text-indigo-400')}>
                     {r.kind === 'deposit' ? <ArrowDownLeft className="w-4 h-4" /> : r.kind === 'withdrawal' ? <ArrowUpRight className="w-4 h-4" /> : <LineIcon className="w-4 h-4" />}
                   </div>
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-2 text-sm font-black text-slate-800 dark:text-slate-100">
                       <span>{r.emoji} {r.label}</span>
                       {p && <span className="rounded-full px-2 py-0.5 text-[10px] font-black text-white" style={{ background: p.color }}>{p.name}</span>}
                       {flows.find(x => x.id === r.id)?.partner && <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-black text-violet-500">شريك</span>}
+                      {isNav && <span className="text-[10px] font-bold text-slate-400">({fmtDate(r.date)})</span>}
                     </div>
-                    <div className="text-[11px] font-bold text-slate-400 truncate">{fmtDate(r.date)}{r.note ? ` · ${r.note}` : ''}</div>
+
+                    {isNav ? (
+                      /* Grouped portfolios breakdown pills */
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        {r.items.map(it => {
+                          const itP = pname(it.pid);
+                          if (!itP) return null;
+                          return (
+                            <span
+                              key={it.pid}
+                              className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-black bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-700/60"
+                            >
+                              <i className="w-1.5 h-1.5 rounded-full" style={{ background: itP.color }} />
+                              <span>{itP.name}:</span>
+                              <b dir="ltr" className="tabular-nums font-mono">{fmt(it.total)}</b>
+                            </span>
+                          );
+                        })}
+                        {r.note && <span className="text-[10px] text-slate-400 truncate">· {r.note}</span>}
+                      </div>
+                    ) : (
+                      <div className="text-[11px] font-bold text-slate-400 truncate">{fmtDate(r.date)}{r.note ? ` · ${r.note}` : ''}</div>
+                    )}
                   </div>
-                  <div dir="ltr" className={cx('text-sm font-black tabular-nums', r.kind === 'deposit' ? 'text-emerald-500' : r.kind === 'withdrawal' ? 'text-rose-500' : 'text-slate-700 dark:text-slate-200')}>
-                    {r.kind === 'deposit' ? '+' : r.kind === 'withdrawal' ? '−' : ''}{fmt(r.amount)}
+
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <div dir="ltr" className={cx('text-sm sm:text-base font-black tabular-nums', r.kind === 'deposit' ? 'text-emerald-500' : r.kind === 'withdrawal' ? 'text-rose-500' : 'text-slate-800 dark:text-slate-100')}>
+                      {r.kind === 'deposit' ? '+' : r.kind === 'withdrawal' ? '−' : ''}{fmt(r.amount)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {isNav && (
+                        <span className="text-[10px] font-bold text-slate-400 group-hover:text-orange-500 transition-colors">
+                          تعديل ✏️
+                        </span>
+                      )}
+                      {confirm === r.id ? (
+                        <button
+                          onClick={async e => {
+                            e.stopPropagation();
+                            if (isNav) {
+                              for (const it of r.items) {
+                                await deleteSnapshot(`${it.pid}_${r.date}`);
+                              }
+                            } else {
+                              await deleteCashflow(r.id);
+                            }
+                            setConfirm(null);
+                          }}
+                          className="rounded-lg bg-rose-500 px-2.5 py-1 text-[10px] font-black text-white shadow-xs"
+                        >
+                          تأكيد الحذف
+                        </button>
+                      ) : (
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            setConfirm(r.id);
+                            setTimeout(() => setConfirm(c => (c === r.id ? null : c)), 3000);
+                          }}
+                          title={isNav ? "حذف تسجيل القيمة السوقية لهذا اليوم بالكامل" : "حذف الحركة"}
+                          className="p-1.5 text-slate-300 hover:text-rose-500 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {confirm === r.id ? (
-                    <button onClick={e => { e.stopPropagation(); (r.kind === 'nav' ? deleteSnapshot : deleteCashflow)(r.id); setConfirm(null); }} className="rounded-lg bg-rose-500 px-2.5 py-1 text-[10px] font-black text-white">تأكيد</button>
-                  ) : (
-                    <button onClick={e => { e.stopPropagation(); setConfirm(r.id); setTimeout(() => setConfirm(c => (c === r.id ? null : c)), 3000); }} className="p-2 text-slate-300 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button>
-                  )}
                 </li>
               );
             })}

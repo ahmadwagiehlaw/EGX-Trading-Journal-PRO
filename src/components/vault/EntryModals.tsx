@@ -56,7 +56,7 @@ function PortfolioPills({ value, onChange }: { value: string; onChange: (id: str
 
 /* ───────── Snapshot (market value) ───────── */
 export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { open: boolean; onClose: () => void; initialPortfolio?: string; editDate?: string }) {
-  const { settings, snapshots, saveSnapshot, saveSettings } = useVault();
+  const { settings, snapshots, saveSnapshot, deleteSnapshot, saveSettings } = useVault();
   const active = settings.portfolios.filter(p => p.active);
   const [mode, setMode] = useState<'quick' | 'detail'>('quick');
   const latestDbSnapDate = useMemo(() => {
@@ -392,6 +392,11 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
     setBusy(true);
     setLastDate('snapshot', date);
     try {
+      if (editDate && editDate !== date) {
+        for (const p of active) {
+          await deleteSnapshot(`${p.id}_${editDate}`);
+        }
+      }
       if (mode === 'quick') {
         for (const p of active) {
           const raw = totals[p.id];
@@ -461,43 +466,42 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
   return (
     <Modal open={open} onClose={onClose} title="تسجيل القيمة السوقية">
       <div className="space-y-3.5">
-        {/* Top bar: Mode + Date + Grand Total Review Badge */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50 dark:bg-slate-800/40 p-2.5 sm:p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-2">
-            <Segmented size="sm" value={mode} onChange={setMode} options={[{ v: 'quick', label: 'كل المحافظ' }, { v: 'detail', label: 'تفصيلي بالأصول' }]} />
-            <div className="flex items-center gap-1">
-              <input
-                type="date"
-                value={date}
-                max={todayStr()}
-                onChange={e => { setDate(e.target.value); setLastDate('snapshot', e.target.value); setSuccessMsg(null); }}
-                disabled={!!editDate}
-                className={cx(inputCls, '!w-auto !py-1 text-xs')}
-              />
-              {!editDate && (
-                <button
-                  type="button"
-                  onClick={() => { setDate(todayStr()); setLastDate('snapshot', todayStr()); setSuccessMsg(null); }}
-                  title="تعيين تاريخ اليوم"
-                  className={cx(
-                    'p-1.5 rounded-xl border transition-all shrink-0',
-                    date === todayStr()
-                      ? 'border-orange-500/40 bg-orange-500/10 text-orange-500'
-                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:text-orange-500 hover:border-orange-400'
-                  )}
-                >
-                  <Calendar className="w-3.5 h-3.5" />
-                </button>
+        {/* Top Controls: Mode Switcher + Date Picker */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <Segmented size="sm" value={mode} onChange={setMode} options={[{ v: 'quick', label: 'كل المحافظ' }, { v: 'detail', label: 'تفصيلي بالأصول' }]} />
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={date}
+              max={todayStr()}
+              onChange={e => { setDate(e.target.value); setLastDate('snapshot', e.target.value); setSuccessMsg(null); }}
+              className={cx(inputCls, '!w-auto !py-1.5 text-xs')}
+              title={editDate ? "يمكنك تعديل التاريخ وسينتقل التسجيل تلقائياً للتاريخ الجديد" : undefined}
+            />
+            <button
+              type="button"
+              onClick={() => { setDate(todayStr()); setLastDate('snapshot', todayStr()); setSuccessMsg(null); }}
+              title="تعيين تاريخ اليوم"
+              className={cx(
+                'p-2 rounded-xl border transition-all shrink-0',
+                date === todayStr()
+                  ? 'border-orange-500/40 bg-orange-500/10 text-orange-500'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:text-orange-500 hover:border-orange-400'
               )}
-            </div>
+            >
+              <Calendar className="w-3.5 h-3.5" />
+            </button>
           </div>
+        </div>
 
-          {/* Grand Total Review Badge */}
-          <div className="flex items-center justify-between sm:justify-end gap-2 pr-1">
-            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">إجمالي المحافظ:</span>
-            <span dir="ltr" className="text-base sm:text-lg font-black text-orange-500 dark:text-orange-400 tabular-nums bg-white dark:bg-slate-900 px-3 py-1 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-xs">
-              {fmt(grandTotal)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
-            </span>
+        {/* Dedicated Full-Width Grand Total Review Bar (Never clipped, prominent & clean) */}
+        <div className="flex items-center justify-between rounded-2xl bg-gradient-to-l from-slate-900 to-slate-800 dark:from-slate-800 dark:to-slate-900 px-4 py-2.5 text-white shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-300">إجمالي القيمة السوقية لكل المحافظ:</span>
+            {editDate && <span className="text-[9px] font-black text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">وضع التعديل</span>}
+          </div>
+          <div dir="ltr" className="text-xl font-black text-orange-400 tabular-nums">
+            {fmt(grandTotal)} <span className="text-xs font-bold text-slate-400">ج.م</span>
           </div>
         </div>
 
