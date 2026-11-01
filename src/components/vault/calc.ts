@@ -395,19 +395,20 @@ export function profitTotals(rows: VaultMonthProfit[]) {
  * - المستخدم: 330,000 ج.م
  * - الشريك (لولو): 570,000 ج.م
  * - إجمالي رأس المال المرجعي: 900,000 ج.م
+ * مفصولة تماماً ومستقلة عن حركات الكاش الفعلية التي يقوم بها المستخدم.
  * القيمة السوقية وأرباح المحفظة ومؤشرات النمو (TWR, CAGR, Drawdown)
  * تنعكس بسلاسة وبشكل منتظم ومستمر على كلا الطرفين بدون أي هبوط وهمي. */
 export function partnerSplit(
   pts: Point[],
-  partnerFlows: VaultCashflow[],
+  partnerSettings?: { partnerCapital?: number; myCapital?: number },
+  partnerFlows: VaultCashflow[] = [],
   openingFlows: VaultCashflow[] = []
 ): { partner: Point[]; mine: Point[]; hasPartner: boolean } {
-  const flows = [...partnerFlows].sort((a, b) => a.date.localeCompare(b.date));
-  if (!pts.length || !flows.length) return { partner: [], mine: pts, hasPartner: false };
+  if (!pts.length) return { partner: [], mine: pts, hasPartner: false };
 
-  // أصل رأس المال المودع الثابت لكل طرف
-  const myBaseCap = openingFlows.reduce((a, c) => a + c.amount, 0) || 330000;
-  const partnerTotalCap = flows.reduce((a, c) => a + signed(c), 0) || 570000;
+  // أصل رأس المال المودع الثابت لكل طرف من الإعدادات المرجعية المفصولة
+  const myBaseCap = partnerSettings?.myCapital ?? (openingFlows.reduce((a, c) => a + c.amount, 0) || 330000);
+  const partnerTotalCap = partnerSettings?.partnerCapital ?? (partnerFlows.reduce((a, c) => a + signed(c), 0) || 570000);
   const totalBaseCap = myBaseCap + partnerTotalCap;
 
   const myRatio = totalBaseCap > 0 ? myBaseCap / totalBaseCap : 33 / 90;

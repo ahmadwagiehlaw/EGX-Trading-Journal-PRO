@@ -26,9 +26,17 @@ export interface VaultTag {
   emoji: string;
 }
 
+export interface VaultPartnerSettings {
+  enabled: boolean;
+  name: string;
+  partnerCapital?: number; // رأس مال الشريك المرجعي المعتمد (مثلاً 570000)
+  myCapital?: number; // أصل رأس مال المستخدم المرجعي (مثلاً 330000)
+  profitShare?: number; // نسبة الشريك من الأرباح (افتراضياً 40)
+}
+
 export interface VaultSettings {
   portfolios: VaultPortfolio[];
-  partner: { enabled: boolean; name: string };
+  partner: VaultPartnerSettings;
   tags: { deposit: VaultTag[]; withdrawal: VaultTag[] };
   chartDirection?: 'rtl' | 'ltr'; // افتراضياً rtl
 }
@@ -75,7 +83,7 @@ export const DEFAULT_SETTINGS: VaultSettings = {
     { id: 'mubasher', name: 'مباشر', color: '#3b82f6', active: true },
     { id: 'hermes', name: 'هيرميس', color: '#10b981', active: true },
   ],
-  partner: { enabled: false, name: 'الشريك' },
+  partner: { enabled: false, name: 'الشريك', partnerCapital: 570000, myCapital: 330000, profitShare: 40 },
   tags: {
     deposit: [
       { label: 'زيادة رأس المال', emoji: '🚀' },

@@ -42,8 +42,8 @@ function VaultInner() {
 
   const partnerFlows = useMemo(() => cashflows.filter(c => c.partner && scopeIds.includes(c.portfolioId)), [cashflows, scopeIds]);
   const openingFlows = useMemo(() => cashflows.filter(c => c.opening && scopeIds.includes(c.portfolioId)), [cashflows, scopeIds]);
-  const split = useMemo(() => partnerSplit(base, partnerFlows, openingFlows), [base, partnerFlows, openingFlows]);
-  const partnerOn = settings.partner.enabled && split.hasPartner;
+  const split = useMemo(() => partnerSplit(base, settings.partner, partnerFlows, openingFlows), [base, settings.partner, partnerFlows, openingFlows]);
+  const partnerOn = settings.partner.enabled;
   const effLens: Lens = partnerOn ? lens : 'total';
   const pts = effLens === 'total' ? base : effLens === 'partner' ? split.partner : split.mine;
   const lastNav = base[base.length - 1]?.nav ?? 0;

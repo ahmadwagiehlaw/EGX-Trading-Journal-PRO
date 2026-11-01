@@ -1,11 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Plus, Trash2, EyeOff, Eye, Landmark, Users, ArrowUp, ArrowDown, AlertOctagon } from 'lucide-react';
+import { useState } from 'react';
+import { Plus, Trash2, EyeOff, Eye, Landmark, ArrowUp, ArrowDown, AlertOctagon } from 'lucide-react';
 import { Modal, Field, inputCls, Segmented, cx } from './ui';
 import { useVault } from './VaultContext';
 import { PORTFOLIO_COLORS, ASSET_KEYS, ASSET_META } from './types';
 import type { AssetKey } from './types';
-import type { VaultCashflow } from './types';
-import { todayStr, fmt, fmtDate } from './calc';
+import { todayStr, fmt } from './calc';
 
 type Tab = 'portfolios' | 'capital' | 'partner' | 'tags' | 'display' | 'danger';
 
@@ -26,61 +25,6 @@ function TagChip({ label, emoji, onRename, onRemove }: { label: string; emoji: s
   );
 }
 
-function FlowEditRow({ c, name, onUpdate, onDelete }: { c: VaultCashflow; name?: string; onUpdate: (p: Partial<VaultCashflow>) => void; onDelete: () => void }) {
-  const [date, setDate] = useState(c.date);
-  const [amt, setAmt] = useState(String(c.amount));
-
-  useEffect(() => {
-    setDate(c.date);
-    setAmt(String(c.amount));
-  }, [c.date, c.amount]);
-
-  const saveDate = (d: string) => {
-    if (d && d !== c.date) onUpdate({ date: d });
-  };
-
-  const saveAmt = (a: string) => {
-    const n = parseFloat(a);
-    if (n > 0 && n !== c.amount) onUpdate({ amount: n });
-  };
-
-  return (
-    <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 text-xs font-bold bg-slate-50/80 dark:bg-slate-800/40 p-2 rounded-2xl border border-slate-100 dark:border-slate-800">
-      <div className="flex items-center gap-1.5 shrink-0">
-        <input
-          type="date"
-          value={date}
-          onChange={e => {
-            setDate(e.target.value);
-            if (e.target.value) saveDate(e.target.value);
-          }}
-          onBlur={e => saveDate(e.target.value)}
-          className={cx(inputCls, '!w-auto !py-1 text-xs')}
-        />
-        <span className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-lg border border-indigo-100 dark:border-indigo-900/40 shrink-0">
-          {c.date ? fmtDate(c.date) : ''}
-        </span>
-      </div>
-      <span className="w-14 shrink-0 truncate text-slate-500 font-bold">{name}</span>
-      <span className={c.type === 'deposit' ? 'text-emerald-500 font-black' : 'text-rose-500 font-black'}>
-        {c.type === 'deposit' ? '+' : '−'}
-      </span>
-      <input
-        inputMode="decimal"
-        dir="ltr"
-        value={amt}
-        onChange={e => setAmt(e.target.value)}
-        onBlur={e => saveAmt(e.target.value)}
-        onKeyDown={e => e.key === 'Enter' && saveAmt(amt)}
-        className={cx(inputCls, '!py-1 text-left tabular-nums !w-24 text-xs font-black')}
-      />
-      <button onClick={onDelete} title="حذف" className="p-1.5 text-rose-400 hover:text-rose-600 shrink-0">
-        <Trash2 className="w-3.5 h-3.5" />
-      </button>
-    </div>
-  );
-}
-
 export function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { settings, saveSettings, cashflows, snapshots, months, addCashflow, updateCashflow, deleteCashflow, renameTag, resetAllVaultData } = useVault();
   const [tab, setTab] = useState<Tab>('portfolios');
@@ -90,14 +34,12 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const [tagType, setTagType] = useState<'deposit' | 'withdrawal'>('deposit');
   const [tagLabel, setTagLabel] = useState('');
   const [tagEmoji, setTagEmoji] = useState('🏷️');
-  const [pf, setPf] = useState({ date: todayStr(), pid: '', amount: '', type: 'deposit' as 'deposit' | 'withdrawal' });
   const [confirmResetText, setConfirmResetText] = useState('');
   const [isResetting, setIsResetting] = useState(false);
 
   const upd = (patch: Partial<typeof settings>) => saveSettings({ ...settings, ...patch });
   const hasData = (id: string) => cashflows.some(c => c.portfolioId === id) || snapshots.some(s => s.portfolioId === id);
   const active = settings.portfolios.filter(p => p.active);
-  const pname = (id: string) => settings.portfolios.find(p => p.id === id)?.name;
 
   const movePortfolio = (index: number, direction: 'up' | 'down') => {
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
@@ -138,9 +80,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   };
 
   /* ── الشريك ── */
-  const partnerFlows = cashflows.filter(c => c.partner).sort((a, b) => a.date.localeCompare(b.date));
-  const partnerNet = partnerFlows.reduce((a, c) => a + (c.type === 'deposit' ? c.amount : -c.amount), 0);
-  const pfPid = pf.pid || active[0]?.id || '';
+  const partnerFlows = cashflows.filter(c => c.partner);
 
   return (
     <Modal open={open} onClose={onClose} title="إعدادات الخزنة" wide>
@@ -237,42 +177,88 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
             </label>
             <Field label="اسم الشريك"><input value={settings.partner.name} onChange={e => upd({ partner: { ...settings.partner, name: e.target.value } })} className={inputCls} /></Field>
 
-            <div className="rounded-2xl bg-violet-500/5 border border-violet-500/20 p-4 text-[11px] font-bold leading-6 text-violet-700 dark:text-violet-300">
-              أموال الشريك هي جزء مقتطع من رأس مال المحفظة الأساسي (لا تزيد صافي إيداعات المحفظة العامة). يتم تتبع رأس ماله وحساب نسبته وأرباحه بشكل مستقل ودقيق في عرض "الشريك" و"حصتي" فقط دون التأثير على إجمالي المحفظة.
+            <div className="rounded-2xl bg-indigo-500/5 border border-indigo-500/20 p-4 text-xs font-bold leading-6 text-indigo-700 dark:text-indigo-300">
+              💡 <b>قيم مرجعية معتمدة مفصولة تماماً:</b> هذه الأرقام هي مراجع الحصص لحساب تطور أموال كل طرف دون أي تأثير أو تضارب مع حركات الإيداع والسحب اليومية الفعلية التي تسجلها بنفسك في المحفظة.
             </div>
 
-            <div className="flex items-center justify-between rounded-2xl bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
-              <span className="flex items-center gap-2 text-xs font-black text-slate-500"><Users className="w-4 h-4" />صافي رأس مال الشريك</span>
-              <span dir="ltr" className="text-lg font-black tabular-nums">{fmt(partnerNet)}</span>
-            </div>
-
-            <div className="space-y-2">
-              {partnerFlows.length === 0 && <p className="text-center text-xs font-bold text-slate-400 py-2">لا توجد دفعات للشريك</p>}
-              {partnerFlows.map(c => (
-                <FlowEditRow key={c.id} c={c} name={pname(c.portfolioId)} onUpdate={p => updateCashflow(c.id, p)} onDelete={() => deleteCashflow(c.id)} />
-              ))}
-            </div>
-
-            <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-3 space-y-3">
-              <div className="text-[11px] font-black text-slate-500">إضافة دفعة</div>
-              <div className="grid grid-cols-2 gap-3">
-                <input type="date" value={pf.date} max={todayStr()} onChange={e => setPf(s => ({ ...s, date: e.target.value }))} className={inputCls} />
-                <select value={pfPid} onChange={e => setPf(s => ({ ...s, pid: e.target.value }))} className={inputCls}>
-                  {active.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+            {/* حقول رأس المال المرجعي الثابت لكل طرف */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-2 bg-slate-50/60 dark:bg-slate-800/30">
+                <span className="text-xs font-black text-slate-600 dark:text-slate-300">أصل رأس مالك المرجعي (لك)</span>
+                <input
+                  inputMode="decimal"
+                  dir="ltr"
+                  value={settings.partner.myCapital ?? 330000}
+                  onChange={e => upd({ partner: { ...settings.partner, myCapital: parseFloat(e.target.value) || 0 } })}
+                  placeholder="330000"
+                  className={cx(inputCls, 'text-left font-black tabular-nums text-base')}
+                />
+                <span className="text-[10px] text-slate-400 font-bold block">
+                  المسجل عند الافتتاح (100k ثاندر + 200k مباشر + 30k هيرميس)
+                </span>
               </div>
-              <div className="flex gap-2">
-                <Segmented value={pf.type} onChange={t => setPf(s => ({ ...s, type: t }))} options={[{ v: 'deposit', label: 'إيداع' }, { v: 'withdrawal', label: 'سحب' }]} />
-                <input inputMode="decimal" dir="ltr" value={pf.amount} onChange={e => setPf(s => ({ ...s, amount: e.target.value }))} placeholder="المبلغ" className={cx(inputCls, 'text-left tabular-nums')} />
-                <button
-                  disabled={!(parseFloat(pf.amount) > 0) || !pfPid}
-                  onClick={async () => {
-                    await addCashflow({ portfolioId: pfPid, type: pf.type, amount: parseFloat(pf.amount), date: pf.date, tag: 'رأس مال الشريك', emoji: '👥', partner: true });
-                    setPf(s => ({ ...s, amount: '' }));
-                  }}
-                  className="shrink-0 rounded-xl bg-violet-500 px-5 text-xs font-black text-white disabled:opacity-30">إضافة</button>
+
+              <div className="rounded-2xl border border-violet-500/30 p-4 space-y-2 bg-violet-500/[0.04]">
+                <span className="text-xs font-black text-violet-600 dark:text-violet-400">رأس مال الشريك المعتمد ({settings.partner.name})</span>
+                <input
+                  inputMode="decimal"
+                  dir="ltr"
+                  value={settings.partner.partnerCapital ?? 570000}
+                  onChange={e => upd({ partner: { ...settings.partner, partnerCapital: parseFloat(e.target.value) || 0 } })}
+                  placeholder="570000"
+                  className={cx(inputCls, 'text-left font-black tabular-nums text-base !border-violet-300 dark:!border-violet-700')}
+                />
+                <span className="text-[10px] text-violet-500/80 font-bold block">
+                  إجمالي أموال الشريك المرجعية (500k في فبراير + 70k في مايو)
+                </span>
               </div>
             </div>
+
+            {/* شريط توزيع الحصص الرأسمالية الإجمالي */}
+            {(() => {
+              const myCap = settings.partner.myCapital ?? 330000;
+              const pCap = settings.partner.partnerCapital ?? 570000;
+              const tot = myCap + pCap;
+              const myPct = tot > 0 ? (myCap / tot) * 100 : 36.7;
+              const pPct = tot > 0 ? (pCap / tot) * 100 : 63.3;
+              return (
+                <div className="rounded-2xl bg-gradient-to-l from-slate-900 to-indigo-950 p-4 text-white space-y-3 shadow-md">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                    <span>إجمالي رأس المال المشترك</span>
+                    <span dir="ltr" className="text-xl font-black tabular-nums text-white">
+                      {fmt(tot)} ج.م
+                    </span>
+                  </div>
+                  <div className="h-2.5 w-full rounded-full bg-white/10 overflow-hidden flex">
+                    <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${myPct}%` }} />
+                    <div className="h-full bg-violet-400 transition-all duration-300" style={{ width: `${pPct}%` }} />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 pt-0.5">
+                    <span>حصتك: {myPct.toFixed(1)}% ({fmt(myCap)} ج.م)</span>
+                    <span>حصة {settings.partner.name}: {pPct.toFixed(1)}% ({fmt(pCap)} ج.م)</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* تنظيف الحركات السابقة إن وجدت حتى لا تتداخل */}
+            {partnerFlows.length > 0 && (
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-3.5 space-y-2 bg-slate-50 dark:bg-slate-800/40">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold text-slate-500">
+                    توجد {partnerFlows.length} حركة مسجلة كحركات كاش للشريك (لم تعد مطلوبة لأن رأس المال أصبح مرجعياً صريحاً):
+                  </span>
+                  <button
+                    onClick={async () => {
+                      for (const c of partnerFlows) await deleteCashflow(c.id);
+                    }}
+                    className="shrink-0 px-3 py-1 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold transition"
+                  >
+                    تنظيف وحذف الحركات القديمة
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
