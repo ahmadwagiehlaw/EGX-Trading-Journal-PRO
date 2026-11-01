@@ -194,7 +194,13 @@ function VaultInner() {
             <div className="space-y-4">
               <Hero pts={pts} stats={stats} scopeLabel={scopeP?.name ?? 'الكل'} lensLabel={lensLabel} />
               <MainChart pts={pts} accent={scopeP?.color ?? '#f97316'} dir={settings.chartDirection ?? 'rtl'} />
-              <WealthGrowthDecomposition stats={stats} lensLabel={`${scopeP?.name ?? 'الكل'} · ${lensLabel}`} />
+              <WealthGrowthDecomposition
+                stats={stats}
+                lensLabel={`${scopeP?.name ?? 'الكل'} · ${lensLabel}`}
+                scopeIds={scopeIds}
+                factor={factor}
+                onFocusPortfolio={pid => setScope(pid)}
+              />
               <KpiGrid stats={stats} />
               <Insights stats={stats} />
             </div>
