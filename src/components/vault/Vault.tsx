@@ -41,7 +41,8 @@ function VaultInner() {
   const base = useMemo(() => buildSeries(snapshots, cashflows, scopeIds), [snapshots, cashflows, scopeIds]);
 
   const partnerFlows = useMemo(() => cashflows.filter(c => c.partner && scopeIds.includes(c.portfolioId)), [cashflows, scopeIds]);
-  const split = useMemo(() => partnerSplit(base, partnerFlows), [base, partnerFlows]);
+  const openingFlows = useMemo(() => cashflows.filter(c => c.opening && scopeIds.includes(c.portfolioId)), [cashflows, scopeIds]);
+  const split = useMemo(() => partnerSplit(base, partnerFlows, openingFlows), [base, partnerFlows, openingFlows]);
   const partnerOn = settings.partner.enabled && split.hasPartner;
   const effLens: Lens = partnerOn ? lens : 'total';
   const pts = effLens === 'total' ? base : effLens === 'partner' ? split.partner : split.mine;
@@ -201,7 +202,7 @@ function VaultInner() {
             <div className="space-y-4">
               <Hero pts={pts} stats={stats} scopeLabel={scopeP?.name ?? 'الكل'} lensLabel={lensLabel} />
               <MainChart pts={pts} accent={scopeP?.color ?? '#f97316'} dir={settings.chartDirection ?? 'rtl'} />
-              <WealthGrowthDecomposition stats={stats} />
+              <WealthGrowthDecomposition stats={baseStats} />
               <KpiGrid stats={stats} />
               <Insights stats={stats} />
             </div>

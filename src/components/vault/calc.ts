@@ -390,16 +390,21 @@ export function profitTotals(rows: VaultMonthProfit[]) {
   );
 }
 
-/* ───────── Partner split (Fixed Capital Reference) ─────────
- * رأس مال الشريك رقم مرجعي ثابت ومحدد في الخزنة.
- * لا يتم تضخيم وحدات الشريك كصندوق، بل يُحفظ رأس ماله المحدد
- * وكل نمو وأرباح إضافية في المحفظة السوقية تزيد حصة المستخدم.
- * أرباح التداول الشهرية يتم تسجيلها وتجنيبها وتوزيعها بشكل مستقل في تبويب الأرباح (60% للمستخدم / 40% للشريك). */
-export function partnerSplit(pts: Point[], partnerFlows: VaultCashflow[]): { partner: Point[]; mine: Point[]; hasPartner: boolean } {
+/* ───────── Partner split (Theoretical Portfolio Reflection) ─────────
+ * الحسابات الأساسية والدقيقة ومؤشرات الأداء (TWR, CAGR, Drawdown)
+ * تُحسب أولاً على إجمالي المحفظة ككل، ثم تنعكس نظرياً على حصة كل طرف
+ * بناءً على رأس المال المرجعي المسجل في الإعدادات (330 ألف للمستخدم، و570 ألف للشريك).
+ * هذا يحمي حصة المستخدم من أي هبوط وهمي (-98%)، ويعكس نمو المحفظة الحقيقي للشريك. */
+export function partnerSplit(
+  pts: Point[],
+  partnerFlows: VaultCashflow[],
+  openingFlows: VaultCashflow[] = []
+): { partner: Point[]; mine: Point[]; hasPartner: boolean } {
   const flows = [...partnerFlows].sort((a, b) => a.date.localeCompare(b.date));
   if (!pts.length || !flows.length) return { partner: [], mine: pts, hasPartner: false };
 
   const firstDate = flows[0].date;
+  const myBaseCap = openingFlows.reduce((a, c) => a + c.amount, 0) || 330000;
 
   const partnerCapAt = (d: string) => {
     let cap = 0;
@@ -409,72 +414,39 @@ export function partnerSplit(pts: Point[], partnerFlows: VaultCashflow[]): { par
     return Math.max(0, cap);
   };
 
-  const partnerFlowAt = (d: string) => {
-    let fl = 0;
-    for (const f of flows) {
-      if (f.date === d) fl += signed(f);
-    }
-    return fl;
-  };
-
-  const full = pts.map(p => {
+  // حصة المستخدم: انعكاس مباشر ونظيف من المحفظة
+  const mine: Point[] = pts.map(p => {
     const pdep = partnerCapAt(p.date);
-    const pflow = partnerFlowAt(p.date);
-    // رأس مال الشريك في الخزنة محمي ومثبت برقم إيداعاته المرجعية (ولا يتجاوز قيمة المحفظة لو حدثت خسائر حادة)
-    const pnav = Math.min(p.nav, pdep);
-    const mineNav = Math.max(0, p.nav - pnav);
-    // إيداعات المستخدم هي إجمالي إيداعات المحفظة مخصوماً منها رأس مال الشريك المرجعي
-    const mineDeposits = Math.max(0, p.deposits - pdep);
-    const mineFlow = p.flow - pflow;
-    return { p, pnav, pdep, pflow, mineNav, mineDeposits, mineFlow };
-  });
-
-  const mine: Point[] = full.map(({ p, mineNav, mineDeposits, mineFlow }) => {
-    const k = p.nav > 0 ? mineNav / p.nav : 0;
-    const profit = mineNav - mineDeposits;
+    const totalCap = myBaseCap + pdep;
+    const myRatio = totalCap > 0 ? (pdep > 0 ? myBaseCap / totalCap : 1) : 1;
     return {
       ...p,
-      nav: mineNav,
-      deposits: mineDeposits,
-      flow: mineFlow,
-      profit,
-      ret: mineDeposits > 0 ? (profit / mineDeposits) * 100 : 0,
-      index: 1,
-      dd: 0,
-      by: Object.fromEntries(Object.entries(p.by).map(([a, v]) => [a, v * k])),
+      nav: p.nav * myRatio,
+      deposits: p.deposits * myRatio,
+      flow: p.flow * myRatio,
+      profit: p.profit * myRatio,
+      ret: p.ret,
+      index: p.index,
+      dd: p.dd,
+      by: Object.fromEntries(Object.entries(p.by).map(([a, v]) => [a, v * myRatio])),
     };
   });
 
-  // إعادة حساب مؤشر النمو الزمني (TWR) لحصة المستخدم بشكل صحيح
-  let mineIdx = 1;
-  let minePeak = 1;
-  mine.forEach((m, i) => {
-    if (i > 0) {
-      const prev = mine[i - 1];
-      const denom = prev.nav + m.flow * 0.5;
-      const r = denom > 0 ? (m.nav - prev.nav - m.flow) / denom : 0;
-      mineIdx *= 1 + Math.max(-0.9, Math.min(10, r));
-    }
-    minePeak = Math.max(minePeak, mineIdx);
-    m.index = mineIdx;
-    m.dd = mineIdx / minePeak - 1;
-  });
-
-  const start = full.filter(x => x.p.date >= firstDate);
-  const partner: Point[] = start.map(({ p, pnav, pdep, pflow }) => {
-    const k = p.nav > 0 ? pnav / p.nav : 0;
-    const profit = pnav - pdep;
-    const ret = pdep > 0 ? (profit / pdep) * 100 : 0;
+  // حصة الشريك: انعكاس أداء ونمو المحفظة على رأس ماله
+  const partner: Point[] = pts.filter(p => p.date >= firstDate).map(p => {
+    const pdep = partnerCapAt(p.date);
+    const totalCap = myBaseCap + pdep;
+    const pRatio = totalCap > 0 ? pdep / totalCap : 0;
     return {
       ...p,
-      nav: pnav,
-      deposits: pdep,
-      flow: pflow,
-      profit,
-      ret,
-      index: 1,
-      dd: pdep > 0 && pnav < pdep ? pnav / pdep - 1 : 0,
-      by: Object.fromEntries(Object.entries(p.by).map(([a, v]) => [a, v * k])),
+      nav: p.nav * pRatio,
+      deposits: p.deposits * pRatio,
+      flow: p.flow * pRatio,
+      profit: p.profit * pRatio,
+      ret: p.ret,
+      index: p.index,
+      dd: p.dd,
+      by: Object.fromEntries(Object.entries(p.by).map(([a, v]) => [a, v * pRatio])),
     };
   });
 

@@ -225,137 +225,125 @@ export function WealthGrowthDecomposition({ stats }: { stats: Stats }) {
   const retOnCapital = s.netDeposits > 0 ? (s.profit / s.netDeposits) * 100 : 0;
 
   return (
-    <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900/90 dark:via-slate-900/40 dark:to-slate-900/90 p-5 sm:p-6 shadow-sm space-y-5">
+    <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm p-4 sm:p-5 shadow-sm space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-2xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0">
-            <PieChart className="w-5 h-5" />
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-indigo-500/20">
+            <PieChart className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <span>تحليل مصادر نمو القيمة السوقية</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                إيداعات vs أرباح
+            <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+              <span>تحليل نمو المحفظة</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                إجمالي المحفظة
               </span>
             </h3>
-            <p className="text-[11px] font-bold text-slate-400">
-              تفكيك نمو المحفظة لمعرفة مصدر الزيادة: هل هي ناتجة عن ضخ أموال جديدة أم من أرباح الاستثمار الحقيقية؟
+            <p className="text-[10px] sm:text-[11px] font-bold text-slate-400">
+              تفكيك القيمة السوقية بين رأس المال المودع وأرباح الاستثمار
             </p>
           </div>
         </div>
+        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-[11px] font-black text-slate-500">
+          <span>عائد رأس المال:</span>
+          <span dir="ltr" className={cx('tabular-nums font-bold', isProfit ? 'text-emerald-500' : 'text-rose-500')}>
+            {retOnCapital >= 0 ? '+' : ''}{retOnCapital.toFixed(1)}%
+          </span>
+        </div>
       </div>
 
-      {/* 3 Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* 3 Streamlined Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
         {/* 1. Total Market Value */}
-        <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 p-4 space-y-1">
-          <span className="text-[11px] font-bold text-slate-400">القيمة السوقية الإجمالية (NAV)</span>
-          <div dir="ltr" className="text-2xl font-black text-slate-900 dark:text-white tabular-nums text-right">
-            {fmt(s.nav)} <span className="text-xs font-bold text-slate-400">ج.م</span>
+        <div className="rounded-2xl border border-slate-100 dark:border-slate-800/70 bg-slate-50/70 dark:bg-slate-800/40 p-3 sm:p-3.5 space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-400">القيمة السوقية (NAV)</span>
+            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300">
+              المركز المالي
+            </span>
           </div>
-          <span className="text-[10px] font-bold text-slate-400 block">إجمالي المركز المالي الحالي</span>
+          <div dir="ltr" className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums text-right">
+            {fmt(s.nav)} <span className="text-[11px] font-bold text-slate-400">ج.م</span>
+          </div>
         </div>
 
         {/* 2. Net Capital Deposits */}
-        <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/[0.04] p-4 space-y-1">
+        <div className="rounded-2xl border border-indigo-500/15 bg-indigo-500/[0.03] p-3 sm:p-3.5 space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-indigo-500 dark:text-indigo-400">صافي رأس المال المودع</span>
-            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-600 dark:text-indigo-300">
-              {depShare.toFixed(1)}% من المحفظة
+            <span className="text-[11px] font-bold text-indigo-500 dark:text-indigo-400">رأس المال المودع</span>
+            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-300">
+              {depShare.toFixed(1)}% من القيمة
             </span>
           </div>
-          <div dir="ltr" className="text-2xl font-black text-indigo-600 dark:text-indigo-400 tabular-nums text-right">
-            {fmt(s.netDeposits)} <span className="text-xs font-bold text-slate-400">ج.م</span>
+          <div dir="ltr" className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400 tabular-nums text-right">
+            {fmt(s.netDeposits)} <span className="text-[11px] font-bold text-slate-400">ج.م</span>
           </div>
-          <span className="text-[10px] font-bold text-slate-400 block">أموال مدفوعة من جيبك (إيداعات − سحوبات)</span>
         </div>
 
         {/* 3. Cumulative Market Profit */}
         <div className={cx(
-          'rounded-2xl border p-4 space-y-1',
+          'rounded-2xl border p-3 sm:p-3.5 space-y-1',
           isProfit
-            ? 'border-emerald-500/20 bg-emerald-500/[0.04]'
-            : 'border-rose-500/20 bg-rose-500/[0.04]'
+            ? 'border-emerald-500/15 bg-emerald-500/[0.03]'
+            : 'border-rose-500/15 bg-rose-500/[0.03]'
         )}>
           <div className="flex items-center justify-between">
             <span className={cx('text-[11px] font-bold', isProfit ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400')}>
-              صافي أرباح السوق والاستثمار
+              صافي أرباح السوق
             </span>
             <span className={cx(
               'text-[10px] font-black px-1.5 py-0.5 rounded',
-              isProfit ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300' : 'bg-rose-500/15 text-rose-600 dark:text-rose-300'
+              isProfit ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'bg-rose-500/10 text-rose-600 dark:text-rose-300'
             )}>
-              {fmtPct(profitShare, 1)} مساهمة
+              {fmtPct(profitShare, 1)} أرباح
             </span>
           </div>
-          <div dir="ltr" className={cx('text-2xl font-black tabular-nums text-right', isProfit ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-            {fmtSigned(s.profit)} <span className="text-xs font-bold text-slate-400">ج.م</span>
+          <div dir="ltr" className={cx('text-xl sm:text-2xl font-black tabular-nums text-right', isProfit ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+            {fmtSigned(s.profit)} <span className="text-[11px] font-bold text-slate-400">ج.م</span>
           </div>
-          <span className="text-[10px] font-bold text-slate-400 block">
-            {isProfit ? `عائد +${retOnCapital.toFixed(1)}% فوق رأس المال المودع` : `تراجع غير محقق بنسبة ${Math.abs(retOnCapital).toFixed(1)}%`}
-          </span>
         </div>
       </div>
 
-      {/* Progress / Contribution Stacked Bar */}
-      <div className="bg-slate-100/70 dark:bg-slate-800/50 rounded-2xl p-4 space-y-2.5 border border-slate-200/50 dark:border-slate-800/40">
-        <div className="flex items-center justify-between text-xs font-bold">
-          <span className="text-slate-600 dark:text-slate-300">هيكل تكوين القيمة السوقية الحالية</span>
-          <span className="text-[11px] font-mono text-slate-400">
-            {depShare.toFixed(1)}% رأس مال {isProfit ? `+ ${profitShare.toFixed(1)}% أرباح سوقية` : `(هبوط ${Math.abs(profitShare).toFixed(1)}%)`}
-          </span>
-        </div>
-        <div className="w-full h-3 rounded-full bg-slate-200 dark:bg-slate-700/60 overflow-hidden flex">
+      {/* Visual Composition Progress Bar */}
+      <div className="space-y-2 pt-1">
+        <div className="h-3 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex shadow-inner">
           {isProfit ? (
             <>
               <div
-                className="h-full bg-indigo-500 transition-all duration-700"
+                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-all duration-500"
                 style={{ width: `${depShare}%` }}
                 title={`رأس المال المودع: ${depShare.toFixed(1)}%`}
               />
               <div
-                className="h-full bg-emerald-400 transition-all duration-700"
+                className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-500"
                 style={{ width: `${Math.max(0, 100 - depShare)}%` }}
-                title={`الأرباح السوقية: ${profitShare.toFixed(1)}%`}
+                title={`أرباح السوق: ${profitShare.toFixed(1)}%`}
               />
             </>
           ) : (
             <div
-              className="h-full bg-gradient-to-r from-indigo-500 to-rose-500 transition-all duration-700"
+              className="h-full bg-gradient-to-r from-indigo-500 to-rose-500 transition-all duration-500"
               style={{ width: '100%' }}
-              title="صافي الإيداعات يتجاوز القيمة السوقية الحالية"
             />
           )}
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold pt-1">
+
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold">
           <div className="flex items-center gap-3">
             <span className="inline-flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
-              <i className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
-              <span>رأس المال المودع: {fmt(s.netDeposits)} ج.م ({depShare.toFixed(1)}%)</span>
+              <span className="w-2 h-2 rounded-full bg-indigo-500" />
+              <span>رأس المال: {fmt(s.netDeposits)} ج.م ({depShare.toFixed(1)}%)</span>
             </span>
             <span className={cx('inline-flex items-center gap-1.5', isProfit ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500')}>
-              <i className={cx('w-2.5 h-2.5 rounded-full', isProfit ? 'bg-emerald-400' : 'bg-rose-500')} />
-              <span>{isProfit ? `الأرباح السوقية: +${fmt(s.profit)} ج.م` : `تراجع سوقي: ${fmt(s.profit)} ج.م`} ({Math.abs(profitShare).toFixed(1)}%)</span>
+              <span className={cx('w-2 h-2 rounded-full', isProfit ? 'bg-emerald-500' : 'bg-rose-500')} />
+              <span>{isProfit ? `أرباح السوق: +${fmt(s.profit)} ج.م` : `تراجع: ${fmt(s.profit)} ج.م`} ({Math.abs(profitShare).toFixed(1)}%)</span>
             </span>
           </div>
-          <span className="text-[10px] text-slate-400 font-normal">المعادلة: القيمة السوقية = الإيداعات + أرباح السوق</span>
-        </div>
-      </div>
-
-      {/* Intelligent Explanation / Analysis Callout */}
-      <div className="flex items-start gap-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800/60 p-3.5 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-        <Sparkles className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-        <div>
-          {isProfit ? (
-            <p>
-              من أصل محفظتك الحالية البالغة <b className="text-slate-900 dark:text-white">{fmt(s.nav)} ج.م</b>: تمثل إيداعاتك الرأسمالية <b className="text-indigo-600 dark:text-indigo-400">{fmt(s.netDeposits)} ج.م</b> ({depShare.toFixed(1)}%)، بينما نمت ثروتك بمقدار <b className="text-emerald-600 dark:text-emerald-400">+{fmt(s.profit)} ج.م</b> ({profitShare.toFixed(1)}%) نتيجة أرباح الأسهم وأداء الاستثمار. وهذا يعني أن رأس مالك يعمل بكفاءة ويولد عوائد حقيقية تفوق مجرد الادخار.
-            </p>
-          ) : (
-            <p>
-              صافي إيداعاتك النقدية يبلغ <b className="text-indigo-600 dark:text-indigo-400">{fmt(s.netDeposits)} ج.م</b>، بينما القيمة السوقية الحالية هي <b className="text-slate-900 dark:text-white">{fmt(s.nav)} ج.م</b>، بفارق <b className="text-rose-500">{fmt(s.profit)} ج.م</b> يمثل تراجعاً غير محقق أو إعادة تقييم للأصول. أي إيداع جديد تضخه يرفع القيمة السوقية مباشرة بنفس المقدار دون التأثير على حساب أرباح التداول.
-            </p>
-          )}
+          <span className="text-[10px] text-slate-400 font-semibold">
+            {isProfit
+              ? `✨ نمو ذاتي: كل 1,000 ج.م أودعتها حققت أرباحاً بمقدار ${Math.round(retOnCapital * 10)} ج.م`
+              : `تراجع مؤقت بنسبة ${Math.abs(retOnCapital).toFixed(1)}% من رأس المال`}
+          </span>
         </div>
       </div>
     </div>
