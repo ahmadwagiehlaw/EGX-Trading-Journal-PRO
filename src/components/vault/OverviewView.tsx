@@ -43,6 +43,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel }: { pts: Point[]; stat
     return pts.reduce((best, cur) => (cur.nav > best.nav ? cur : best), pts[0]);
   }, [pts]);
   const toPeak = peakPt && last ? Math.max(0, peakPt.nav - last.nav) : 0;
+  const peakPct = peakPt && peakPt.nav > 0 ? Math.min(100, Math.max(0, (stats.nav / peakPt.nav) * 100)) : 100;
 
   // إجمالي الأرباح المجنية نقداً من المحفظة (جني أرباح + سداد الفيزا + أرباح الشريك)
   const harvestedCash = useMemo(() => {
@@ -59,7 +60,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel }: { pts: Point[]; stat
       <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-orange-500/20 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-28 -right-10 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl" />
       {spark.length > 1 && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 opacity-60" dir="ltr">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-44 opacity-65" dir="ltr">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={spark} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
               <defs>
@@ -69,70 +70,92 @@ export function Hero({ pts, stats, scopeLabel, lensLabel }: { pts: Point[]; stat
                 </linearGradient>
               </defs>
               <YAxis hide domain={['dataMin', 'dataMax']} />
-              <Area type="monotone" dataKey="nav" stroke={up ? '#34d399' : '#fb7185'} strokeWidth={2} fill="url(#heroSpark)" isAnimationActive />
+              <Area type="monotone" dataKey="nav" stroke={up ? '#34d399' : '#fb7185'} strokeWidth={2.5} fill="url(#heroSpark)" isAnimationActive />
             </AreaChart>
           </ResponsiveContainer>
         </div>
       )}
+
       <div className="relative">
-        <div className="flex flex-wrap items-center gap-2 text-[11px] font-black">
-          <span className="rounded-full bg-white/10 px-3 py-1 backdrop-blur">{scopeLabel}</span>
-          <span className="rounded-full bg-white/10 px-3 py-1 backdrop-blur">{lensLabel}</span>
-          {last && <span className="text-slate-400 font-bold">آخر تحديث {fmtDate(last.date)}</span>}
+        {/* Top Row: Right = Main NAV | Left = Visual Peak Target & Cash Velocity Widget */}
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
+          {/* Right Side: Scope Badges + Giant Market Value */}
+          <div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-black">
+              <span className="rounded-full bg-white/10 px-3 py-1 backdrop-blur">{scopeLabel}</span>
+              <span className="rounded-full bg-white/10 px-3 py-1 backdrop-blur">{lensLabel}</span>
+              {last && <span className="text-slate-400 font-bold">آخر تحديث {fmtDate(last.date)}</span>}
+            </div>
+            <div className="mt-4 text-xs font-bold text-slate-400">القيمة السوقية الحالية</div>
+            <div className="mt-1 flex flex-wrap items-baseline gap-3">
+              <span dir="ltr" className="text-4xl sm:text-6xl font-black tabular-nums tracking-tight">
+                <CountUp value={stats.nav} format={n => fmt(n)} />
+              </span>
+              <span className="text-sm font-bold text-slate-400">ج.م</span>
+              <span className={cx('flex items-center gap-1 rounded-full px-3 py-1 text-xs font-black', up ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300')}>
+                {up ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                <span dir="ltr">{fmtPct(stats.retPct)}</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Left Side: Sleek Glassmorphic Peak Target & Cash Widget (Fills the Left Space) */}
+          <div className="w-full lg:w-[350px] rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-md p-3.5 space-y-3 shadow-inner">
+            {peakPt && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-black text-amber-300">
+                    <Crown className="w-3.5 h-3.5 shrink-0" />
+                    <span>القمة التاريخية</span>
+                    <b dir="ltr" className="text-white tabular-nums font-black">{fmt(peakPt.nav)}</b>
+                  </span>
+                  <span className={cx(
+                    'rounded-full px-2 py-0.5 text-[10px] font-black',
+                    toPeak > 0 ? 'bg-amber-400/15 text-amber-300' : 'bg-emerald-400/20 text-emerald-300'
+                  )}>
+                    {toPeak > 0 ? `متبقي ${fmtCompact(toPeak)} · ${peakPct.toFixed(0)}%` : 'في القمة ✨ 100%'}
+                  </span>
+                </div>
+
+                {/* Visual Progress Bar to Peak */}
+                <div className="relative h-2 w-full rounded-full bg-white/10 overflow-hidden" dir="ltr">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-emerald-400 to-amber-300 transition-all duration-700"
+                    style={{ width: `${peakPct}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* 2 Compact Mini-Pills inside the Left Widget */}
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10">
+              <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
+                <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
+                  <Banknote className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                  <span>جني نقدي</span>
+                </span>
+                <b dir="ltr" className="text-xs font-black tabular-nums text-emerald-300">+{fmtCompact(harvestedCash)}</b>
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
+                <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
+                  <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span>شهرياً</span>
+                </span>
+                <b dir="ltr" className={cx('text-xs font-black tabular-nums', (monthlyGainRate ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
+                  {monthlyGainRate !== null ? fmtCompact(monthlyGainRate) : '—'}
+                </b>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="mt-5 text-xs font-bold text-slate-400">القيمة السوقية الحالية</div>
-        <div className="mt-1 flex flex-wrap items-baseline gap-3">
-          <span dir="ltr" className="text-4xl sm:text-6xl font-black tabular-nums tracking-tight">
-            <CountUp value={stats.nav} format={n => fmt(n)} />
-          </span>
-          <span className="text-sm font-bold text-slate-400">ج.م</span>
-          <span className={cx('flex items-center gap-1 rounded-full px-3 py-1 text-xs font-black', up ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300')}>
-            {up ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-            <span dir="ltr">{fmtPct(stats.retPct)}</span>
-          </span>
-        </div>
+
+        {/* Bottom 4 KPIs — Unobstructed over the Glowing Sparkline Chart */}
         <div className="mt-7 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6">
           <Mini label="صافي الإيداعات" value={fmt(stats.netDeposits)} />
           <Mini label="إجمالي العوائد" value={fmtSigned(stats.profit)} color={up ? 'text-emerald-300' : 'text-rose-300'} />
           <Mini label="العائد الزمني (TWR)" value={fmtPct(stats.twrPct)} color={stats.twrPct >= 0 ? 'text-emerald-300' : 'text-rose-300'} />
           <Mini label="العائد السنوي المركب" value={stats.annualized === null ? '—' : fmtPct(stats.annualized, 1)} color={(stats.annualized ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'} />
-        </div>
-
-        {/* High-Water Mark & Cash Harvest Executive Strip */}
-        <div className="mt-6 pt-4 border-t border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-          {peakPt && (
-            <div className="flex items-center justify-between sm:justify-start gap-2 rounded-xl bg-white/[0.06] px-3 py-2 backdrop-blur-sm">
-              <div className="flex items-center gap-1.5 text-amber-300 font-bold">
-                <Crown className="w-3.5 h-3.5 shrink-0" />
-                <span>القمة التاريخية:</span>
-              </div>
-              <div className="font-black tabular-nums text-white" dir="ltr">
-                {fmt(peakPt.nav)} <span className="text-[10px] font-bold text-slate-300">({toPeak > 0 ? `متبقي +${fmtCompact(toPeak)}` : 'قمة جديدة ✨'})</span>
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between sm:justify-start gap-2 rounded-xl bg-white/[0.06] px-3 py-2 backdrop-blur-sm">
-            <div className="flex items-center gap-1.5 text-emerald-300 font-bold">
-              <Banknote className="w-3.5 h-3.5 shrink-0" />
-              <span>أرباح جُنيت نقداً:</span>
-            </div>
-            <div className="font-black tabular-nums text-emerald-300" dir="ltr">
-              +{fmt(harvestedCash)} <span className="text-[10px] font-bold text-slate-300">ج.م</span>
-            </div>
-          </div>
-
-          {monthlyGainRate !== null && (
-            <div className="flex items-center justify-between sm:justify-start gap-2 rounded-xl bg-white/[0.06] px-3 py-2 backdrop-blur-sm">
-              <div className="flex items-center gap-1.5 text-indigo-300 font-bold">
-                <Zap className="w-3.5 h-3.5 shrink-0" />
-                <span>متوسط النمو الشهري:</span>
-              </div>
-              <div className={cx('font-black tabular-nums', monthlyGainRate >= 0 ? 'text-emerald-300' : 'text-rose-300')} dir="ltr">
-                {fmtSigned(monthlyGainRate)} <span className="text-[10px] font-bold text-slate-300">ج.م/شهر</span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
