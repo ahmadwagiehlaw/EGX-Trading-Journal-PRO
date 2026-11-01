@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { Plus, Trash2, EyeOff, Eye, Landmark, ArrowUp, ArrowDown, AlertOctagon } from 'lucide-react';
+import { Plus, Trash2, EyeOff, Eye, ArrowUp, ArrowDown, AlertOctagon } from 'lucide-react';
 import { Modal, Field, inputCls, Segmented, cx } from './ui';
 import { useVault } from './VaultContext';
 import { PORTFOLIO_COLORS, ASSET_KEYS, ASSET_META } from './types';
 import type { AssetKey } from './types';
-import { todayStr, fmt } from './calc';
 
-type Tab = 'portfolios' | 'capital' | 'partner' | 'tags' | 'display' | 'danger';
+type Tab = 'portfolios' | 'partner' | 'tags' | 'display' | 'danger';
 
 function TagChip({ label, emoji, onRename, onRemove }: { label: string; emoji: string; onRename: (to: string) => void; onRemove: () => void }) {
   const [v, setV] = useState(label);
@@ -26,20 +25,19 @@ function TagChip({ label, emoji, onRename, onRemove }: { label: string; emoji: s
 }
 
 export function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { settings, saveSettings, cashflows, snapshots, months, addCashflow, updateCashflow, deleteCashflow, renameTag, resetAllVaultData } = useVault();
+  const { settings, saveSettings, cashflows, snapshots, months, deleteCashflow, renameTag, resetAllVaultData } = useVault();
   const [tab, setTab] = useState<Tab>('portfolios');
   const [newName, setNewName] = useState('');
-  const [openAmt, setOpenAmt] = useState<Record<string, string>>({});
-  const [openDateState, setOpenDate] = useState<string | null>(null);
   const [tagType, setTagType] = useState<'deposit' | 'withdrawal'>('deposit');
   const [tagLabel, setTagLabel] = useState('');
   const [tagEmoji, setTagEmoji] = useState('🏷️');
   const [confirmResetText, setConfirmResetText] = useState('');
   const [isResetting, setIsResetting] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
+  const [cleanDone, setCleanDone] = useState(false);
 
   const upd = (patch: Partial<typeof settings>) => saveSettings({ ...settings, ...patch });
   const hasData = (id: string) => cashflows.some(c => c.portfolioId === id) || snapshots.some(s => s.portfolioId === id);
-  const active = settings.portfolios.filter(p => p.active);
 
   const movePortfolio = (index: number, direction: 'up' | 'down') => {
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
@@ -59,26 +57,6 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
     setNewName('');
   };
 
-  /* ── رأس المال الأساسي ── */
-  const openings = cashflows.filter(c => c.opening);
-  const openingOf = (id: string) => openings.find(o => o.portfolioId === id);
-  const valueOf = (id: string) => openAmt[id] ?? (openingOf(id) ? String(openingOf(id)!.amount) : '');
-  const openDate = openDateState ?? openings[0]?.date ?? todayStr();
-  const totalCapital = active.reduce((a, p) => a + (parseFloat(valueOf(p.id)) || 0), 0);
-  const dirty = (id: string) => {
-    const n = parseFloat(valueOf(id));
-    const ex = openingOf(id);
-    return n > 0 && (!ex || ex.amount !== n || ex.date !== openDate);
-  };
-  const saveOpening = async (id: string) => {
-    const n = parseFloat(valueOf(id));
-    if (!(n > 0)) return;
-    const ex = openingOf(id);
-    if (ex) await updateCashflow(ex.id, { amount: n, date: openDate });
-    else await addCashflow({ portfolioId: id, type: 'deposit', amount: n, date: openDate, tag: 'رأس المال الأساسي', emoji: '🏛️', opening: true });
-    setOpenAmt(o => { const c = { ...o }; delete c[id]; return c; });
-  };
-
   /* ── الشريك ── */
   const partnerFlows = cashflows.filter(c => c.partner);
 
@@ -86,7 +64,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
     <Modal open={open} onClose={onClose} title="إعدادات الخزنة" wide>
       <div className="space-y-5">
         <Segmented value={tab} onChange={setTab} options={[
-          { v: 'portfolios', label: 'المحافظ' }, { v: 'capital', label: 'رأس المال الأساسي' }, { v: 'partner', label: 'الشريك' }, { v: 'tags', label: 'التصنيفات' }, { v: 'display', label: 'طريقة العرض والشارت' }, { v: 'danger', label: 'إعادة ضبط الخزنة' }
+          { v: 'portfolios', label: 'المحافظ' }, { v: 'partner', label: 'الشريك' }, { v: 'tags', label: 'التصنيفات' }, { v: 'display', label: 'طريقة العرض والشارت' }, { v: 'danger', label: 'إعادة ضبط الخزنة' }
         ]} />
 
         {tab === 'portfolios' && (
@@ -148,27 +126,6 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
           </div>
         )}
 
-        {tab === 'capital' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between rounded-2xl bg-gradient-to-l from-slate-900 to-indigo-950 px-5 py-4 text-white">
-              <span className="text-xs font-bold text-slate-300">إجمالي رأس المال الأساسي</span>
-              <span dir="ltr" className="text-2xl font-black tabular-nums">{fmt(totalCapital)}</span>
-            </div>
-            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-6">سجّل رأس المال الأساسي لكل محفظة كإيداع افتتاحي، وتقدر تعدّله في أي وقت. هو أصل الإيداعات اللي كل العوائد بتتحسب عليه.</p>
-            <Field label="تاريخ الافتتاح"><input type="date" value={openDate} max={todayStr()} onChange={e => setOpenDate(e.target.value)} className={inputCls} /></Field>
-            {active.map(p => (
-              <div key={p.id} className="flex items-center gap-3">
-                <i className="w-3 h-3 rounded-full shrink-0" style={{ background: p.color }} />
-                <span className="w-20 text-sm font-black text-slate-700 dark:text-slate-200">{p.name}</span>
-                <input inputMode="decimal" dir="ltr" value={valueOf(p.id)} onChange={e => setOpenAmt(o => ({ ...o, [p.id]: e.target.value }))} placeholder="0" className={cx(inputCls, 'text-left tabular-nums')} />
-                <button disabled={!dirty(p.id)} onClick={() => saveOpening(p.id)} className={cx('shrink-0 rounded-xl px-4 py-2.5 text-xs font-black text-white disabled:opacity-30', openingOf(p.id) ? 'bg-indigo-500' : 'bg-emerald-500')}>{openingOf(p.id) ? 'تحديث' : 'تسجيل'}</button>
-                {openingOf(p.id) && <button title="حذف" onClick={() => deleteCashflow(openingOf(p.id)!.id)} className="shrink-0 text-rose-400"><Trash2 className="w-4 h-4" /></button>}
-              </div>
-            ))}
-            <button disabled={!active.some(p => dirty(p.id))} onClick={async () => { for (const p of active) if (dirty(p.id)) await saveOpening(p.id); }} className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-orange-500 to-amber-500 py-3 text-sm font-black text-white shadow-lg shadow-orange-500/25 disabled:opacity-30"><Landmark className="w-4 h-4" />حفظ الكل</button>
-          </div>
-        )}
-
         {tab === 'partner' && (
           <div className="space-y-4">
             <label className="flex items-center justify-between rounded-2xl border border-slate-100 dark:border-slate-800 p-4 cursor-pointer">
@@ -203,23 +160,40 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
             </div>
 
             {/* تنظيف الحركات السابقة إن وجدت حتى لا تتداخل */}
-            {partnerFlows.length > 0 && (
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-3.5 space-y-2 bg-slate-50 dark:bg-slate-800/40">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-bold text-slate-500">
-                    توجد {partnerFlows.length} حركة مسجلة كحركات كاش للشريك (لم تعد مطلوبة لأن رأس المال أصبح مرجعياً صريحاً):
-                  </span>
+            {partnerFlows.length > 0 ? (
+              <div className="rounded-2xl border border-rose-200 dark:border-rose-900/40 p-4 space-y-3 bg-rose-50/50 dark:bg-rose-950/20">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-black text-rose-700 dark:text-rose-300 block">
+                      تنظيف حركات الشريك القديمة
+                    </span>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold leading-5">
+                      توجد {partnerFlows.length} حركة مسجلة كحركات كاش للشريك. بما أن رأس مال الشريك أصبح رقماً مرجعياً معتمداً (570 ألف)، احذف هذه الحركات القديمة لتصفية السجل.
+                    </p>
+                  </div>
                   <button
+                    disabled={isCleaning}
                     onClick={async () => {
-                      for (const c of partnerFlows) await deleteCashflow(c.id);
+                      setIsCleaning(true);
+                      try {
+                        for (const c of partnerFlows) await deleteCashflow(c.id);
+                        setCleanDone(true);
+                        setTimeout(() => setCleanDone(false), 4000);
+                      } finally {
+                        setIsCleaning(false);
+                      }
                     }}
-                    className="shrink-0 px-3 py-1 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold transition"
+                    className="shrink-0 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black transition disabled:opacity-50 shadow-sm shadow-rose-600/20"
                   >
-                    تنظيف وحذف الحركات القديمة
+                    {isCleaning ? 'جاري الحذف...' : 'حذف الحركات القديمة'}
                   </button>
                 </div>
               </div>
-            )}
+            ) : cleanDone ? (
+              <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800 p-3 bg-emerald-50 dark:bg-emerald-950/30 text-xs font-black text-emerald-600 dark:text-emerald-400">
+                ✓ تم حذف وتصفية حركات الشريك القديمة بنجاح! السجل خالٍ الآن.
+              </div>
+            ) : null}
           </div>
         )}
 
