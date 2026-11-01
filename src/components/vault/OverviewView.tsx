@@ -217,7 +217,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
 }
 
 /* ───────── Wealth Growth Decomposition (Deposits vs Net Profits) ───────── */
-export function WealthGrowthDecomposition({ stats }: { stats: Stats }) {
+export function WealthGrowthDecomposition({ stats, lensLabel = 'إجمالي المحفظة' }: { stats: Stats; lensLabel?: string }) {
   const s = stats;
   const isProfit = s.profit >= 0;
   const depShare = s.nav > 0 ? Math.max(0, Math.min(100, (s.netDeposits / s.nav) * 100)) : 100;
@@ -236,7 +236,7 @@ export function WealthGrowthDecomposition({ stats }: { stats: Stats }) {
             <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
               <span>تحليل نمو المحفظة</span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                إجمالي المحفظة
+                {lensLabel}
               </span>
             </h3>
             <p className="text-[10px] sm:text-[11px] font-bold text-slate-400">

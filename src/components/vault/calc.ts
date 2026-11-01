@@ -64,7 +64,10 @@ export function buildSeries(snaps: VaultSnapshot[], flows: VaultCashflow[], ids:
   const sel = new Set(ids);
   const S = snaps.filter(s => sel.has(s.portfolioId)).sort((a, b) => a.date.localeCompare(b.date));
   const F = flows.filter(f => sel.has(f.portfolioId) && !f.opening && !f.partner);
-  const dates = Array.from(new Set([...S.map(s => s.date), ...F.map(f => f.date)])).sort();
+  const minSnapDate = S[0]?.date;
+  const dates = Array.from(new Set([...S.map(s => s.date), ...F.map(f => f.date)]))
+    .filter(d => !minSnapDate || d >= minSnapDate)
+    .sort();
   if (!dates.length) return [];
 
   // خريطة لأقدم قراءة سوقية لكل محفظة (لتكون أساس رأس المال المودع الذكي)
@@ -74,6 +77,9 @@ export function buildSeries(snaps: VaultSnapshot[], flows: VaultCashflow[], ids:
       firstSnapByPid.set(s.portfolioId, s);
     }
   }
+
+  const startD = dayNum(dates[0]);
+  let peak = 1;
 
   const pts: Point[] = dates.map(d => {
     const by: Record<string, number> = {};
@@ -87,32 +93,42 @@ export function buildSeries(snaps: VaultSnapshot[], flows: VaultCashflow[], ids:
       nav += by[p];
     }
 
-    // حساب صافي رأس المال المودع ديناميكياً:
-    // لكل محفظة: (أقدم قراءة سوقية مسجلة) + (كل الإيداعات والسحوبات الصافية اللاحقة لذلك التاريخ)
+    // حساب صافي رأس المال المودع ديناميكياً + متوسط رأس المال المرجح زمنياً (Modified Dietz) لحساب TWR و CAGR بدقة
     let deposits = 0;
+    let avgCap = 0;
     let flow = 0;
+    const curD = dayNum(d);
+    const elapsed = Math.max(1, curD - startD);
 
     for (const p of ids) {
       const fs = firstSnapByPid.get(p);
       if (fs) {
         if (d >= fs.date) {
           deposits += fs.total;
+          avgCap += fs.total;
           for (const f of F) {
-            if (f.portfolioId === p && f.date > fs.date && f.date <= d && !f.opening) {
-              deposits += signed(f);
+            if (f.portfolioId === p && f.date > fs.date && f.date <= d) {
+              const sf = signed(f);
+              deposits += sf;
+              const w = curD > startD ? Math.max(0.05, (curD - dayNum(f.date)) / elapsed) : 1;
+              avgCap += sf * w;
             }
           }
         } else {
           for (const f of F) {
-            if (f.portfolioId === p && f.date <= d && !f.opening) {
-              deposits += signed(f);
+            if (f.portfolioId === p && f.date <= d) {
+              const sf = signed(f);
+              deposits += sf;
+              avgCap += sf;
             }
           }
         }
       } else {
         for (const f of F) {
-          if (f.portfolioId === p && f.date <= d && !f.opening) {
-            deposits += signed(f);
+          if (f.portfolioId === p && f.date <= d) {
+            const sf = signed(f);
+            deposits += sf;
+            avgCap += sf;
           }
         }
       }
@@ -124,25 +140,13 @@ export function buildSeries(snaps: VaultSnapshot[], flows: VaultCashflow[], ids:
 
     const profit = nav - deposits;
     const ret = deposits > 0 ? (profit / deposits) * 100 : 0;
-    return { date: d, nav, deposits, flow, profit, ret, index: 1, dd: 0, by };
+    const twr = avgCap > 0 ? profit / avgCap : 0;
+    const index = Math.max(0.1, 1 + twr);
+    peak = Math.max(peak, index);
+    const dd = index / peak - 1;
+    return { date: d, nav, deposits, flow, profit, ret, index, dd, by };
   });
 
-  let idx = 1;
-  let peak = 1;
-  pts.forEach((p, i) => {
-    if (i > 0) {
-      const prev = pts[i - 1];
-      const flow = p.flow;
-      const gain = p.nav - prev.nav - flow;
-      // Denominator using Modified Dietz with positive protection
-      const denom = prev.nav + (flow > 0 ? flow * 0.5 : 0);
-      const r = denom > 0 && prev.nav > 0 ? gain / denom : 0;
-      idx *= 1 + Math.max(-0.5, Math.min(2, r));
-    }
-    peak = Math.max(peak, idx);
-    p.index = idx;
-    p.dd = idx / peak - 1;
-  });
   return pts;
 }
 

@@ -170,12 +170,12 @@ function VaultInner() {
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-xl shadow-orange-500/30"><Landmark className="w-8 h-8" /></div>
             <h2 className="text-lg font-black text-slate-900 dark:text-white">ابدأ خزنتك</h2>
             <ol className="text-right space-y-2 text-sm font-bold text-slate-600 dark:text-slate-300">
-              <li>١. سجّل رأس المال الأساسي لكل محفظة من الإعدادات.</li>
-              <li>٢. سجّل القيمة السوقية بالتاريخ.</li>
-              <li>٣. أي إيداع أو سحب بعد كده سجّله بتصنيفه.</li>
+              <li>١. سجّل أول قيمة سوقية لمحافظك بالتاريخ (تُعتمد تلقائياً كأصل رأس المال).</li>
+              <li>٢. سجّل أي إيداع أو سحب لاحق بتصنيفه.</li>
+              <li>٣. راقب تطور أرباحك الصافية ومؤشرات النمو لحظياً.</li>
             </ol>
             <div className="flex justify-center gap-2 pt-2">
-              <button onClick={() => setSetOpen(true)} className="rounded-xl bg-slate-900 dark:bg-white px-5 py-2.5 text-xs font-black text-white dark:text-slate-900">رأس المال الأساسي</button>
+              <button onClick={() => setSetOpen(true)} className="rounded-xl bg-slate-900 dark:bg-white px-5 py-2.5 text-xs font-black text-white dark:text-slate-900">إعدادات الخزنة</button>
               <button onClick={() => setSnapOpen(true)} className="rounded-xl bg-orange-500 px-5 py-2.5 text-xs font-black text-white">قيمة سوقية</button>
             </div>
           </div>
@@ -194,7 +194,7 @@ function VaultInner() {
             <div className="space-y-4">
               <Hero pts={pts} stats={stats} scopeLabel={scopeP?.name ?? 'الكل'} lensLabel={lensLabel} />
               <MainChart pts={pts} accent={scopeP?.color ?? '#f97316'} dir={settings.chartDirection ?? 'rtl'} />
-              <WealthGrowthDecomposition stats={baseStats} />
+              <WealthGrowthDecomposition stats={stats} lensLabel={`${scopeP?.name ?? 'الكل'} · ${lensLabel}`} />
               <KpiGrid stats={stats} />
               <Insights stats={stats} />
             </div>
