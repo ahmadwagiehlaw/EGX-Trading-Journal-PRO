@@ -6,17 +6,20 @@ import { ASSET_KEYS, ASSET_META } from './types';
 import type { AssetKey, VaultCashflow } from './types';
 import { todayStr, fmt, fmtDate } from './calc';
 
-const LAST_DATE_KEY = 'vault_last_entry_date';
-const getLastDate = () => {
+type EntryType = 'snapshot' | 'deposit' | 'withdrawal';
+
+const getLastDate = (type: EntryType, fallback?: string): string => {
   try {
-    return localStorage.getItem(LAST_DATE_KEY) || todayStr();
+    const key = `vault_last_${type}_date`;
+    return localStorage.getItem(key) || fallback || todayStr();
   } catch {
-    return todayStr();
+    return fallback || todayStr();
   }
 };
-const setLastDate = (d: string) => {
+
+const setLastDate = (type: EntryType, d: string) => {
   try {
-    if (d) localStorage.setItem(LAST_DATE_KEY, d);
+    if (d) localStorage.setItem(`vault_last_${type}_date`, d);
   } catch {
     // ignore
   }
@@ -56,7 +59,18 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
   const { settings, snapshots, saveSnapshot, saveSettings } = useVault();
   const active = settings.portfolios.filter(p => p.active);
   const [mode, setMode] = useState<'quick' | 'detail'>('quick');
-  const [date, setDate] = useState(() => editDate || getLastDate());
+  const latestDbSnapDate = useMemo(() => {
+    if (!snapshots.length) return undefined;
+    return [...snapshots].sort((a, b) => b.date.localeCompare(a.date))[0]?.date;
+  }, [snapshots]);
+
+  const [date, setDate] = useState(() => editDate || getLastDate('snapshot', latestDbSnapDate));
+
+  useEffect(() => {
+    if (open && !editDate) {
+      setDate(prev => prev || getLastDate('snapshot', latestDbSnapDate));
+    }
+  }, [open, editDate, latestDbSnapDate]);
   const [pid, setPid] = useState(initialPortfolio ?? active[0]?.id ?? '');
   const [totals, setTotals] = useState<Record<string, string>>({});
   const [portfolioBreakdowns, setPortfolioBreakdowns] = useState<Record<string, Record<string, string>>>({});
@@ -88,6 +102,12 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
 
     active.forEach(p => {
       const e = snapshots.find(s => s.portfolioId === p.id && s.date === date);
+      // Immediately preceding snapshot on or before this date:
+      const prev = snapshots
+        .filter(s => s.portfolioId === p.id && s.date < date)
+        .sort((a, b) => b.date.localeCompare(a.date))[0]
+        || latest(p.id);
+
       if (e) {
         t[p.id] = String(e.total);
         if (e.breakdown && Object.keys(e.breakdown).length > 0) {
@@ -101,7 +121,26 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
             qAssets[p.id] = presentKeys[0] as AssetKey;
           }
         }
+      } else if (prev) {
+        // Pre-fill default values from the immediately preceding recorded snapshot!
+        t[p.id] = String(prev.total);
+        if (prev.breakdown && Object.keys(prev.breakdown).length > 0) {
+          const bdMap: Record<string, string> = {};
+          ASSET_KEYS.forEach(k => {
+            if (prev.breakdown?.[k]) bdMap[k] = String(prev.breakdown[k]);
+          });
+          bds[p.id] = bdMap;
+          const presentKeys = Object.keys(bdMap);
+          if (presentKeys.length === 1) {
+            qAssets[p.id] = presentKeys[0] as AssetKey;
+          }
+        } else {
+          const chosen = p.pinnedAsset ?? (p.id === 'thndr' ? 'stocks' : 'stocks');
+          bds[p.id] = { [chosen]: String(prev.total) };
+          qAssets[p.id] = chosen;
+        }
       }
+
       if (!qAssets[p.id]) {
         qAssets[p.id] = p.pinnedAsset ?? (p.id === 'thndr' ? 'stocks' : 'stocks');
       }
@@ -260,9 +299,8 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
 
   const submit = async (continueNext = false) => {
     setBusy(true);
-    setLastDate(date);
+    setLastDate('snapshot', date);
     try {
-      setLastDate(date);
       if (mode === 'quick') {
         for (const p of active) {
           const raw = totals[p.id];
@@ -335,14 +373,14 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
               type="date"
               value={date}
               max={todayStr()}
-              onChange={e => { setDate(e.target.value); setLastDate(e.target.value); setSuccessMsg(null); }}
+              onChange={e => { setDate(e.target.value); setLastDate('snapshot', e.target.value); setSuccessMsg(null); }}
               disabled={!!editDate}
               className={cx(inputCls, '!w-auto')}
             />
             {!editDate && (
               <button
                 type="button"
-                onClick={() => { setDate(getLastDate()); setLastDate(todayStr()); setSuccessMsg(null); }}
+                onClick={() => { setDate(todayStr()); setLastDate('snapshot', todayStr()); setSuccessMsg(null); }}
                 title="تعيين تاريخ اليوم"
                 className={cx(
                   'p-2.5 rounded-xl border transition-all shrink-0',
@@ -595,19 +633,57 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
 
 /* ───────── Cashflow ───────── */
 export function CashflowModal({ open, onClose, initialType = 'deposit', editing }: { open: boolean; onClose: () => void; initialType?: 'deposit' | 'withdrawal'; editing?: VaultCashflow }) {
-  const { settings, addCashflow, updateCashflow, saveSettings } = useVault();
+  const { settings, cashflows, addCashflow, updateCashflow, saveSettings } = useVault();
   const [isPartner, setIsPartner] = useState(false);
   const active = settings.portfolios.filter(p => p.active);
   const [type, setType] = useState<'deposit' | 'withdrawal'>(initialType);
   const [pid, setPid] = useState(active[0]?.id ?? '');
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(() => editing?.date || getLastDate());
+
+  const getLatestDbDate = (t: 'deposit' | 'withdrawal') => {
+    const list = cashflows.filter(c => c.type === t).sort((a, b) => b.date.localeCompare(a.date));
+    return list[0]?.date;
+  };
+
+  const [date, setDate] = useState(() => {
+    if (editing?.date) return editing.date;
+    return getLastDate(initialType, getLatestDbDate(initialType));
+  });
   const [tag, setTag] = useState('');
   const [custom, setCustom] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { if (open && editing) { setType(editing.type); setPid(editing.portfolioId); setAmount(String(editing.amount)); setDate(editing.date); setTag(editing.tag); setCustom(''); setNote(editing.note ?? ''); setIsPartner(!!editing.partner); } else if (open) { setType(initialType); setTag(''); setAmount(''); setNote(''); setCustom(''); setDate(todayStr()); setIsPartner(false); if (!pid && active[0]) setPid(active[0].id); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [open, initialType, editing?.id]);
+  useEffect(() => {
+    if (open && editing) {
+      setType(editing.type);
+      setPid(editing.portfolioId);
+      setAmount(String(editing.amount));
+      setDate(editing.date);
+      setTag(editing.tag);
+      setCustom('');
+      setNote(editing.note ?? '');
+      setIsPartner(!!editing.partner);
+    } else if (open) {
+      setType(initialType);
+      setTag('');
+      setAmount('');
+      setNote('');
+      setCustom('');
+      setDate(getLastDate(initialType, getLatestDbDate(initialType)));
+      setIsPartner(false);
+      if (!pid && active[0]) setPid(active[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialType, editing?.id]);
+
+  const handleTypeChange = (newType: 'deposit' | 'withdrawal') => {
+    setType(newType);
+    setTag('');
+    if (!editing) {
+      setDate(getLastDate(newType, getLatestDbDate(newType)));
+    }
+  };
 
   const tags = settings.tags[type];
   const isDep = type === 'deposit';
@@ -634,7 +710,7 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
       <div className="space-y-5">
         <div className="grid grid-cols-2 gap-2">
           {(['deposit', 'withdrawal'] as const).map(t => (
-            <button key={t} type="button" onClick={() => { setType(t); setTag(''); }}
+            <button key={t} type="button" onClick={() => handleTypeChange(t)}
               className={cx('flex items-center justify-center gap-2 rounded-2xl border-2 py-3 text-sm font-black transition-all',
                 type === t ? (t === 'deposit' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400') : 'border-slate-200 dark:border-slate-700 text-slate-400')}>
               {t === 'deposit' ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
@@ -653,12 +729,12 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
                 type="date"
                 value={date}
                 max={todayStr()}
-                onChange={e => { setDate(e.target.value); setLastDate(e.target.value); }}
+                onChange={e => { setDate(e.target.value); setLastDate(type, e.target.value); }}
                 className={cx(inputCls, 'flex-1')}
               />
               <button
                 type="button"
-                onClick={() => { setDate(todayStr()); setLastDate(todayStr()); }}
+                onClick={() => { setDate(todayStr()); setLastDate(type, todayStr()); }}
                 title="تعيين تاريخ اليوم"
                 className={cx(
                   'p-2.5 rounded-xl border transition-all shrink-0',
