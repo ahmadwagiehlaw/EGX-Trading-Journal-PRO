@@ -46,7 +46,6 @@ function VaultInner() {
   const pts = effLens === 'total' ? base : effLens === 'partner' ? split.partner : split.mine;
   const lastNav = base[base.length - 1]?.nav ?? 0;
   const pShare = lastNav > 0 ? Math.min(1, (split.partner[split.partner.length - 1]?.nav ?? 0) / lastNav) : 0;
-  const f = pShare;
   const factor = effLens === 'total' ? 1 : effLens === 'partner' ? pShare : 1 - pShare;
   const stats = useMemo(() => computeStats(pts), [pts]);
   const baseStats = useMemo(() => computeStats(buildSeries(snapshots, cashflows, active.map(p => p.id))), [snapshots, cashflows, active]);
@@ -159,11 +158,6 @@ function VaultInner() {
                 )}
               >
                 {l}
-                {v !== 'total' && (
-                  <span className="mr-1 text-[10px] text-slate-400">
-                    {((v === 'partner' ? f : 1 - f) * 100).toFixed(0)}%
-                  </span>
-                )}
               </button>
             ))}
           </div>

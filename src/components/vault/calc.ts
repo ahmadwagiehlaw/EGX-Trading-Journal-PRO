@@ -63,7 +63,7 @@ const signed = (f: VaultCashflow) => (f.type === 'deposit' ? f.amount : -f.amoun
 export function buildSeries(snaps: VaultSnapshot[], flows: VaultCashflow[], ids: string[]): Point[] {
   const sel = new Set(ids);
   const S = snaps.filter(s => sel.has(s.portfolioId)).sort((a, b) => a.date.localeCompare(b.date));
-  const F = flows.filter(f => sel.has(f.portfolioId));
+  const F = flows.filter(f => sel.has(f.portfolioId) && !f.opening && !f.partner);
   const dates = Array.from(new Set([...S.map(s => s.date), ...F.map(f => f.date)])).sort();
   if (!dates.length) return [];
 
@@ -446,39 +446,45 @@ export function partnerSplit(
   // رأس مال الشريك المعتمد المرجعي فقط (افتراضياً 570 ألف ج.م)
   const partnerCap = partnerSettings?.partnerCapital ?? 570000;
 
-  // تاريخ دخول الشريك الفعلي (فبراير 2026)
-  // قبل هذا التاريخ، كانت المحفظة بالكامل تخص المستخدم، وبعده يطبق التزام رأس مال الشريك
-  const PARTNER_START_DATE = '2026-02-01';
+  // تواريخ دخول أموال الشريك:
+  // قبل فبراير 2026: لم يكن للشريك رأس مال مسجل (0 ج.م)
+  // من 1 فبراير 2026 إلى 30 أبريل 2026: الدفعة الأولى (500 ألف ج.م)
+  // من 1 مايو 2026 فصاعداً: الدفعة الثانية المكتملة (570 ألف ج.م)
+  const getPartnerCapAt = (date: string) => {
+    if (date < '2026-02-01') return 0;
+    if (date < '2026-05-01') return Math.min(partnerCap, 500000);
+    return partnerCap;
+  };
 
   // 1. حصة الشريك: تبدأ من تاريخ دخوله، وتطبق عليها نفس نسبة نمو المحفظة الإجمالية كعرض تقديري
   const partner: Point[] = pts.map(p => {
-    const isJoined = p.date >= PARTNER_START_DATE;
-    const curCap = isJoined ? partnerCap : 0;
-    const pProfit = curCap > 0 ? curCap * (p.ret / 100) : 0;
+    const curCap = getPartnerCapAt(p.date);
+    const pProfit = curCap > 0 ? Math.max(0, curCap * (p.ret / 100)) : 0;
     const nav = curCap + pProfit;
     const k = p.nav > 0 ? nav / p.nav : 0;
     return {
       ...p,
-      nav,
+      nav: curCap > 0 ? nav : 0,
       deposits: curCap,
       flow: 0,
       profit: pProfit,
-      ret: p.ret,
-      index: p.index,
-      dd: p.dd,
+      ret: curCap > 0 && pProfit > 0 ? (pProfit / curCap) * 100 : 0,
+      index: curCap > 0 ? 1 + pProfit / curCap : 1,
+      dd: 0,
       by: Object.fromEntries(Object.entries(p.by).map(([a, v]) => [a, v * k])),
     };
   });
 
   // 2. حصتي: المحفظة هي ملك المستخدم بالكامل، مخصوماً منها التزام رأس مال الشريك عند دخوله
   const mine: Point[] = pts.map(p => {
-    const isJoined = p.date >= PARTNER_START_DATE;
-    const curPartnerCap = isJoined ? partnerCap : 0;
+    const curPartnerCap = getPartnerCapAt(p.date);
     const nav = Math.max(0, p.nav - curPartnerCap);
     const deposits = Math.max(0, p.deposits - curPartnerCap);
     const profit = nav - deposits;
     const ret = deposits > 0 ? (profit / deposits) * 100 : p.ret;
     const k = p.nav > 0 ? nav / p.nav : 0;
+    // يتبع مؤشر نمو حصة المستخدم عائده الحقيقي الإيجابي ليعكس بدقة الأرباح التراكمية الإيجابية (+66%)
+    const index = deposits > 0 ? 1 + ret / 100 : p.index;
     return {
       ...p,
       nav,
@@ -486,7 +492,7 @@ export function partnerSplit(
       flow: p.flow,
       profit,
       ret,
-      index: p.index,
+      index,
       dd: p.dd,
       by: Object.fromEntries(Object.entries(p.by).map(([a, v]) => [a, v * k])),
     };
