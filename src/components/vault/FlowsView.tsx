@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from 'recharts';
 import { ArrowDownLeft, ArrowUpRight, Download, LineChart as LineIcon, Trash2, Printer } from 'lucide-react';
-import { Card, ChartTip, Empty, Segmented, cx, tone } from './ui';
+import { Card, ChartTip, Empty, Segmented, cx } from './ui';
 import { useVault } from './VaultContext';
 import { dayNum, flowsByMonth, flowsByTag, fmt, fmtCompact, fmtDate, fmtSigned, monthLabel, MONTHS_EN } from './calc';
 
@@ -18,6 +18,55 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
   const portfolioFlows = flows;
   const dep = portfolioFlows.filter(f => f.type === 'deposit').reduce((a, f) => a + f.amount, 0);
   const wd = portfolioFlows.filter(f => f.type === 'withdrawal').reduce((a, f) => a + f.amount, 0);
+
+  // جسر المطابقة المحاسبية مع "صافي الإيداعات" في النظرة العامة:
+  // صافي الإيداعات المعتمد = (أقدم قراءة سوقية مسجلة لكل محفظة) + (الإيداعات اللاحقة لها) − (السحوبات اللاحقة لها)
+  const recon = useMemo(() => {
+    const sortedSnaps = snapshots
+      .filter(s => scopeIds.includes(s.portfolioId))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const firstByPid = new Map<string, { date: string; total: number }>();
+    for (const s of sortedSnaps) {
+      if (!firstByPid.has(s.portfolioId)) {
+        firstByPid.set(s.portfolioId, { date: s.date, total: s.total });
+      }
+    }
+    let startCap = 0;
+    let postDep = 0;
+    let postWd = 0;
+    let preNet = 0;
+    let startDate = '';
+
+    for (const pid of scopeIds) {
+      const fs = firstByPid.get(pid);
+      if (fs) {
+        startCap += fs.total;
+        if (!startDate || fs.date < startDate) startDate = fs.date;
+        for (const f of portfolioFlows) {
+          if (f.portfolioId === pid) {
+            if (f.date > fs.date) {
+              if (f.type === 'deposit') postDep += f.amount;
+              else postWd += f.amount;
+            } else {
+              preNet += f.type === 'deposit' ? f.amount : -f.amount;
+            }
+          }
+        }
+      } else {
+        for (const f of portfolioFlows) {
+          if (f.portfolioId === pid) {
+            if (f.type === 'deposit') postDep += f.amount;
+            else postWd += f.amount;
+          }
+        }
+      }
+    }
+
+    const netPostFlow = postDep - postWd;
+    const netInvestedCapital = startCap + netPostFlow;
+    return { startCap, startDate, postDep, postWd, netPostFlow, netInvestedCapital, preNet };
+  }, [snapshots, scopeIds, portfolioFlows]);
+
   const byMonth = useMemo(() => flowsByMonth(portfolioFlows), [portfolioFlows]);
   const byTag = useMemo(() => flowsByTag(portfolioFlows), [portfolioFlows]);
   const maxTag = Math.max(...byTag.map(t => Math.max(t.deposit, t.withdrawal)), 1);
@@ -258,10 +307,30 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="إجمالي الإيداعات" value={fmt(dep)} cls="text-emerald-500" />
-        <Stat label="إجمالي السحوبات" value={fmt(wd)} cls="text-rose-500" />
-        <Stat label="الصافي" value={fmtSigned(dep - wd)} cls={tone(dep - wd)} />
-        <Stat label="السحب ÷ الإيداع" value={dep > 0 ? `${((wd / dep) * 100).toFixed(1)}%` : '—'} cls="text-amber-500" />
+        <Stat
+          label="رصيد انطلاق المحفظة (أقدم قراءة)"
+          value={fmt(recon.startCap)}
+          sub={recon.startDate ? `معتمد بتاريخ ${fmtDate(recon.startDate)}` : 'لم تُسجل قراءة بعد'}
+          cls="text-slate-800 dark:text-slate-100"
+        />
+        <Stat
+          label="إجمالي الإيداعات (بعد الانطلاق)"
+          value={`+${fmt(recon.postDep)}`}
+          sub={dep !== recon.postDep ? `إجمالي كل السجل: +${fmt(dep)} ج.م` : 'كل الإيداعات النقدية المضافة'}
+          cls="text-emerald-500"
+        />
+        <Stat
+          label="إجمالي السحوبات (بعد الانطلاق)"
+          value={`−${fmt(recon.postWd)}`}
+          sub={wd !== recon.postWd ? `إجمالي كل السجل: −${fmt(wd)} ج.م` : `نسبة السحب: ${recon.postDep > 0 ? ((recon.postWd / recon.postDep) * 100).toFixed(1) : 0}%`}
+          cls="text-rose-500"
+        />
+        <Stat
+          label="صافي الإيداعات المعتمد (المطابق للنظرة العامة)"
+          value={fmt(recon.netInvestedCapital)}
+          sub={`${fmt(recon.startCap)} بداية ${fmtSigned(recon.netPostFlow)} صافي الحركات`}
+          cls="text-indigo-600 dark:text-indigo-400"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -421,11 +490,12 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
   );
 }
 
-function Stat({ label, value, cls }: { label: string; value: string; cls?: string }) {
+function Stat({ label, value, sub, cls }: { label: string; value: string; sub?: string; cls?: string }) {
   return (
     <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-4">
       <div className="text-[11px] font-black text-slate-400">{label}</div>
       <div dir="ltr" className={cx('mt-1 text-xl font-black tabular-nums text-right', cls)}>{value}</div>
+      {sub && <div className="mt-1 text-[10px] font-bold text-slate-400 truncate">{sub}</div>}
     </div>
   );
 }

@@ -57,56 +57,99 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
           <div className="space-y-3">
             <Field label="الشهر"><input type="month" value={month} onChange={e => load(e.target.value)} className={inputCls} /></Field>
 
-            {partner && (
-              <div className="rounded-xl border border-violet-100 dark:border-violet-900/40 bg-violet-50/50 dark:bg-violet-950/20 p-2.5 space-y-2">
-                <div className="flex items-center justify-between text-[11px] font-black text-violet-700 dark:text-violet-300">
-                  <span>توزيع سريع (60% لي / 40% {settings.partner.name})</span>
-                  <span className="text-[10px] text-slate-400">حاسبة فورية</span>
+            {(() => {
+              const curRet = monthRets.find(x => x.key === month);
+              const autoGain = curRet && curRet.gain > 0 ? Math.round(curRet.gain) : 0;
+              return partner ? (
+                <div className="rounded-xl border border-violet-100 dark:border-violet-900/40 bg-violet-50/50 dark:bg-violet-950/20 p-2.5 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-black text-violet-700 dark:text-violet-300">
+                    <span>توزيع سريع (60% لي / 40% {settings.partner.name})</span>
+                    <span className="text-[10px] text-slate-400">حاسبة فورية</span>
+                  </div>
+                  {autoGain > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-violet-200/60 dark:border-violet-800/40 px-2.5 py-1.5 text-[11px]">
+                      <span className="font-bold text-slate-600 dark:text-slate-300">
+                        ربح {monthLabel(month)} بالتقويم: <b dir="ltr" className="text-emerald-600 dark:text-emerald-400">+{fmt(autoGain)} ج.م</b>
+                      </span>
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const el = document.getElementById('quick_split_val') as HTMLInputElement | null;
+                            if (el) el.value = String(autoGain);
+                            setF(s => ({
+                              ...s,
+                              distributedMine: String(Math.round(autoGain * 0.6)),
+                              distributedPartner: String(Math.round(autoGain * 0.4)),
+                            }));
+                          }}
+                          className="rounded-md bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-0.5 text-[10px] font-black transition"
+                        >
+                          ⚡ استيراد كموزع
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const el = document.getElementById('quick_split_val') as HTMLInputElement | null;
+                            if (el) el.value = String(autoGain);
+                            setF(s => ({
+                              ...s,
+                              retainedMine: String(Math.round(autoGain * 0.6)),
+                              retainedPartner: String(Math.round(autoGain * 0.4)),
+                            }));
+                          }}
+                          className="rounded-md bg-violet-600 hover:bg-violet-500 text-white px-2 py-0.5 text-[10px] font-black transition"
+                        >
+                          ⚡ استيراد كمجنب
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex gap-1.5">
+                    <input
+                      type="number"
+                      placeholder="إجمالي ربح الشهر..."
+                      id="quick_split_val"
+                      className={cx(inputCls, '!py-1.5 text-xs text-left tabular-nums')}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById('quick_split_val') as HTMLInputElement | null;
+                        const val = parseFloat(el?.value || '') || 0;
+                        if (val > 0) {
+                          setF(s => ({
+                            ...s,
+                            retainedMine: String(Math.round(val * 0.6)),
+                            retainedPartner: String(Math.round(val * 0.4)),
+                          }));
+                        }
+                      }}
+                      className="shrink-0 rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-2.5 py-1 text-[11px] font-bold shadow-sm"
+                    >
+                      كمجنب
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById('quick_split_val') as HTMLInputElement | null;
+                        const val = parseFloat(el?.value || '') || 0;
+                        if (val > 0) {
+                          setF(s => ({
+                            ...s,
+                            distributedMine: String(Math.round(val * 0.6)),
+                            distributedPartner: String(Math.round(val * 0.4)),
+                          }));
+                        }
+                      }}
+                      className="shrink-0 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 text-[11px] font-bold shadow-sm"
+                    >
+                      كموزع
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-1.5">
-                  <input
-                    type="number"
-                    placeholder="إجمالي ربح الشهر..."
-                    id="quick_split_val"
-                    className={cx(inputCls, '!py-1.5 text-xs text-left tabular-nums')}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const el = document.getElementById('quick_split_val') as HTMLInputElement | null;
-                      const val = parseFloat(el?.value || '') || 0;
-                      if (val > 0) {
-                        setF(s => ({
-                          ...s,
-                          retainedMine: String(Math.round(val * 0.6)),
-                          retainedPartner: String(Math.round(val * 0.4)),
-                        }));
-                      }
-                    }}
-                    className="shrink-0 rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-2.5 py-1 text-[11px] font-bold shadow-sm"
-                  >
-                    كمجنب
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const el = document.getElementById('quick_split_val') as HTMLInputElement | null;
-                      const val = parseFloat(el?.value || '') || 0;
-                      if (val > 0) {
-                        setF(s => ({
-                          ...s,
-                          distributedMine: String(Math.round(val * 0.6)),
-                          distributedPartner: String(Math.round(val * 0.4)),
-                        }));
-                      }
-                    }}
-                    className="shrink-0 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 text-[11px] font-bold shadow-sm"
-                  >
-                    كموزع
-                  </button>
-                </div>
-              </div>
-            )}
+              ) : null;
+            })()}
 
             <div className="grid grid-cols-2 gap-3">
               {fields.filter(x => x.show).map(x => (

@@ -57,7 +57,7 @@ function PortfolioPills({ value, onChange }: { value: string; onChange: (id: str
 /* ───────── Snapshot (market value) ───────── */
 export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { open: boolean; onClose: () => void; initialPortfolio?: string; editDate?: string }) {
   const { settings, snapshots, saveSnapshot, deleteSnapshot, saveSettings } = useVault();
-  const active = settings.portfolios.filter(p => p.active);
+  const active = useMemo(() => settings.portfolios.filter(p => p.active), [settings.portfolios]);
   const [mode, setMode] = useState<'quick' | 'detail'>('quick');
   const latestDbSnapDate = useMemo(() => {
     if (!snapshots.length) return undefined;
@@ -133,10 +133,12 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
     setTotals(t);
     setPortfolioBreakdowns(bds);
     setQuickAsset(qAssets);
+    setTotalManuallySet(false);
     const curSnap = snapshots.find(s => s.portfolioId === pid && s.date === date);
     setNote(curSnap?.note ?? '');
     setSuccessMsg(null);
-  }, [open, date, snapshots, pid, active]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, date]);
 
   const existing = (id: string) => snapshots.find(s => s.portfolioId === id && s.date === date);
   const latest = (id: string) => snapshots.filter(s => s.portfolioId === id).sort((a, b) => b.date.localeCompare(a.date))[0];
@@ -358,7 +360,8 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
       }
     }
     return alerts;
-  }, [mode, totals, detailSum, pid, active, latest, date]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, totals, detailSum, pid, active, snapshots, date]);
 
   const submit = async (continueNext = false) => {
     setBusy(true);

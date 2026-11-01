@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
-import { Activity, Flame, ShieldAlert, ShieldCheck, Sparkles, Target, TrendingDown, TrendingUp, Trophy, Calendar, ArrowUpRight, ArrowDownRight, Zap, Compass, PieChart } from 'lucide-react';
+import { Activity, Flame, ShieldAlert, ShieldCheck, Sparkles, Target, TrendingDown, TrendingUp, Trophy, Calendar, ArrowUpRight, ArrowDownRight, Zap, Compass, PieChart, Crown, Banknote, Users, Layers } from 'lucide-react';
 import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone } from './ui';
+import { useVault } from './VaultContext';
 import type { Point, Stats, Period } from './calc';
 import { PERIODS, windowSeries, fmt, fmtCompact, fmtPct, fmtSigned, fmtDate, shortDate, monthLabel } from './calc';
 
@@ -31,9 +32,28 @@ function Ring({ value, color, size = 54, children }: { value: number; color: str
 }
 
 export function Hero({ pts, stats, scopeLabel, lensLabel }: { pts: Point[]; stats: Stats; scopeLabel: string; lensLabel: string }) {
+  const { cashflows } = useVault();
   const last = pts[pts.length - 1];
   const spark = pts.slice(-60);
   const up = stats.profit >= 0;
+
+  // High-Water Mark (القمة التاريخية للمحفظة أو الحصة المختارة)
+  const peakPt = useMemo(() => {
+    if (!pts.length) return null;
+    return pts.reduce((best, cur) => (cur.nav > best.nav ? cur : best), pts[0]);
+  }, [pts]);
+  const toPeak = peakPt && last ? Math.max(0, peakPt.nav - last.nav) : 0;
+
+  // إجمالي الأرباح المجنية نقداً من المحفظة (جني أرباح + سداد الفيزا + أرباح الشريك)
+  const harvestedCash = useMemo(() => {
+    const harvestTags = new Set(['جني أرباح', 'سداد الفيزا', 'أرباح الشريك']);
+    return cashflows
+      .filter(c => !c.opening && !c.partner && c.type === 'withdrawal' && harvestTags.has(c.tag))
+      .reduce((sum, c) => sum + c.amount, 0);
+  }, [cashflows]);
+
+  const monthlyGainRate = stats.days >= 15 ? Math.round((stats.profit / stats.days) * 30) : null;
+
   return (
     <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-6 sm:p-8 text-white shadow-2xl">
       <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-orange-500/20 blur-3xl" />
@@ -76,6 +96,43 @@ export function Hero({ pts, stats, scopeLabel, lensLabel }: { pts: Point[]; stat
           <Mini label="إجمالي العوائد" value={fmtSigned(stats.profit)} color={up ? 'text-emerald-300' : 'text-rose-300'} />
           <Mini label="العائد الزمني (TWR)" value={fmtPct(stats.twrPct)} color={stats.twrPct >= 0 ? 'text-emerald-300' : 'text-rose-300'} />
           <Mini label="العائد السنوي المركب" value={stats.annualized === null ? '—' : fmtPct(stats.annualized, 1)} color={(stats.annualized ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'} />
+        </div>
+
+        {/* High-Water Mark & Cash Harvest Executive Strip */}
+        <div className="mt-6 pt-4 border-t border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+          {peakPt && (
+            <div className="flex items-center justify-between sm:justify-start gap-2 rounded-xl bg-white/[0.06] px-3 py-2 backdrop-blur-sm">
+              <div className="flex items-center gap-1.5 text-amber-300 font-bold">
+                <Crown className="w-3.5 h-3.5 shrink-0" />
+                <span>القمة التاريخية:</span>
+              </div>
+              <div className="font-black tabular-nums text-white" dir="ltr">
+                {fmt(peakPt.nav)} <span className="text-[10px] font-bold text-slate-300">({toPeak > 0 ? `متبقي +${fmtCompact(toPeak)}` : 'قمة جديدة ✨'})</span>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between sm:justify-start gap-2 rounded-xl bg-white/[0.06] px-3 py-2 backdrop-blur-sm">
+            <div className="flex items-center gap-1.5 text-emerald-300 font-bold">
+              <Banknote className="w-3.5 h-3.5 shrink-0" />
+              <span>أرباح جُنيت نقداً:</span>
+            </div>
+            <div className="font-black tabular-nums text-emerald-300" dir="ltr">
+              +{fmt(harvestedCash)} <span className="text-[10px] font-bold text-slate-300">ج.م</span>
+            </div>
+          </div>
+
+          {monthlyGainRate !== null && (
+            <div className="flex items-center justify-between sm:justify-start gap-2 rounded-xl bg-white/[0.06] px-3 py-2 backdrop-blur-sm">
+              <div className="flex items-center gap-1.5 text-indigo-300 font-bold">
+                <Zap className="w-3.5 h-3.5 shrink-0" />
+                <span>متوسط النمو الشهري:</span>
+              </div>
+              <div className={cx('font-black tabular-nums', monthlyGainRate >= 0 ? 'text-emerald-300' : 'text-rose-300')} dir="ltr">
+                {fmtSigned(monthlyGainRate)} <span className="text-[10px] font-bold text-slate-300">ج.م/شهر</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -216,135 +273,262 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
   );
 }
 
-/* ───────── Wealth Growth Decomposition (Deposits vs Net Profits) ───────── */
+/* ───────── Wealth & Ownership Architecture Cockpit (Zero Redundancy with Hero) ───────── */
 export function WealthGrowthDecomposition({ stats, lensLabel = 'إجمالي المحفظة' }: { stats: Stats; lensLabel?: string }) {
+  const { settings, snapshots, cashflows } = useVault();
   const s = stats;
   const isProfit = s.profit >= 0;
   const depShare = s.nav > 0 ? Math.max(0, Math.min(100, (s.netDeposits / s.nav) * 100)) : 100;
   const profitShare = s.nav > 0 ? (s.profit / s.nav) * 100 : 0;
   const retOnCapital = s.netDeposits > 0 ? (s.profit / s.netDeposits) * 100 : 0;
 
+  // حسابات جسر رأس المال + الأرباح المجنية نقداً + هيكل الملكية والغطاء التأميني للشريك
+  const extra = useMemo(() => {
+    const activeIds = settings.portfolios.filter(p => p.active).map(p => p.id);
+    const sortedSnaps = snapshots
+      .filter(sn => activeIds.includes(sn.portfolioId))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const firstByPid = new Map<string, { date: string; total: number }>();
+    for (const sn of sortedSnaps) {
+      if (!firstByPid.has(sn.portfolioId)) {
+        firstByPid.set(sn.portfolioId, { date: sn.date, total: sn.total });
+      }
+    }
+    let startCap = 0;
+    let startDate = '';
+    let postDep = 0;
+    let postWd = 0;
+    const validFlows = cashflows.filter(c => activeIds.includes(c.portfolioId) && !c.opening && !c.partner);
+
+    for (const pid of activeIds) {
+      const fs = firstByPid.get(pid);
+      if (fs) {
+        startCap += fs.total;
+        if (!startDate || fs.date < startDate) startDate = fs.date;
+        for (const f of validFlows) {
+          if (f.portfolioId === pid && f.date > fs.date) {
+            if (f.type === 'deposit') postDep += f.amount;
+            else postWd += f.amount;
+          }
+        }
+      }
+    }
+
+    // أحدث قيمة سوقية إجمالية لكل المحافظ النشطة
+    let totalFundNav = 0;
+    for (const pid of activeIds) {
+      const pSnaps = sortedSnaps.filter(sn => sn.portfolioId === pid);
+      const lastSnap = pSnaps[pSnaps.length - 1];
+      const afterFlow = validFlows
+        .filter(f => f.portfolioId === pid && (!lastSnap || f.date > lastSnap.date))
+        .reduce((acc, f) => acc + (f.type === 'deposit' ? f.amount : -f.amount), 0);
+      totalFundNav += (lastSnap ? lastSnap.total : 0) + afterFlow;
+    }
+
+    const totalFundDeposits = startCap + postDep - postWd;
+    const partnerCap = settings.partner.enabled ? (settings.partner.partnerCapital ?? 570000) : 0;
+    const myPureNav = Math.max(0, totalFundNav - partnerCap);
+    const myPureDeposits = Math.max(0, totalFundDeposits - partnerCap);
+    const myPureProfit = myPureNav - myPureDeposits;
+    const myPureRetPct = myPureDeposits > 0 ? (myPureProfit / myPureDeposits) * 100 : 0;
+    const myNavSharePct = totalFundNav > 0 ? (myPureNav / totalFundNav) * 100 : 100;
+    const partnerNavSharePct = totalFundNav > 0 ? Math.min(100, (partnerCap / totalFundNav) * 100) : 0;
+    const partnerCoveragePct = partnerCap > 0 ? (totalFundNav / partnerCap) * 100 : 100;
+
+    const harvestTags = new Set(['جني أرباح', 'سداد الفيزا', 'أرباح الشريك']);
+    const harvestedCash = validFlows
+      .filter(f => f.type === 'withdrawal' && harvestTags.has(f.tag))
+      .reduce((acc, f) => acc + f.amount, 0);
+
+    return {
+      startCap,
+      startDate,
+      postDep,
+      postWd,
+      netPostFlow: postDep - postWd,
+      totalFundNav,
+      totalFundDeposits,
+      partnerCap,
+      myPureNav,
+      myPureDeposits,
+      myPureProfit,
+      myPureRetPct,
+      myNavSharePct,
+      partnerNavSharePct,
+      partnerCoveragePct,
+      harvestedCash,
+    };
+  }, [settings, snapshots, cashflows]);
+
+  const multiplierPer1000 = Math.round(1000 + retOnCapital * 10);
+
   return (
     <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm p-4 sm:p-5 shadow-sm space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-3">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-indigo-500/20">
-            <PieChart className="w-4 h-4" />
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-indigo-500/20">
+            <PieChart className="w-4.5 h-4.5" />
           </div>
           <div>
             <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-              <span>تحليل نمو المحفظة</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+              <span>مركز هيكل الملكية وتفكيك مصادر الثروة</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-300">
                 {lensLabel}
               </span>
             </h3>
             <p className="text-[10px] sm:text-[11px] font-bold text-slate-400">
-              تفكيك القيمة السوقية بين رأس المال المودع وأرباح الاستثمار
+              جسر تكوين رأس المال · حقوق ملكيتك الصافية · تغطية رأس مال الشريك · الأرباح المجنية نقداً
             </p>
           </div>
         </div>
-        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-[11px] font-black text-slate-500">
-          <span>عائد رأس المال:</span>
-          <span dir="ltr" className={cx('tabular-nums font-bold', isProfit ? 'text-emerald-500' : 'text-rose-500')}>
-            {retOnCapital >= 0 ? '+' : ''}{retOnCapital.toFixed(1)}%
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-black text-emerald-600 dark:text-emerald-300">
+          <span>قيمة كل 1,000 ج.م مودعة اليوم:</span>
+          <span dir="ltr" className="tabular-nums font-black text-sm">
+            {fmt(multiplierPer1000)} ج.م
           </span>
         </div>
       </div>
 
-      {/* 3 Streamlined Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-        {/* 1. Total Market Value */}
-        <div className="rounded-2xl border border-slate-100 dark:border-slate-800/70 bg-slate-50/70 dark:bg-slate-800/40 p-3 sm:p-3.5 space-y-1">
+      {/* 4 Non-Redundant Executive Analytical Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+        {/* 1. Capital Formation Bridge (explains 837,554) */}
+        <div className="rounded-2xl border border-slate-100 dark:border-slate-800/70 bg-slate-50/70 dark:bg-slate-800/40 p-3.5 space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400">القيمة السوقية (NAV)</span>
-            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300">
-              المركز المالي
+            <span className="text-[11px] font-black text-slate-500 dark:text-slate-300 flex items-center gap-1">
+              <Layers className="w-3.5 h-3.5 text-indigo-500" />
+              <span>جسر تكوين رأس المال</span>
+            </span>
+            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-300">
+              منذ {extra.startDate ? fmtDate(extra.startDate) : 'البداية'}
             </span>
           </div>
-          <div dir="ltr" className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums text-right">
-            {fmt(s.nav)} <span className="text-[11px] font-bold text-slate-400">ج.م</span>
+          <div dir="ltr" className="text-lg font-black text-slate-900 dark:text-white tabular-nums text-right">
+            {fmt(extra.startCap)} <span className="text-[10px] font-bold text-slate-400">ج.م (أقدم قراءة)</span>
+          </div>
+          <div className="text-[10px] font-bold text-slate-400 flex items-center justify-between pt-0.5 border-t border-slate-200/50 dark:border-slate-700/40">
+            <span>صافي التدفق اللاحق:</span>
+            <b dir="ltr" className="text-indigo-500">{fmtSigned(extra.netPostFlow)} ج.م</b>
           </div>
         </div>
 
-        {/* 2. Net Capital Deposits */}
-        <div className="rounded-2xl border border-indigo-500/15 bg-indigo-500/[0.03] p-3 sm:p-3.5 space-y-1">
+        {/* 2. My Pure Equity & Return */}
+        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3.5 space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-indigo-500 dark:text-indigo-400">رأس المال المودع</span>
-            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-300">
-              {depShare.toFixed(1)}% من القيمة
+            <span className="text-[11px] font-black text-emerald-600 dark:text-emerald-400">حقوق ملكيتك الخالصة</span>
+            <span dir="ltr" className="text-[10px] font-black px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-300">
+              {fmtPct(extra.myPureRetPct, 1)} عائدك
             </span>
           </div>
-          <div dir="ltr" className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400 tabular-nums text-right">
-            {fmt(s.netDeposits)} <span className="text-[11px] font-bold text-slate-400">ج.م</span>
+          <div dir="ltr" className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums text-right">
+            {fmt(extra.myPureNav)} <span className="text-[10px] font-bold text-slate-400">ج.م ({extra.myNavSharePct.toFixed(1)}%)</span>
+          </div>
+          <div className="text-[10px] font-bold text-slate-400 flex items-center justify-between pt-0.5 border-t border-emerald-500/10">
+            <span>صافي إيداعك الخاص:</span>
+            <b dir="ltr" className="text-slate-700 dark:text-slate-200">{fmt(extra.myPureDeposits)} ج.م</b>
           </div>
         </div>
 
-        {/* 3. Cumulative Market Profit */}
-        <div className={cx(
-          'rounded-2xl border p-3 sm:p-3.5 space-y-1',
-          isProfit
-            ? 'border-emerald-500/15 bg-emerald-500/[0.03]'
-            : 'border-rose-500/15 bg-rose-500/[0.03]'
-        )}>
+        {/* 3. Partner Capital & Safety Coverage */}
+        <div className="rounded-2xl border border-purple-500/20 bg-purple-500/[0.04] p-3.5 space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className={cx('text-[11px] font-bold', isProfit ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400')}>
-              صافي أرباح السوق
+            <span className="text-[11px] font-black text-purple-600 dark:text-purple-400 flex items-center gap-1">
+              <Users className="w-3.5 h-3.5" />
+              <span>رأس مال {settings.partner.name} المحفوظ</span>
             </span>
-            <span className={cx(
-              'text-[10px] font-black px-1.5 py-0.5 rounded',
-              isProfit ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'bg-rose-500/10 text-rose-600 dark:text-rose-300'
-            )}>
-              {fmtPct(profitShare, 1)} أرباح
+            <span dir="ltr" className="text-[10px] font-black px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-600 dark:text-purple-300">
+              تغطية {extra.partnerCoveragePct.toFixed(0)}%
             </span>
           </div>
-          <div dir="ltr" className={cx('text-xl sm:text-2xl font-black tabular-nums text-right', isProfit ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-            {fmtSigned(s.profit)} <span className="text-[11px] font-bold text-slate-400">ج.م</span>
+          <div dir="ltr" className="text-lg font-black text-purple-600 dark:text-purple-400 tabular-nums text-right">
+            {fmt(extra.partnerCap)} <span className="text-[10px] font-bold text-slate-400">ج.م ({extra.partnerNavSharePct.toFixed(1)}%)</span>
+          </div>
+          <div className="text-[10px] font-bold text-slate-400 flex items-center justify-between pt-0.5 border-t border-purple-500/10">
+            <span>فائض الأمان فوق الشريك:</span>
+            <b dir="ltr" className="text-emerald-500">+{fmt(extra.myPureNav)} ج.م</b>
+          </div>
+        </div>
+
+        {/* 4. Cash Harvested + Active Market Gain */}
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.04] p-3.5 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black text-amber-600 dark:text-amber-400 flex items-center gap-1">
+              <Banknote className="w-3.5 h-3.5" />
+              <span>الثمار النقدية المجنية</span>
+            </span>
+            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-300">
+              جني أرباح + فيزا
+            </span>
+          </div>
+          <div dir="ltr" className="text-lg font-black text-amber-600 dark:text-amber-400 tabular-nums text-right">
+            +{fmt(extra.harvestedCash)} <span className="text-[10px] font-bold text-slate-400">ج.م مسحوبة</span>
+          </div>
+          <div className="text-[10px] font-bold text-slate-400 flex items-center justify-between pt-0.5 border-t border-amber-500/10">
+            <span>أرباح عاملة بالمحفظة الآن:</span>
+            <b dir="ltr" className={isProfit ? 'text-emerald-500' : 'text-rose-500'}>{fmtSigned(s.profit)} ج.م</b>
           </div>
         </div>
       </div>
 
-      {/* Visual Composition Progress Bar */}
-      <div className="space-y-2 pt-1">
-        <div className="h-3 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex shadow-inner">
-          {isProfit ? (
-            <>
-              <div
-                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-all duration-500"
-                style={{ width: `${depShare}%` }}
-                title={`رأس المال المودع: ${depShare.toFixed(1)}%`}
-              />
-              <div
-                className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-500"
-                style={{ width: `${Math.max(0, 100 - depShare)}%` }}
-                title={`أرباح السوق: ${profitShare.toFixed(1)}%`}
-              />
-            </>
-          ) : (
+      {/* Dual Visual Progress Bars: 1) Capital vs Profit  2) My Equity vs Partner Capital */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-1">
+        {/* Bar 1: Capital vs Market Profit in Current Lens */}
+        <div className="rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800/70 p-3 space-y-2">
+          <div className="flex items-center justify-between text-[11px] font-black">
+            <span className="text-slate-600 dark:text-slate-300">تركيب القيمة السوقية ({lensLabel})</span>
+            <span dir="ltr" className="text-emerald-500">{depShare.toFixed(1)}% رأس مال · {Math.max(0, profitShare).toFixed(1)}% أرباح</span>
+          </div>
+          <div className="h-2.5 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex">
             <div
-              className="h-full bg-gradient-to-r from-indigo-500 to-rose-500 transition-all duration-500"
-              style={{ width: '100%' }}
+              className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-all duration-500"
+              style={{ width: `${depShare}%` }}
             />
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold">
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
-              <span className="w-2 h-2 rounded-full bg-indigo-500" />
-              <span>رأس المال: {fmt(s.netDeposits)} ج.م ({depShare.toFixed(1)}%)</span>
+            <div
+              className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-500"
+              style={{ width: `${Math.max(0, 100 - depShare)}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
+            <span className="flex items-center gap-1.5">
+              <i className="w-2 h-2 rounded-full bg-indigo-500" />
+              <span>صافي الإيداعات: {fmt(s.netDeposits)} ج.م</span>
             </span>
-            <span className={cx('inline-flex items-center gap-1.5', isProfit ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500')}>
-              <span className={cx('w-2 h-2 rounded-full', isProfit ? 'bg-emerald-500' : 'bg-rose-500')} />
-              <span>{isProfit ? `أرباح السوق: +${fmt(s.profit)} ج.م` : `تراجع: ${fmt(s.profit)} ج.م`} ({Math.abs(profitShare).toFixed(1)}%)</span>
+            <span className="flex items-center gap-1.5">
+              <i className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span>صافي العوائد: {fmtSigned(s.profit)} ج.م</span>
             </span>
           </div>
-          <span className="text-[10px] text-slate-400 font-semibold">
-            {isProfit
-              ? `✨ نمو ذاتي: كل 1,000 ج.م أودعتها حققت أرباحاً بمقدار ${Math.round(retOnCapital * 10)} ج.م`
-              : `تراجع مؤقت بنسبة ${Math.abs(retOnCapital).toFixed(1)}% من رأس المال`}
-          </span>
         </div>
+
+        {/* Bar 2: Ownership Split in Total Fund */}
+        {settings.partner.enabled && (
+          <div className="rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800/70 p-3 space-y-2">
+            <div className="flex items-center justify-between text-[11px] font-black">
+              <span className="text-slate-600 dark:text-slate-300">توزيع الملكية الحالية في المحفظة</span>
+              <span dir="ltr" className="text-purple-500">حصتي {extra.myNavSharePct.toFixed(1)}% · {settings.partner.name} {extra.partnerNavSharePct.toFixed(1)}%</span>
+            </div>
+            <div className="h-2.5 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500"
+                style={{ width: `${extra.myNavSharePct}%` }}
+              />
+              <div
+                className="h-full bg-gradient-to-r from-purple-500 to-fuchsia-500 transition-all duration-500"
+                style={{ width: `${extra.partnerNavSharePct}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <i className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>ملكيتك الصافية: {fmt(extra.myPureNav)} ج.م</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <i className="w-2 h-2 rounded-full bg-purple-500" />
+                <span>رأس مال {settings.partner.name}: {fmt(extra.partnerCap)} ج.م</span>
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
