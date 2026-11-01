@@ -4,7 +4,7 @@ export const ASSET_META: Record<AssetKey, { label: string; color: string; emoji:
   cash: { label: 'النقد', color: '#38bdf8', emoji: '💵' },
   clouds: { label: 'الكلاودز', color: '#a78bfa', emoji: '☁️' },
   stocks: { label: 'الأسهم', color: '#34d399', emoji: '📈' },
-  equityFunds: { label: 'صناديق أسهم', color: '#2dd4bf', emoji: '🧺' },
+  equityFunds: { label: 'صناديق الاستثمار', color: '#2dd4bf', emoji: '🧺' },
   fixedIncome: { label: 'دخل ثابت وصناديق', color: '#fbbf24', emoji: '🏦' },
   gold: { label: 'الذهب', color: '#fb923c', emoji: '🪙' },
 };

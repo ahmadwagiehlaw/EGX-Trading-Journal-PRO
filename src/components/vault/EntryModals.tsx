@@ -6,6 +6,8 @@ import { ASSET_KEYS, ASSET_META } from './types';
 import type { AssetKey, VaultCashflow } from './types';
 import { todayStr, fmt, fmtDate } from './calc';
 
+const DETAIL_GRID_KEYS: AssetKey[] = ['stocks', 'cash', 'clouds', 'fixedIncome', 'equityFunds', 'gold'];
+
 const num = (s: string) => {
   const n = parseFloat(s.replace(/,/g, ''));
   return Number.isFinite(n) ? n : 0;
@@ -46,6 +48,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [expandedTags, setExpandedTags] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (open && initialPortfolio) setPid(initialPortfolio);
@@ -361,31 +364,51 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
                   <div className="flex items-center gap-1.5 pt-1 pr-5 flex-wrap">
                     <span className="text-[10px] font-bold text-slate-400 shrink-0">تخصيص سريع:</span>
                     {isMulti && (
-                      <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                      <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20 shrink-0">
                         موزع تفصيلياً (تفصيلي بالأصول)
                       </span>
                     )}
-                    {(['stocks', 'clouds', 'fixedIncome', 'gold', 'cash'] as AssetKey[]).map(k => {
-                      const meta = ASSET_META[k];
-                      const isSelected = activeTag === k;
+                    {(() => {
+                      const isExpanded = !!expandedTags[p.id];
+                      const primaryKeys: AssetKey[] = ['stocks', 'clouds'];
+                      const secondaryKeys: AssetKey[] = ['fixedIncome', 'gold', 'cash'];
+                      const visibleKeys = isExpanded
+                        ? [...primaryKeys, ...secondaryKeys]
+                        : (activeTag && secondaryKeys.includes(activeTag) ? [...primaryKeys, activeTag] : primaryKeys);
+
                       return (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => handleQuickTagClick(p.id, k)}
-                          className={cx(
-                            'text-[10px] font-black px-2 py-0.5 rounded-lg border transition-all flex items-center gap-1 shrink-0',
-                            isSelected
-                              ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-transparent shadow-xs scale-[1.03]'
-                              : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:border-slate-400'
-                          )}
-                        >
-                          <span>{meta.emoji}</span>
-                          <span>{meta.label}</span>
-                          {isSelected && <span className="text-[9px] opacity-75">100%</span>}
-                        </button>
+                        <>
+                          {visibleKeys.map(k => {
+                            const meta = ASSET_META[k];
+                            const isSelected = activeTag === k;
+                            return (
+                              <button
+                                key={k}
+                                type="button"
+                                onClick={() => handleQuickTagClick(p.id, k)}
+                                className={cx(
+                                  'text-[10px] font-black px-2 py-0.5 rounded-lg border transition-all flex items-center gap-1 shrink-0',
+                                  isSelected
+                                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-transparent shadow-xs scale-[1.03]'
+                                    : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                                )}
+                              >
+                                <span>{meta.emoji}</span>
+                                <span>{meta.label}</span>
+                                {isSelected && <span className="text-[9px] opacity-75">100%</span>}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            onClick={() => setExpandedTags(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                            className="text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-2 py-0.5 rounded-lg transition shrink-0"
+                          >
+                            {isExpanded ? 'إخفاء ▴' : '+ المزيد'}
+                          </button>
+                        </>
                       );
-                    })}
+                    })()}
                   </div>
                 </div>
               );
@@ -416,7 +439,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
               </div>
             )}
             <div className="grid grid-cols-2 gap-3">
-              {ASSET_KEYS.map(k => {
+              {DETAIL_GRID_KEYS.map(k => {
                 const curVal = totals[pid] ? num(totals[pid]) : 0;
                 const currentP = active.find(p => p.id === pid);
                 const isPinned = currentP?.pinnedAsset === k;
