@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Check, Plus, AlertTriangle, Pin, Zap, CheckCircle2, Calendar } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Check, Plus, AlertTriangle, Pin, Zap, CheckCircle2, Calendar, Trash2 } from 'lucide-react';
 import { Modal, Field, inputCls, Segmented, cx } from './ui';
 import { useVault } from './VaultContext';
 import { ASSET_KEYS, ASSET_META } from './types';
@@ -103,11 +103,6 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
 
     active.forEach(p => {
       const e = snapshots.find(s => s.portfolioId === p.id && s.date === date);
-      // Immediately preceding snapshot on or before this date:
-      const prev = snapshots
-        .filter(s => s.portfolioId === p.id && s.date < date)
-        .sort((a, b) => b.date.localeCompare(a.date))[0]
-        || latest(p.id);
 
       if (e) {
         t[p.id] = String(e.total);
@@ -121,25 +116,13 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
           if (presentKeys.length === 1) {
             qAssets[p.id] = presentKeys[0] as AssetKey;
           }
+        } else if (p.id === 'thndr') {
+          bds[p.id] = { stocks: String(e.total) };
         }
-      } else if (prev) {
-        // Pre-fill default values from the immediately preceding recorded snapshot!
-        t[p.id] = String(prev.total);
-        if (prev.breakdown && Object.keys(prev.breakdown).length > 0) {
-          const bdMap: Record<string, string> = {};
-          ASSET_KEYS.forEach(k => {
-            if (prev.breakdown?.[k]) bdMap[k] = String(prev.breakdown[k]);
-          });
-          bds[p.id] = bdMap;
-          const presentKeys = Object.keys(bdMap);
-          if (presentKeys.length === 1) {
-            qAssets[p.id] = presentKeys[0] as AssetKey;
-          }
-        } else {
-          const chosen = p.pinnedAsset ?? (p.id === 'thndr' ? 'stocks' : 'stocks');
-          bds[p.id] = { [chosen]: String(prev.total) };
-          qAssets[p.id] = chosen;
-        }
+      } else {
+        // لا توجد قراءة مسجلة في هذا التاريخ المحدد: اترك الحقول فارغة حتى لا تظهر قيم قديمة غريبة
+        t[p.id] = '';
+        bds[p.id] = {};
       }
 
       if (!qAssets[p.id]) {
@@ -153,7 +136,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
     const curSnap = snapshots.find(s => s.portfolioId === pid && s.date === date);
     setNote(curSnap?.note ?? '');
     setSuccessMsg(null);
-  }, [open, date]);
+  }, [open, date, snapshots, pid, active]);
 
   const existing = (id: string) => snapshots.find(s => s.portfolioId === id && s.date === date);
   const latest = (id: string) => snapshots.filter(s => s.portfolioId === id).sort((a, b) => b.date.localeCompare(a.date))[0];
@@ -783,7 +766,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
 
 /* ───────── Cashflow ───────── */
 export function CashflowModal({ open, onClose, initialType = 'deposit', editing }: { open: boolean; onClose: () => void; initialType?: 'deposit' | 'withdrawal'; editing?: VaultCashflow }) {
-  const { settings, cashflows, addCashflow, updateCashflow, saveSettings } = useVault();
+  const { settings, cashflows, addCashflow, updateCashflow, deleteCashflow, saveSettings } = useVault();
   const [isPartner, setIsPartner] = useState(false);
   const active = settings.portfolios.filter(p => p.active);
   const [type, setType] = useState<'deposit' | 'withdrawal'>(initialType);
@@ -924,10 +907,33 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
           </label>
         )}
 
-        <button disabled={!num(amount) || busy} onClick={submit}
-          className={cx('w-full flex items-center justify-center gap-2 rounded-2xl py-3 text-sm font-black text-white shadow-lg disabled:opacity-40 hover:brightness-110 transition', isDep ? 'bg-gradient-to-l from-emerald-500 to-teal-500 shadow-emerald-500/25' : 'bg-gradient-to-l from-rose-500 to-orange-500 shadow-rose-500/25')}>
-          <Check className="w-4 h-4" /> {editing ? 'حفظ التعديل' : isDep ? 'تأكيد الإيداع' : 'تأكيد السحب'}
-        </button>
+        <div className="flex items-center gap-2">
+          {editing && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                if (window.confirm('هل تريد حذف هذه الحركة بالتأكيد؟')) {
+                  setBusy(true);
+                  try {
+                    await deleteCashflow(editing.id);
+                    onClose();
+                  } finally {
+                    setBusy(false);
+                  }
+                }
+              }}
+              className="px-4 py-3 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-black transition flex items-center justify-center gap-1.5 shrink-0"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>حذف</span>
+            </button>
+          )}
+          <button disabled={!num(amount) || busy} onClick={submit}
+            className={cx('flex-1 flex items-center justify-center gap-2 rounded-2xl py-3 text-sm font-black text-white shadow-lg disabled:opacity-40 hover:brightness-110 transition', isDep ? 'bg-gradient-to-l from-emerald-500 to-teal-500 shadow-emerald-500/25' : 'bg-gradient-to-l from-rose-500 to-orange-500 shadow-rose-500/25')}>
+            <Check className="w-4 h-4" /> {editing ? 'حفظ التعديل' : isDep ? 'تأكيد الإيداع' : 'تأكيد السحب'}
+          </button>
+        </div>
       </div>
     </Modal>
   );

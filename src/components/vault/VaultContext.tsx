@@ -46,15 +46,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setReady(r => ({ ...r, s: true }));
     }, () => setReady(r => ({ ...r, s: true })));
     const u2 = onSnapshot(collection(db, 'vault_snapshots'), q => {
-      setSnapshots(q.docs.map(d => d.data() as VaultSnapshot));
+      setSnapshots(q.docs.map(d => ({ ...d.data(), id: d.id } as VaultSnapshot)));
       setReady(r => ({ ...r, a: true }));
     }, () => setReady(r => ({ ...r, a: true })));
     const u3 = onSnapshot(collection(db, 'vault_cashflow'), q => {
-      setCashflows(q.docs.map(d => d.data() as VaultCashflow));
+      setCashflows(q.docs.map(d => ({ ...d.data(), id: d.id } as VaultCashflow)));
       setReady(r => ({ ...r, c: true }));
     }, () => setReady(r => ({ ...r, c: true })));
     const u4 = onSnapshot(collection(db, 'vault_months'), q => {
-      setMonths(q.docs.map(d => d.data() as VaultMonthProfit).sort((a, b) => a.id.localeCompare(b.id)));
+      setMonths(q.docs.map(d => ({ ...d.data(), id: d.id } as VaultMonthProfit)).sort((a, b) => a.id.localeCompare(b.id)));
       setReady(r => ({ ...r, m: true }));
     }, () => setReady(r => ({ ...r, m: true })));
     return () => { u1(); u2(); u3(); u4(); };
