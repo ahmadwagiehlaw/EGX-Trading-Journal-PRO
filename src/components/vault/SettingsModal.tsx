@@ -178,68 +178,29 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
             <Field label="اسم الشريك"><input value={settings.partner.name} onChange={e => upd({ partner: { ...settings.partner, name: e.target.value } })} className={inputCls} /></Field>
 
             <div className="rounded-2xl bg-indigo-500/5 border border-indigo-500/20 p-4 text-xs font-bold leading-6 text-indigo-700 dark:text-indigo-300">
-              💡 <b>قيم مرجعية معتمدة مفصولة تماماً:</b> هذه الأرقام هي مراجع الحصص لحساب تطور أموال كل طرف دون أي تأثير أو تضارب مع حركات الإيداع والسحب اليومية الفعلية التي تسجلها بنفسك في المحفظة.
+              💡 <b>حساب تلقائي ذكي وديناميكي:</b> أصل رأس مالك يُحسب تلقائياً من أقدم قيمة سوقية مسجلة في المحفظة + صافي التدفقات، وكل شيء في المحفظة يخصك بالكامل فيما عدا رأس مال الشريك المرجعي المعتمد فقط.
             </div>
 
-            {/* حقول رأس المال المرجعي الثابت لكل طرف */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-2 bg-slate-50/60 dark:bg-slate-800/30">
-                <span className="text-xs font-black text-slate-600 dark:text-slate-300">أصل رأس مالك المرجعي (لك)</span>
-                <input
-                  inputMode="decimal"
-                  dir="ltr"
-                  value={settings.partner.myCapital ?? 330000}
-                  onChange={e => upd({ partner: { ...settings.partner, myCapital: parseFloat(e.target.value) || 0 } })}
-                  placeholder="330000"
-                  className={cx(inputCls, 'text-left font-black tabular-nums text-base')}
-                />
-                <span className="text-[10px] text-slate-400 font-bold block">
-                  المسجل عند الافتتاح (100k ثاندر + 200k مباشر + 30k هيرميس)
-                </span>
-              </div>
-
-              <div className="rounded-2xl border border-violet-500/30 p-4 space-y-2 bg-violet-500/[0.04]">
+            {/* حقل رأس مال الشريك المرجعي المعتمد */}
+            <div className="rounded-2xl border border-violet-500/30 p-4 space-y-2.5 bg-violet-500/[0.04]">
+              <div className="flex items-center justify-between">
                 <span className="text-xs font-black text-violet-600 dark:text-violet-400">رأس مال الشريك المعتمد ({settings.partner.name})</span>
-                <input
-                  inputMode="decimal"
-                  dir="ltr"
-                  value={settings.partner.partnerCapital ?? 570000}
-                  onChange={e => upd({ partner: { ...settings.partner, partnerCapital: parseFloat(e.target.value) || 0 } })}
-                  placeholder="570000"
-                  className={cx(inputCls, 'text-left font-black tabular-nums text-base !border-violet-300 dark:!border-violet-700')}
-                />
-                <span className="text-[10px] text-violet-500/80 font-bold block">
-                  إجمالي أموال الشريك المرجعية (500k في فبراير + 70k في مايو)
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-600 dark:text-violet-300">
+                  رقم مرجعي ثابت
                 </span>
               </div>
+              <input
+                inputMode="decimal"
+                dir="ltr"
+                value={settings.partner.partnerCapital ?? 570000}
+                onChange={e => upd({ partner: { ...settings.partner, partnerCapital: parseFloat(e.target.value) || 0 } })}
+                placeholder="570000"
+                className={cx(inputCls, 'text-left font-black tabular-nums text-lg !border-violet-300 dark:!border-violet-700')}
+              />
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold leading-5">
+                إجمالي رأس مال الشريك الثابت (مثلاً 570 ألف ج.م). يُخصم هذا المبلغ من إجمالي القيمة السوقية للمحفظة ليكون كل ما عداه هو حصتك الصافية ونمو ثروتك بالكامل.
+              </p>
             </div>
-
-            {/* شريط توزيع الحصص الرأسمالية الإجمالي */}
-            {(() => {
-              const myCap = settings.partner.myCapital ?? 330000;
-              const pCap = settings.partner.partnerCapital ?? 570000;
-              const tot = myCap + pCap;
-              const myPct = tot > 0 ? (myCap / tot) * 100 : 36.7;
-              const pPct = tot > 0 ? (pCap / tot) * 100 : 63.3;
-              return (
-                <div className="rounded-2xl bg-gradient-to-l from-slate-900 to-indigo-950 p-4 text-white space-y-3 shadow-md">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-                    <span>إجمالي رأس المال المشترك</span>
-                    <span dir="ltr" className="text-xl font-black tabular-nums text-white">
-                      {fmt(tot)} ج.م
-                    </span>
-                  </div>
-                  <div className="h-2.5 w-full rounded-full bg-white/10 overflow-hidden flex">
-                    <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${myPct}%` }} />
-                    <div className="h-full bg-violet-400 transition-all duration-300" style={{ width: `${pPct}%` }} />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 pt-0.5">
-                    <span>حصتك: {myPct.toFixed(1)}% ({fmt(myCap)} ج.م)</span>
-                    <span>حصة {settings.partner.name}: {pPct.toFixed(1)}% ({fmt(pCap)} ج.م)</span>
-                  </div>
-                </div>
-              );
-            })()}
 
             {/* تنظيف الحركات السابقة إن وجدت حتى لا تتداخل */}
             {partnerFlows.length > 0 && (

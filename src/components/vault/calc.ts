@@ -67,6 +67,23 @@ export function buildSeries(snaps: VaultSnapshot[], flows: VaultCashflow[], ids:
   const dates = Array.from(new Set([...S.map(s => s.date), ...F.map(f => f.date)])).sort();
   if (!dates.length) return [];
 
+  const firstDate = dates[0];
+
+  // أصل رأس المال الأساسي للمحفظة: يُحسب تلقائياً وبشكل ديناميكي من إجمالي أقدم قراءة سوقية مسجلة
+  let initNav = 0;
+  for (const p of ids) {
+    const s = S.find(x => x.portfolioId === p && x.date <= firstDate);
+    if (s) {
+      initNav += s.total;
+    } else {
+      const fInit = F.filter(x => x.portfolioId === p && x.date === firstDate);
+      initNav += fInit.reduce((a, c) => a + signed(c), 0);
+    }
+  }
+  if (initNav === 0) {
+    initNav = F.filter(f => f.date === firstDate).reduce((a, c) => a + signed(c), 0);
+  }
+
   const pts: Point[] = dates.map(d => {
     const by: Record<string, number> = {};
     let nav = 0;
@@ -78,13 +95,20 @@ export function buildSeries(snaps: VaultSnapshot[], flows: VaultCashflow[], ids:
       by[p] = (snap ? snap.total : 0) + after;
       nav += by[p];
     }
-    let deposits = 0;
+
+    // صافي رأس المال المودع = (أقدم قيمة سوقية كأساس انطلاق) + (كل الإيداعات والسحوبات الصافية اللاحقة)
+    let deposits = initNav;
     let flow = 0;
     for (const f of F) {
-      if (f.date <= d) deposits += signed(f);
       if (f.date === d) flow += signed(f);
+      if (d > firstDate && f.date > firstDate && f.date <= d && !f.opening) {
+        deposits += signed(f);
+      }
     }
-    return { date: d, nav, deposits, flow, profit: nav - deposits, ret: deposits > 0 ? ((nav - deposits) / deposits) * 100 : 0, index: 1, dd: 0, by };
+
+    const profit = nav - deposits;
+    const ret = deposits > 0 ? (profit / deposits) * 100 : 0;
+    return { date: d, nav, deposits, flow, profit, ret, index: 1, dd: 0, by };
   });
 
   let idx = 1;
@@ -390,61 +414,54 @@ export function profitTotals(rows: VaultMonthProfit[]) {
   );
 }
 
-/* ───────── Partner split (Fixed Capital & Proportional Reflection) ─────────
- * أصل رأس المال المودع ثابت ومحدد صراحة لكل طرف كما هو في الإعدادات:
- * - المستخدم: 330,000 ج.م
- * - الشريك (لولو): 570,000 ج.م
- * - إجمالي رأس المال المرجعي: 900,000 ج.م
- * مفصولة تماماً ومستقلة عن حركات الكاش الفعلية التي يقوم بها المستخدم.
- * القيمة السوقية وأرباح المحفظة ومؤشرات النمو (TWR, CAGR, Drawdown)
- * تنعكس بسلاسة وبشكل منتظم ومستمر على كلا الطرفين بدون أي هبوط وهمي. */
+/* ───────── Partner split (Total Ownership - Partner Capital) ─────────
+ * المحفظة بأكملها وأرباحها واستثماراتها ملك للمستخدم، مخصوماً منها رأس مال الشريك المرجعي (570 ألف).
+ * أصل رأس مال المستخدم يُحسب تلقائياً من أقدم قيمة سوقية + صافي الإيداعات.
+ * الشريك له رأس ماله المرجعي ثابتاً، مع شارت نمو تقديري يوضح أداء أمواله في المحفظة. */
 export function partnerSplit(
   pts: Point[],
-  partnerSettings?: { partnerCapital?: number; myCapital?: number },
-  partnerFlows: VaultCashflow[] = [],
-  openingFlows: VaultCashflow[] = []
+  partnerSettings?: { partnerCapital?: number }
 ): { partner: Point[]; mine: Point[]; hasPartner: boolean } {
   if (!pts.length) return { partner: [], mine: pts, hasPartner: false };
 
-  // أصل رأس المال المودع الثابت لكل طرف من الإعدادات المرجعية المفصولة
-  const myBaseCap = partnerSettings?.myCapital ?? (openingFlows.reduce((a, c) => a + c.amount, 0) || 330000);
-  const partnerTotalCap = partnerSettings?.partnerCapital ?? (partnerFlows.reduce((a, c) => a + signed(c), 0) || 570000);
-  const totalBaseCap = myBaseCap + partnerTotalCap;
+  // رأس مال الشريك المعتمد المرجعي فقط (افتراضياً 570 ألف)
+  const partnerCap = partnerSettings?.partnerCapital ?? 570000;
 
-  const myRatio = totalBaseCap > 0 ? myBaseCap / totalBaseCap : 33 / 90;
-  const pRatio = totalBaseCap > 0 ? partnerTotalCap / totalBaseCap : 57 / 90;
-
-  // حصة المستخدم (أصل الإيداعات ثابت = 330,000 ج.م)
+  // حصة المستخدم: كل شيء في المحفظة هو ملك المستخدم، مخصوماً منه رأس مال الشريك
   const mine: Point[] = pts.map(p => {
-    const nav = p.nav * myRatio;
-    const profit = nav - myBaseCap;
+    const nav = Math.max(0, p.nav - partnerCap);
+    const deposits = Math.max(0, p.deposits - partnerCap);
+    const profit = nav - deposits;
+    const ret = deposits > 0 ? (profit / deposits) * 100 : p.ret;
+    const k = p.nav > 0 ? nav / p.nav : 0;
     return {
       ...p,
       nav,
-      deposits: myBaseCap,
-      flow: p.flow * myRatio,
+      deposits,
+      flow: p.flow,
       profit,
-      ret: myBaseCap > 0 ? (profit / myBaseCap) * 100 : 0,
+      ret,
       index: p.index,
       dd: p.dd,
-      by: Object.fromEntries(Object.entries(p.by).map(([a, v]) => [a, v * myRatio])),
+      by: Object.fromEntries(Object.entries(p.by).map(([a, v]) => [a, v * k])),
     };
   });
 
-  // حصة الشريك (أصل الإيداعات ثابت = 570,000 ج.م)
+  // حصة الشريك: رأس ماله المرجعي مع انعكاس نمو المحفظة كأداة عرض لصالحه
   const partner: Point[] = pts.map(p => {
-    const nav = p.nav * pRatio;
-    const profit = nav - partnerTotalCap;
+    const pProfit = p.deposits > 0 ? (partnerCap / p.deposits) * p.profit : 0;
+    const nav = Math.min(p.nav, partnerCap + pProfit);
+    const k = p.nav > 0 ? nav / p.nav : 0;
     return {
       ...p,
       nav,
-      deposits: partnerTotalCap,
-      flow: p.flow * pRatio,
-      profit,
-      ret: partnerTotalCap > 0 ? (profit / partnerTotalCap) * 100 : 0,
+      deposits: partnerCap,
+      flow: 0,
+      profit: nav - partnerCap,
+      ret: partnerCap > 0 ? ((nav - partnerCap) / partnerCap) * 100 : 0,
       index: p.index,
       dd: p.dd,
-      by: Object.fromEntries(Object.entries(p.by).map(([a, v]) => [a, v * pRatio])),
+      by: Object.fromEntries(Object.entries(p.by).map(([a, v]) => [a, v * k])),
     };
   });
 
