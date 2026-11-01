@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Trash2, EyeOff, Eye, Landmark, Users, ArrowUp, ArrowDown, AlertOctagon } from 'lucide-react';
 import { Modal, Field, inputCls, Segmented, cx } from './ui';
 import { useVault } from './VaultContext';
 import { PORTFOLIO_COLORS, ASSET_KEYS, ASSET_META } from './types';
 import type { AssetKey } from './types';
 import type { VaultCashflow } from './types';
-import { todayStr, fmt } from './calc';
+import { todayStr, fmt, fmtDate } from './calc';
 
 type Tab = 'portfolios' | 'capital' | 'partner' | 'tags' | 'display' | 'danger';
 
@@ -27,13 +27,56 @@ function TagChip({ label, emoji, onRename, onRemove }: { label: string; emoji: s
 }
 
 function FlowEditRow({ c, name, onUpdate, onDelete }: { c: VaultCashflow; name?: string; onUpdate: (p: Partial<VaultCashflow>) => void; onDelete: () => void }) {
+  const [date, setDate] = useState(c.date);
+  const [amt, setAmt] = useState(String(c.amount));
+
+  useEffect(() => {
+    setDate(c.date);
+    setAmt(String(c.amount));
+  }, [c.date, c.amount]);
+
+  const saveDate = (d: string) => {
+    if (d && d !== c.date) onUpdate({ date: d });
+  };
+
+  const saveAmt = (a: string) => {
+    const n = parseFloat(a);
+    if (n > 0 && n !== c.amount) onUpdate({ amount: n });
+  };
+
   return (
-    <div className="flex items-center gap-2 text-xs font-bold">
-      <input type="date" defaultValue={c.date} key={c.id + c.date} onBlur={e => e.target.value && e.target.value !== c.date && onUpdate({ date: e.target.value })} className={cx(inputCls, '!w-auto !py-1.5')} />
-      <span className="w-16 shrink-0 truncate text-slate-500">{name}</span>
-      <span className={c.type === 'deposit' ? 'text-emerald-500' : 'text-rose-500'}>{c.type === 'deposit' ? '+' : '−'}</span>
-      <input inputMode="decimal" dir="ltr" defaultValue={c.amount} key={c.id + c.amount} onBlur={e => { const n = parseFloat(e.target.value); if (n > 0 && n !== c.amount) onUpdate({ amount: n }); }} className={cx(inputCls, '!py-1.5 text-left tabular-nums')} />
-      <button onClick={onDelete} className="p-1.5 text-rose-400"><Trash2 className="w-3.5 h-3.5" /></button>
+    <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 text-xs font-bold bg-slate-50/80 dark:bg-slate-800/40 p-2 rounded-2xl border border-slate-100 dark:border-slate-800">
+      <div className="flex items-center gap-1.5 shrink-0">
+        <input
+          type="date"
+          value={date}
+          onChange={e => {
+            setDate(e.target.value);
+            if (e.target.value) saveDate(e.target.value);
+          }}
+          onBlur={e => saveDate(e.target.value)}
+          className={cx(inputCls, '!w-auto !py-1 text-xs')}
+        />
+        <span className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-lg border border-indigo-100 dark:border-indigo-900/40 shrink-0">
+          {c.date ? fmtDate(c.date) : ''}
+        </span>
+      </div>
+      <span className="w-14 shrink-0 truncate text-slate-500 font-bold">{name}</span>
+      <span className={c.type === 'deposit' ? 'text-emerald-500 font-black' : 'text-rose-500 font-black'}>
+        {c.type === 'deposit' ? '+' : '−'}
+      </span>
+      <input
+        inputMode="decimal"
+        dir="ltr"
+        value={amt}
+        onChange={e => setAmt(e.target.value)}
+        onBlur={e => saveAmt(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && saveAmt(amt)}
+        className={cx(inputCls, '!py-1 text-left tabular-nums !w-24 text-xs font-black')}
+      />
+      <button onClick={onDelete} title="حذف" className="p-1.5 text-rose-400 hover:text-rose-600 shrink-0">
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
     </div>
   );
 }
