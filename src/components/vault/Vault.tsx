@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, BarChart3, CalendarDays, Layers, LineChart, PiggyBank, Plus, ScrollText, Settings2, Landmark } from 'lucide-react';
 import { VaultProvider, useVault } from './VaultContext';
 import { buildSeries, computeStats, partnerSplit } from './calc';
-import { Hero, MainChart, KpiGrid, Insights } from './OverviewView';
+import { Hero, MainChart, WealthGrowthDecomposition, KpiGrid, Insights } from './OverviewView';
 import { CalendarView } from './CalendarView';
 import { PortfoliosView } from './PortfoliosView';
 import { FlowsView } from './FlowsView';
@@ -201,6 +201,7 @@ function VaultInner() {
             <div className="space-y-4">
               <Hero pts={pts} stats={stats} scopeLabel={scopeP?.name ?? 'الكل'} lensLabel={lensLabel} />
               <MainChart pts={pts} accent={scopeP?.color ?? '#f97316'} dir={settings.chartDirection ?? 'rtl'} />
+              <WealthGrowthDecomposition stats={stats} />
               <KpiGrid stats={stats} />
               <Insights stats={stats} />
             </div>

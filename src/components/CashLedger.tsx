@@ -1,15 +1,15 @@
 import { useState, useMemo } from 'react';
 import { useTrades } from '../context/TradeContext';
 import { formatEGP, computePositionMetrics } from '../utils/calculations';
-import { 
-  Wallet, 
-  ArrowDownLeft, 
-  ArrowUpRight, 
-  TrendingUp, 
-  TrendingDown, 
-  Trash2, 
-  Plus, 
-  Landmark, 
+import {
+  Wallet,
+  ArrowDownLeft,
+  ArrowUpRight,
+  TrendingUp,
+  TrendingDown,
+  Trash2,
+  Plus,
+  Landmark,
   PiggyBank,
   Coins,
   BadgeDollarSign,
@@ -18,19 +18,19 @@ import {
 } from 'lucide-react';
 
 export default function CashLedger() {
-  const { 
-    ledger, 
-    addLedgerEntry, 
-    deleteLedgerEntry, 
-    depositedInvestment, 
+  const {
+    ledger,
+    addLedgerEntry,
+    deleteLedgerEntry,
+    depositedInvestment,
     depositedSpeculation,
-    fixedIncome, 
-    positions, 
+    fixedIncome,
+    positions,
     commissionRate,
     portfolioFilter,
     setPortfolioFilter
   } = useTrades();
-  
+
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Form State
@@ -80,11 +80,11 @@ export default function CashLedger() {
 
     const fi = activeLedgerTab === 'speculation' ? 0 : fixedIncome;
 
-    return { 
-      netPrincipal: principal, 
+    return {
+      netPrincipal: principal,
       profitBank: realizedProfit,
-      openInvestedCost: cost, 
-      liveMarketValue: mv, 
+      openInvestedCost: cost,
+      liveMarketValue: mv,
       totalUnrealizedPnL: uPnL,
       targetFixedIncome: fi
     };
@@ -106,7 +106,7 @@ export default function CashLedger() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return;
-    
+
     setIsSubmitting(true);
     try {
       await addLedgerEntry({
@@ -134,7 +134,7 @@ export default function CashLedger() {
 
   return (
     <div className="space-y-6" dir="rtl">
-      
+
       {/* Header & Portfolio Switcher */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="flex items-center gap-3">
@@ -156,31 +156,28 @@ export default function CashLedger() {
           <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700">
             <button
               onClick={() => { setActiveLedgerTab('all'); setPortfolioFilter('all'); }}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
-                activeLedgerTab === 'all'
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all ${activeLedgerTab === 'all'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
                   : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-              }`}
+                }`}
             >
-              المحفظة المجمعة
+              الكل
             </button>
             <button
               onClick={() => { setActiveLedgerTab('investment'); setPortfolioFilter('investment'); setEntryPortfolio('investment'); }}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
-                activeLedgerTab === 'investment'
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all ${activeLedgerTab === 'investment'
                   ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
                   : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-              }`}
+                }`}
             >
               استثمار (ثاندر)
             </button>
             <button
               onClick={() => { setActiveLedgerTab('speculation'); setPortfolioFilter('speculation'); setEntryPortfolio('speculation'); }}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
-                activeLedgerTab === 'speculation'
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all ${activeLedgerTab === 'speculation'
                   ? 'bg-purple-600 text-white shadow-sm shadow-purple-500/20'
                   : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-              }`}
+                }`}
             >
               مضاربة (مباشر)
             </button>
@@ -201,7 +198,7 @@ export default function CashLedger() {
 
       {/* 4 Financial Pillars Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
+
         {/* Pillar 1: Net Principal Deposited */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between mb-3">
@@ -314,7 +311,7 @@ export default function CashLedger() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        
+
         {/* ADD FORM */}
         <div className="xl:col-span-1">
           <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-5 sticky top-24">
@@ -328,37 +325,34 @@ export default function CashLedger() {
               <button
                 type="button"
                 onClick={() => setType('deposit')}
-                className={`py-3 rounded-2xl text-xs font-black flex flex-col items-center gap-1.5 transition-all border ${
-                  type === 'deposit' 
-                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-500 border-emerald-200 dark:border-emerald-800 shadow-sm' 
+                className={`py-3 rounded-2xl text-xs font-black flex flex-col items-center gap-1.5 transition-all border ${type === 'deposit'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-500 border-emerald-200 dark:border-emerald-800 shadow-sm'
                     : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
+                  }`}
               >
                 <ArrowDownLeft className="w-5 h-5" />
                 إيداع نقدي
               </button>
-              
+
               <button
                 type="button"
                 onClick={() => setType('withdrawal')}
-                className={`py-3 rounded-2xl text-xs font-black flex flex-col items-center gap-1.5 transition-all border ${
-                  type === 'withdrawal' 
-                    ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-500 border-rose-200 dark:border-rose-800 shadow-sm' 
+                className={`py-3 rounded-2xl text-xs font-black flex flex-col items-center gap-1.5 transition-all border ${type === 'withdrawal'
+                    ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-500 border-rose-200 dark:border-rose-800 shadow-sm'
                     : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
+                  }`}
               >
                 <ArrowUpRight className="w-5 h-5" />
                 سحب نقدي
               </button>
-              
+
               <button
                 type="button"
                 onClick={() => setType('fixed_income_buy')}
-                className={`py-3 rounded-2xl text-xs font-black flex flex-col items-center gap-1.5 transition-all border ${
-                  type === 'fixed_income_buy' 
-                    ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800 shadow-sm' 
+                className={`py-3 rounded-2xl text-xs font-black flex flex-col items-center gap-1.5 transition-all border ${type === 'fixed_income_buy'
+                    ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800 shadow-sm'
                     : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
+                  }`}
               >
                 <TrendingUp className="w-5 h-5" />
                 شراء شهادات
@@ -367,11 +361,10 @@ export default function CashLedger() {
               <button
                 type="button"
                 onClick={() => setType('fixed_income_sell')}
-                className={`py-3 rounded-2xl text-xs font-black flex flex-col items-center gap-1.5 transition-all border ${
-                  type === 'fixed_income_sell' 
-                    ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800 shadow-sm' 
+                className={`py-3 rounded-2xl text-xs font-black flex flex-col items-center gap-1.5 transition-all border ${type === 'fixed_income_sell'
+                    ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800 shadow-sm'
                     : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
+                  }`}
               >
                 <TrendingDown className="w-5 h-5" />
                 استرداد شهادات
@@ -385,22 +378,20 @@ export default function CashLedger() {
                 <button
                   type="button"
                   onClick={() => setEntryPortfolio('investment')}
-                  className={`py-2 px-3 rounded-xl text-xs font-black border transition-all ${
-                    entryPortfolio === 'investment'
+                  className={`py-2 px-3 rounded-xl text-xs font-black border transition-all ${entryPortfolio === 'investment'
                       ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700 shadow-sm'
                       : 'bg-slate-50 dark:bg-slate-800 text-slate-500 border-transparent hover:bg-slate-100 dark:hover:bg-slate-700'
-                  }`}
+                    }`}
                 >
                   استثمار (ثاندر)
                 </button>
                 <button
                   type="button"
                   onClick={() => setEntryPortfolio('speculation')}
-                  className={`py-2 px-3 rounded-xl text-xs font-black border transition-all ${
-                    entryPortfolio === 'speculation'
+                  className={`py-2 px-3 rounded-xl text-xs font-black border transition-all ${entryPortfolio === 'speculation'
                       ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700 shadow-sm'
                       : 'bg-slate-50 dark:bg-slate-800 text-slate-500 border-transparent hover:bg-slate-100 dark:hover:bg-slate-700'
-                  }`}
+                    }`}
                 >
                   مضاربة (مباشر)
                 </button>
@@ -409,7 +400,7 @@ export default function CashLedger() {
 
             <div className="space-y-1.5">
               <label className="text-xs font-black text-slate-700 dark:text-slate-300">المبلغ (EGP)</label>
-              <input 
+              <input
                 type="number"
                 min="1"
                 step="0.01"
@@ -424,7 +415,7 @@ export default function CashLedger() {
 
             <div className="space-y-1.5">
               <label className="text-xs font-black text-slate-700 dark:text-slate-300">ملاحظات (اختياري)</label>
-              <input 
+              <input
                 type="text"
                 value={note}
                 onChange={e => setNote(e.target.value)}
@@ -468,35 +459,33 @@ export default function CashLedger() {
                   ) : (
                     sortedLedger.map((entry) => {
                       const isAddition = entry.type === 'deposit' || entry.type === 'fixed_income_sell';
-                      
+
                       return (
                         <tr key={entry.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                           <td className="py-3.5 px-5">
-                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black border inline-flex items-center gap-1.5 ${
-                              entry.type === 'deposit' 
-                                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-500 border-emerald-200 dark:border-emerald-800' 
+                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black border inline-flex items-center gap-1.5 ${entry.type === 'deposit'
+                                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-500 border-emerald-200 dark:border-emerald-800'
                                 : entry.type === 'withdrawal'
                                   ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-500 border-rose-200 dark:border-rose-800'
                                   : entry.type === 'fixed_income_buy'
                                     ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800'
                                     : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
-                            }`}>
+                              }`}>
                               {entry.type === 'deposit' && <ArrowDownLeft className="w-3.5 h-3.5" />}
                               {entry.type === 'withdrawal' && <ArrowUpRight className="w-3.5 h-3.5" />}
                               {entry.type === 'fixed_income_buy' && <TrendingUp className="w-3.5 h-3.5" />}
                               {entry.type === 'fixed_income_sell' && <TrendingDown className="w-3.5 h-3.5" />}
-                              
-                              {entry.type === 'deposit' ? 'إيداع نقدي' : 
-                               entry.type === 'withdrawal' ? 'سحب نقدي' : 
-                               entry.type === 'fixed_income_buy' ? 'شراء دخل ثابت' : 'استرداد دخل ثابت'}
+
+                              {entry.type === 'deposit' ? 'إيداع نقدي' :
+                                entry.type === 'withdrawal' ? 'سحب نقدي' :
+                                  entry.type === 'fixed_income_buy' ? 'شراء دخل ثابت' : 'استرداد دخل ثابت'}
                             </span>
                           </td>
                           <td className="py-3.5 px-3">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
-                              entry.portfolioType === 'speculation'
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${entry.portfolioType === 'speculation'
                                 ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
                                 : 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
-                            }`}>
+                              }`}>
                               {entry.portfolioType === 'speculation' ? 'مضاربة' : 'استثمار'}
                             </span>
                           </td>

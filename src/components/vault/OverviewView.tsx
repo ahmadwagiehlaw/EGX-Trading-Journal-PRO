@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
-import { Activity, Flame, ShieldAlert, ShieldCheck, Sparkles, Target, TrendingDown, TrendingUp, Trophy, Calendar, ArrowUpRight, ArrowDownRight, Zap, Compass } from 'lucide-react';
+import { Activity, Flame, ShieldAlert, ShieldCheck, Sparkles, Target, TrendingDown, TrendingUp, Trophy, Calendar, ArrowUpRight, ArrowDownRight, Zap, Compass, PieChart } from 'lucide-react';
 import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone } from './ui';
 import type { Point, Stats, Period } from './calc';
 import { PERIODS, windowSeries, fmt, fmtCompact, fmtPct, fmtSigned, fmtDate, shortDate, monthLabel } from './calc';
 
-type Mode = 'capital' | 'profit' | 'twr' | 'dd';
+type Mode = 'capital' | 'profit' | 'twr' | 'dd' | 'decomposition';
 
 const splitOffset = (vals: number[]) => {
   const max = Math.max(...vals, 0);
@@ -102,7 +102,8 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
     mode === 'capital' ? { label: 'القيمة السوقية', value: `${fmt(last.nav)} ج.م`, sub: `صافي الإيداعات ${fmt(last.deposits)}`, n: 0 }
     : mode === 'profit' ? { label: `عوائد الفترة`, value: `${fmtSigned(last.pProfit)} ج.م`, sub: `إجمالي منذ البداية ${fmtSigned(last.profit)}`, n: last.pProfit }
     : mode === 'twr' ? { label: 'نمو الفترة', value: fmtPct(last.pTwr), sub: `منذ البداية ${fmtPct((last.index - 1) * 100)}`, n: last.pTwr }
-    : { label: 'أقصى هبوط بالفترة', value: fmtPct(Math.min(...data.map(d => d.pDd))), sub: `الحالي ${fmtPct(last.pDd)}`, n: -1 }
+    : mode === 'dd' ? { label: 'أقصى هبوط بالفترة', value: fmtPct(Math.min(...data.map(d => d.pDd))), sub: `الحالي ${fmtPct(last.pDd)}`, n: -1 }
+    : { label: 'مصادر نمو القيمة السوقية', value: `${fmt(last.nav)} ج.م`, sub: `إيداعات: ${fmt(last.deposits)} ج.م | أرباح السوق: ${fmtSigned(last.profit)} ج.م`, n: last.profit }
   );
 
   const key = mode === 'profit' ? 'pProfit' : mode === 'twr' ? 'pTwr' : 'pDd';
@@ -111,7 +112,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
   return (
     <Card
       title="تحليل الأداء"
-      right={<Segmented size="sm" value={mode} onChange={setMode} options={[{ v: 'capital', label: 'رأس المال' }, { v: 'profit', label: 'العوائد' }, { v: 'twr', label: 'النمو %' }, { v: 'dd', label: 'الهبوط' }]} />}
+      right={<Segmented size="sm" value={mode} onChange={setMode} options={[{ v: 'capital', label: 'رأس المال' }, { v: 'profit', label: 'العوائد' }, { v: 'twr', label: 'النمو %' }, { v: 'dd', label: 'الهبوط' }, { v: 'decomposition', label: 'مصادر النمو' }]} />}
     >
       {!data.length ? (
         <Empty icon={<Activity className="w-10 h-10" />} text="سجّل أول قيمة سوقية لتظهر الرسوم" />
@@ -127,6 +128,13 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
               <div className="flex gap-4 text-[11px] font-bold text-slate-500 dark:text-slate-400">
                 <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full" style={{ background: accent }} />القيمة السوقية</span>
                 <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-indigo-400" />صافي الإيداعات</span>
+              </div>
+            )}
+            {mode === 'decomposition' && (
+              <div className="flex flex-wrap gap-3 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full" style={{ background: accent }} />القيمة السوقية</span>
+                <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-indigo-400" />صافي الإيداعات</span>
+                <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-emerald-400" />أرباح السوق</span>
               </div>
             )}
           </div>
@@ -148,6 +156,26 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                   ]} />} />
                   <Area type="stepAfter" dataKey="deposits" stroke="#818cf8" strokeWidth={2} fill="url(#gDep)" dot={false} />
                   <Area type="monotone" dataKey="nav" stroke={accent} strokeWidth={2.5} fill="url(#gNav)" dot={data.length < 25 ? { r: 3, fill: accent } : false} activeDot={{ r: 5 }} />
+                </ComposedChart>
+              ) : mode === 'decomposition' ? (
+                <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gNavDec" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={accent} stopOpacity={0.3} /><stop offset="100%" stopColor={accent} stopOpacity={0} /></linearGradient>
+                    <linearGradient id="gDepDec" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#818cf8" stopOpacity={0.2} /><stop offset="100%" stopColor="#818cf8" stopOpacity={0} /></linearGradient>
+                    <linearGradient id="gProfDec" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#34d399" stopOpacity={0.2} /><stop offset="100%" stopColor="#34d399" stopOpacity={0} /></linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
+                  <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
+                  <YAxis orientation="right" tickFormatter={fmtCompact} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={46} domain={['auto', 'auto']} />
+                  <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.3} />
+                  <Tooltip cursor={{ stroke: '#94a3b8', strokeDasharray: '4 4' }} content={<ChartTip labelFmt={fmtDate} rows={p => [
+                    { name: 'القيمة السوقية الإجمالية', value: `${fmt(+p.nav)} ج.م`, color: accent },
+                    { name: 'صافي رأس المال المودع', value: `${fmt(+p.deposits)} ج.م (${+p.nav > 0 ? ((+p.deposits / +p.nav) * 100).toFixed(1) : 100}%)`, color: '#818cf8' },
+                    { name: 'أرباح السوق الصافية', value: `${fmtSigned(+p.profit)} ج.م (${+p.nav > 0 ? ((+p.profit / +p.nav) * 100).toFixed(1) : 0}%)`, color: +p.profit >= 0 ? '#34d399' : '#fb7185' },
+                  ]} />} />
+                  <Area type="stepAfter" dataKey="deposits" stroke="#818cf8" strokeWidth={2} fill="url(#gDepDec)" dot={false} />
+                  <Area type="monotone" dataKey="profit" stroke={last?.profit >= 0 ? '#34d399' : '#fb7185'} strokeWidth={2} fill="url(#gProfDec)" dot={false} />
+                  <Area type="monotone" dataKey="nav" stroke={accent} strokeWidth={2.5} fill="url(#gNavDec)" dot={data.length < 25 ? { r: 3, fill: accent } : false} activeDot={{ r: 5 }} />
                 </ComposedChart>
               ) : (
                 <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -185,6 +213,152 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
         </>
       )}
     </Card>
+  );
+}
+
+/* ───────── Wealth Growth Decomposition (Deposits vs Net Profits) ───────── */
+export function WealthGrowthDecomposition({ stats }: { stats: Stats }) {
+  const s = stats;
+  const isProfit = s.profit >= 0;
+  const depShare = s.nav > 0 ? Math.max(0, Math.min(100, (s.netDeposits / s.nav) * 100)) : 100;
+  const profitShare = s.nav > 0 ? (s.profit / s.nav) * 100 : 0;
+  const retOnCapital = s.netDeposits > 0 ? (s.profit / s.netDeposits) * 100 : 0;
+
+  return (
+    <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900/90 dark:via-slate-900/40 dark:to-slate-900/90 p-5 sm:p-6 shadow-sm space-y-5">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-2xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0">
+            <PieChart className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <span>تحليل مصادر نمو القيمة السوقية</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                إيداعات vs أرباح
+              </span>
+            </h3>
+            <p className="text-[11px] font-bold text-slate-400">
+              تفكيك نمو المحفظة لمعرفة مصدر الزيادة: هل هي ناتجة عن ضخ أموال جديدة أم من أرباح الاستثمار الحقيقية؟
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 3 Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* 1. Total Market Value */}
+        <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 p-4 space-y-1">
+          <span className="text-[11px] font-bold text-slate-400">القيمة السوقية الإجمالية (NAV)</span>
+          <div dir="ltr" className="text-2xl font-black text-slate-900 dark:text-white tabular-nums text-right">
+            {fmt(s.nav)} <span className="text-xs font-bold text-slate-400">ج.م</span>
+          </div>
+          <span className="text-[10px] font-bold text-slate-400 block">إجمالي المركز المالي الحالي</span>
+        </div>
+
+        {/* 2. Net Capital Deposits */}
+        <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/[0.04] p-4 space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-indigo-500 dark:text-indigo-400">صافي رأس المال المودع</span>
+            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-600 dark:text-indigo-300">
+              {depShare.toFixed(1)}% من المحفظة
+            </span>
+          </div>
+          <div dir="ltr" className="text-2xl font-black text-indigo-600 dark:text-indigo-400 tabular-nums text-right">
+            {fmt(s.netDeposits)} <span className="text-xs font-bold text-slate-400">ج.م</span>
+          </div>
+          <span className="text-[10px] font-bold text-slate-400 block">أموال مدفوعة من جيبك (إيداعات − سحوبات)</span>
+        </div>
+
+        {/* 3. Cumulative Market Profit */}
+        <div className={cx(
+          'rounded-2xl border p-4 space-y-1',
+          isProfit
+            ? 'border-emerald-500/20 bg-emerald-500/[0.04]'
+            : 'border-rose-500/20 bg-rose-500/[0.04]'
+        )}>
+          <div className="flex items-center justify-between">
+            <span className={cx('text-[11px] font-bold', isProfit ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400')}>
+              صافي أرباح السوق والاستثمار
+            </span>
+            <span className={cx(
+              'text-[10px] font-black px-1.5 py-0.5 rounded',
+              isProfit ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300' : 'bg-rose-500/15 text-rose-600 dark:text-rose-300'
+            )}>
+              {fmtPct(profitShare, 1)} مساهمة
+            </span>
+          </div>
+          <div dir="ltr" className={cx('text-2xl font-black tabular-nums text-right', isProfit ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+            {fmtSigned(s.profit)} <span className="text-xs font-bold text-slate-400">ج.م</span>
+          </div>
+          <span className="text-[10px] font-bold text-slate-400 block">
+            {isProfit ? `عائد +${retOnCapital.toFixed(1)}% فوق رأس المال المودع` : `تراجع غير محقق بنسبة ${Math.abs(retOnCapital).toFixed(1)}%`}
+          </span>
+        </div>
+      </div>
+
+      {/* Progress / Contribution Stacked Bar */}
+      <div className="bg-slate-100/70 dark:bg-slate-800/50 rounded-2xl p-4 space-y-2.5 border border-slate-200/50 dark:border-slate-800/40">
+        <div className="flex items-center justify-between text-xs font-bold">
+          <span className="text-slate-600 dark:text-slate-300">هيكل تكوين القيمة السوقية الحالية</span>
+          <span className="text-[11px] font-mono text-slate-400">
+            {depShare.toFixed(1)}% رأس مال {isProfit ? `+ ${profitShare.toFixed(1)}% أرباح سوقية` : `(هبوط ${Math.abs(profitShare).toFixed(1)}%)`}
+          </span>
+        </div>
+        <div className="w-full h-3 rounded-full bg-slate-200 dark:bg-slate-700/60 overflow-hidden flex">
+          {isProfit ? (
+            <>
+              <div
+                className="h-full bg-indigo-500 transition-all duration-700"
+                style={{ width: `${depShare}%` }}
+                title={`رأس المال المودع: ${depShare.toFixed(1)}%`}
+              />
+              <div
+                className="h-full bg-emerald-400 transition-all duration-700"
+                style={{ width: `${Math.max(0, 100 - depShare)}%` }}
+                title={`الأرباح السوقية: ${profitShare.toFixed(1)}%`}
+              />
+            </>
+          ) : (
+            <div
+              className="h-full bg-gradient-to-r from-indigo-500 to-rose-500 transition-all duration-700"
+              style={{ width: '100%' }}
+              title="صافي الإيداعات يتجاوز القيمة السوقية الحالية"
+            />
+          )}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold pt-1">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
+              <i className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+              <span>رأس المال المودع: {fmt(s.netDeposits)} ج.م ({depShare.toFixed(1)}%)</span>
+            </span>
+            <span className={cx('inline-flex items-center gap-1.5', isProfit ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500')}>
+              <i className={cx('w-2.5 h-2.5 rounded-full', isProfit ? 'bg-emerald-400' : 'bg-rose-500')} />
+              <span>{isProfit ? `الأرباح السوقية: +${fmt(s.profit)} ج.م` : `تراجع سوقي: ${fmt(s.profit)} ج.م`} ({Math.abs(profitShare).toFixed(1)}%)</span>
+            </span>
+          </div>
+          <span className="text-[10px] text-slate-400 font-normal">المعادلة: القيمة السوقية = الإيداعات + أرباح السوق</span>
+        </div>
+      </div>
+
+      {/* Intelligent Explanation / Analysis Callout */}
+      <div className="flex items-start gap-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800/60 p-3.5 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        <Sparkles className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+        <div>
+          {isProfit ? (
+            <p>
+              من أصل محفظتك الحالية البالغة <b className="text-slate-900 dark:text-white">{fmt(s.nav)} ج.م</b>: تمثل إيداعاتك الرأسمالية <b className="text-indigo-600 dark:text-indigo-400">{fmt(s.netDeposits)} ج.م</b> ({depShare.toFixed(1)}%)، بينما نمت ثروتك بمقدار <b className="text-emerald-600 dark:text-emerald-400">+{fmt(s.profit)} ج.م</b> ({profitShare.toFixed(1)}%) نتيجة أرباح الأسهم وأداء الاستثمار. وهذا يعني أن رأس مالك يعمل بكفاءة ويولد عوائد حقيقية تفوق مجرد الادخار.
+            </p>
+          ) : (
+            <p>
+              صافي إيداعاتك النقدية يبلغ <b className="text-indigo-600 dark:text-indigo-400">{fmt(s.netDeposits)} ج.م</b>، بينما القيمة السوقية الحالية هي <b className="text-slate-900 dark:text-white">{fmt(s.nav)} ج.م</b>، بفارق <b className="text-rose-500">{fmt(s.profit)} ج.م</b> يمثل تراجعاً غير محقق أو إعادة تقييم للأصول. أي إيداع جديد تضخه يرفع القيمة السوقية مباشرة بنفس المقدار دون التأثير على حساب أرباح التداول.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
