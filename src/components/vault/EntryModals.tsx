@@ -79,6 +79,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
   const [busy, setBusy] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [expandedTags, setExpandedTags] = useState<Record<string, boolean>>({});
+  const [totalManuallySet, setTotalManuallySet] = useState<boolean>(false);
 
   useEffect(() => {
     if (open && initialPortfolio) setPid(initialPortfolio);
@@ -236,11 +237,11 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
   // Specialized handlers for Thndr's 3 smart sub-boxes (stocks - clouds - equityFunds)
   const handleThndrMainTotalChange = (val: string) => {
     setTotals(prev => ({ ...prev, thndr: val }));
+    setTotalManuallySet(true);
     const tot = num(val);
     const curBd = portfolioBreakdowns['thndr'] || {};
-    const fundsVal = num(curBd.equityFunds ?? '');
     const cloudsVal = num(curBd.clouds ?? '');
-    const stocksVal = num(curBd.stocks ?? '');
+    const fundsVal = num(curBd.equityFunds ?? '');
 
     if (tot <= 0) {
       setPortfolioBreakdowns(prev => ({
@@ -250,78 +251,66 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
       return;
     }
 
-    // Default: if neither clouds nor funds have a value, 100% goes to stocks
-    if (cloudsVal === 0 && fundsVal === 0) {
+    // إذا كانت هناك أصول فرعية مسجلة: تُحسب الأسهم كباقي الإجمالي تلقائياً
+    if (cloudsVal > 0 || fundsVal > 0) {
+      const remainingStocks = Math.max(0, tot - cloudsVal - fundsVal);
+      setPortfolioBreakdowns(prev => ({
+        ...prev,
+        thndr: {
+          ...curBd,
+          stocks: remainingStocks > 0 ? String(remainingStocks) : '',
+        },
+      }));
+    } else {
       setPortfolioBreakdowns(prev => ({
         ...prev,
         thndr: { stocks: val, clouds: '', equityFunds: '' },
       }));
-    } else {
-      // If stocks was already set, balance remainder into clouds
-      if (stocksVal > 0 && stocksVal < tot) {
-        const remainingForClouds = Math.max(0, tot - stocksVal - fundsVal);
-        setPortfolioBreakdowns(prev => ({
-          ...prev,
-          thndr: {
-            ...curBd,
-            clouds: remainingForClouds > 0 ? String(remainingForClouds) : '',
-          },
-        }));
-      } else {
-        // Otherwise balance remainder into stocks
-        const remainingForStocks = Math.max(0, tot - cloudsVal - fundsVal);
-        setPortfolioBreakdowns(prev => ({
-          ...prev,
-          thndr: {
-            ...curBd,
-            stocks: remainingForStocks > 0 ? String(remainingForStocks) : '',
-          },
-        }));
-      }
     }
   };
 
   const handleThndrSubChange = (field: 'stocks' | 'clouds' | 'equityFunds', subVal: string) => {
     const curBd = portfolioBreakdowns['thndr'] || {};
-    const newBd = { ...curBd, [field]: subVal };
     const curTotal = num(totals['thndr'] ?? '');
+    const curFunds = num(curBd.equityFunds ?? '');
     const subNum = num(subVal);
 
-    // If user edited stocks and a total was set: balance remainder to clouds
-    if (field === 'stocks' && curTotal > 0) {
-      const fundsVal = num(curBd.equityFunds ?? '');
-      if (subNum > 0 && subNum < curTotal) {
-        const remainingForClouds = Math.max(0, curTotal - subNum - fundsVal);
-        newBd.clouds = remainingForClouds > 0 ? String(remainingForClouds) : '';
-      }
-    } else if (field === 'clouds' && curTotal > 0) {
-      // If user edited clouds and a total was set: balance remainder to stocks
-      const fundsVal = num(curBd.equityFunds ?? '');
-      if (subNum > 0 && subNum < curTotal) {
-        const remainingForStocks = Math.max(0, curTotal - subNum - fundsVal);
-        newBd.stocks = remainingForStocks > 0 ? String(remainingForStocks) : '';
-      }
-    } else if (field === 'equityFunds' && curTotal > 0) {
-      // If user edited funds and a total was set: balance with clouds
-      const stocksVal = num(curBd.stocks ?? '');
-      if (stocksVal > 0 && (stocksVal + subNum) < curTotal) {
-        const remainingForClouds = Math.max(0, curTotal - stocksVal - subNum);
-        newBd.clouds = remainingForClouds > 0 ? String(remainingForClouds) : '';
+    const newBd = { ...curBd, [field]: subVal };
+
+    // إذا كتب المستخدم الإجمالي أولاً (مثلاً 100 ألف) ثم أدخل الكلاودز أو الأسهم:
+    if (totalManuallySet && curTotal > 0 && subNum > 0 && subNum < curTotal) {
+      if (field === 'clouds') {
+        const remainingStocks = Math.max(0, curTotal - subNum - curFunds);
+        newBd.stocks = remainingStocks > 0 ? String(remainingStocks) : '';
+        setPortfolioBreakdowns(prev => ({ ...prev, thndr: newBd }));
+        setTotalManuallySet(false);
+        return;
+      } else if (field === 'stocks') {
+        const remainingClouds = Math.max(0, curTotal - subNum - curFunds);
+        newBd.clouds = remainingClouds > 0 ? String(remainingClouds) : '';
+        setPortfolioBreakdowns(prev => ({ ...prev, thndr: newBd }));
+        setTotalManuallySet(false);
+        return;
       }
     }
 
-    const sum = num(newBd.stocks ?? '') + num(newBd.clouds ?? '') + num(newBd.equityFunds ?? '');
+    setTotalManuallySet(false);
+
+    // الجمع التلقائي المباشر: الإجمالي = الأسهم + الكلاودز + الصناديق
+    const s = num(newBd.stocks ?? '');
+    const c = num(newBd.clouds ?? '');
+    const f = num(newBd.equityFunds ?? '');
+    const sum = s + c + f;
 
     setPortfolioBreakdowns(prev => ({
       ...prev,
       thndr: newBd,
     }));
 
-    if (sum > 0) {
-      setTotals(prev => ({ ...prev, thndr: String(sum) }));
-    } else if (!subVal && !newBd.stocks && !newBd.clouds && !newBd.equityFunds) {
-      setTotals(prev => ({ ...prev, thndr: '' }));
-    }
+    setTotals(prev => ({
+      ...prev,
+      thndr: sum > 0 ? String(sum) : (subVal ? subVal : ''),
+    }));
   };
 
   // When clicking a quick asset tag under a portfolio in Quick mode
@@ -555,13 +544,8 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
                     <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/60 mt-1">
                       {/* 1. الأسهم */}
                       <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.03] p-1.5 space-y-0.5">
-                        <div className="flex items-center justify-between text-[10px] font-black text-emerald-600 dark:text-emerald-400">
-                          <span>📈 أسهم</span>
-                          {num(curBd?.stocks ?? '') > 0 && num(totals.thndr ?? '') > 0 && (
-                            <span className="text-[8px] opacity-75 font-mono">
-                              {((num(curBd.stocks ?? '') / num(totals.thndr ?? '')) * 100).toFixed(0)}%
-                            </span>
-                          )}
+                        <div className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
+                          📈 أسهم
                         </div>
                         <input
                           inputMode="decimal"
@@ -575,13 +559,8 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
 
                       {/* 2. الكلاودز */}
                       <div className="rounded-xl border border-violet-500/25 bg-violet-500/[0.03] p-1.5 space-y-0.5">
-                        <div className="flex items-center justify-between text-[10px] font-black text-violet-600 dark:text-violet-400">
-                          <span>☁️ كلاودز</span>
-                          {num(curBd?.clouds ?? '') > 0 && num(totals.thndr ?? '') > 0 && (
-                            <span className="text-[8px] opacity-75 font-mono">
-                              {((num(curBd.clouds ?? '') / num(totals.thndr ?? '')) * 100).toFixed(0)}%
-                            </span>
-                          )}
+                        <div className="text-[10px] font-black text-violet-600 dark:text-violet-400">
+                          ☁️ كلاودز
                         </div>
                         <input
                           inputMode="decimal"
@@ -595,13 +574,8 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
 
                       {/* 3. صناديق الاستثمار */}
                       <div className="rounded-xl border border-teal-500/25 bg-teal-500/[0.03] p-1.5 space-y-0.5">
-                        <div className="flex items-center justify-between text-[10px] font-black text-teal-600 dark:text-teal-400">
-                          <span>🧺 صناديق</span>
-                          {num(curBd?.equityFunds ?? '') > 0 && num(totals.thndr ?? '') > 0 && (
-                            <span className="text-[8px] opacity-75 font-mono">
-                              {((num(curBd.equityFunds ?? '') / num(totals.thndr ?? '')) * 100).toFixed(0)}%
-                            </span>
-                          )}
+                        <div className="text-[10px] font-black text-teal-600 dark:text-teal-400">
+                          🧺 صناديق
                         </div>
                         <input
                           inputMode="decimal"
