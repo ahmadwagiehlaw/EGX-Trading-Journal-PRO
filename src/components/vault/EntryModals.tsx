@@ -1,10 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Check, Plus, AlertTriangle, Pin, Zap, CheckCircle2 } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Check, Plus, AlertTriangle, Pin, Zap, CheckCircle2, Calendar } from 'lucide-react';
 import { Modal, Field, inputCls, Segmented, cx } from './ui';
 import { useVault } from './VaultContext';
 import { ASSET_KEYS, ASSET_META } from './types';
 import type { AssetKey, VaultCashflow } from './types';
 import { todayStr, fmt, fmtDate } from './calc';
+
+const LAST_DATE_KEY = 'vault_last_entry_date';
+const getLastDate = () => {
+  try {
+    return localStorage.getItem(LAST_DATE_KEY) || todayStr();
+  } catch {
+    return todayStr();
+  }
+};
+const setLastDate = (d: string) => {
+  try {
+    if (d) localStorage.setItem(LAST_DATE_KEY, d);
+  } catch {
+    // ignore
+  }
+};
 
 const DETAIL_GRID_KEYS: AssetKey[] = ['stocks', 'cash', 'clouds', 'fixedIncome', 'equityFunds', 'gold'];
 
@@ -40,7 +56,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
   const { settings, snapshots, saveSnapshot, saveSettings } = useVault();
   const active = settings.portfolios.filter(p => p.active);
   const [mode, setMode] = useState<'quick' | 'detail'>('quick');
-  const [date, setDate] = useState(todayStr());
+  const [date, setDate] = useState(() => editDate || getLastDate());
   const [pid, setPid] = useState(initialPortfolio ?? active[0]?.id ?? '');
   const [totals, setTotals] = useState<Record<string, string>>({});
   const [portfolioBreakdowns, setPortfolioBreakdowns] = useState<Record<string, Record<string, string>>>({});
@@ -244,7 +260,9 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
 
   const submit = async (continueNext = false) => {
     setBusy(true);
+    setLastDate(date);
     try {
+      setLastDate(date);
       if (mode === 'quick') {
         for (const p of active) {
           const raw = totals[p.id];
@@ -312,7 +330,31 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
       <div className="space-y-5">
         <div className="flex items-center justify-between gap-3">
           <Segmented value={mode} onChange={setMode} options={[{ v: 'quick', label: 'كل المحافظ' }, { v: 'detail', label: 'تفصيلي بالأصول' }]} />
-          <input type="date" value={date} max={todayStr()} onChange={e => { setDate(e.target.value); setSuccessMsg(null); }} disabled={!!editDate} className={cx(inputCls, '!w-auto')} />
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={date}
+              max={todayStr()}
+              onChange={e => { setDate(e.target.value); setLastDate(e.target.value); setSuccessMsg(null); }}
+              disabled={!!editDate}
+              className={cx(inputCls, '!w-auto')}
+            />
+            {!editDate && (
+              <button
+                type="button"
+                onClick={() => { setDate(getLastDate()); setLastDate(todayStr()); setSuccessMsg(null); }}
+                title="تعيين تاريخ اليوم"
+                className={cx(
+                  'p-2.5 rounded-xl border transition-all shrink-0',
+                  date === todayStr()
+                    ? 'border-orange-500/40 bg-orange-500/10 text-orange-500'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 hover:text-orange-500 hover:border-orange-400'
+                )}
+              >
+                <Calendar className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {mode === 'quick' ? (
@@ -559,7 +601,7 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
   const [type, setType] = useState<'deposit' | 'withdrawal'>(initialType);
   const [pid, setPid] = useState(active[0]?.id ?? '');
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(todayStr());
+  const [date, setDate] = useState(() => editing?.date || getLastDate());
   const [tag, setTag] = useState('');
   const [custom, setCustom] = useState('');
   const [note, setNote] = useState('');
@@ -605,7 +647,30 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="المبلغ"><input inputMode="decimal" dir="ltr" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0" className={cx(inputCls, 'text-left tabular-nums text-lg')} /></Field>
-          <Field label="التاريخ"><input type="date" value={date} max={todayStr()} onChange={e => setDate(e.target.value)} className={inputCls} /></Field>
+          <Field label="التاريخ">
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={date}
+                max={todayStr()}
+                onChange={e => { setDate(e.target.value); setLastDate(e.target.value); }}
+                className={cx(inputCls, 'flex-1')}
+              />
+              <button
+                type="button"
+                onClick={() => { setDate(todayStr()); setLastDate(todayStr()); }}
+                title="تعيين تاريخ اليوم"
+                className={cx(
+                  'p-2.5 rounded-xl border transition-all shrink-0',
+                  date === todayStr()
+                    ? 'border-orange-500/40 bg-orange-500/10 text-orange-500'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 hover:text-orange-500 hover:border-orange-400'
+                )}
+              >
+                <Calendar className="w-4 h-4" />
+              </button>
+            </div>
+          </Field>
         </div>
 
         <Field label="التصنيف">
