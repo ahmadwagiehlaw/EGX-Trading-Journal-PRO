@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, BarChart3, CalendarDays, Layers, LineChart, PiggyBank, Plus, ScrollText, Settings2, Landmark } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, BarChart3, CalendarDays, Layers, LineChart, PiggyBank, Plus, ScrollText, Settings2, Landmark, Sparkles } from 'lucide-react';
 import { VaultProvider, useVault } from './VaultContext';
 import { buildSeries, computeStats, partnerSplit } from './calc';
 import { Hero, MainChart, WealthGrowthDecomposition, KpiGrid } from './OverviewView';
@@ -9,6 +9,7 @@ import { FlowsView } from './FlowsView';
 import { ProfitsView } from './ProfitsView';
 import { SnapshotModal, CashflowModal } from './EntryModals';
 import { SettingsModal } from './SettingsModal';
+import { SmartAdvisorModal } from './SmartAdvisorModal';
 import { Card, cx } from './ui';
 import type { VaultCashflow } from './types';
 
@@ -31,6 +32,7 @@ function VaultInner() {
   const [snapOpen, setSnapOpen] = useState(false);
   const [flowOpen, setFlowOpen] = useState<null | 'deposit' | 'withdrawal'>(null);
   const [setOpen, setSetOpen] = useState(false);
+  const [advisorOpen, setAdvisorOpen] = useState(false);
   const [editFlow, setEditFlow] = useState<VaultCashflow | null>(null);
   const [editSnap, setEditSnap] = useState<{ pid: string; date: string } | null>(null);
 
@@ -71,6 +73,16 @@ function VaultInner() {
 
         {/* Desktop Actions / Mobile Settings Button */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {hasData && (
+            <button
+              onClick={() => setAdvisorOpen(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-gradient-to-l from-indigo-600 via-purple-600 to-fuchsia-600 px-3 sm:px-3.5 py-2 sm:py-2.5 text-xs font-black text-white shadow-lg shadow-purple-500/25 hover:brightness-110 transition active:scale-95"
+              title="المستشار المالي الذكي وتقرير الأداء"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+              <span>المستشار الذكي</span>
+            </button>
+          )}
           <div className="hidden sm:flex items-center gap-2">
             <button onClick={() => setSnapOpen(true)} className="flex items-center gap-1.5 rounded-xl bg-gradient-to-l from-orange-500 to-amber-500 px-4 py-2.5 text-xs font-black text-white shadow-lg shadow-orange-500/25 hover:brightness-110 transition"><BarChart3 className="w-4 h-4" />تسجيل قيمة سوقية</button>
             <button onClick={() => setFlowOpen('deposit')} className="flex items-center gap-1.5 rounded-xl bg-emerald-500/10 px-3.5 py-2.5 text-xs font-black text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition"><ArrowDownLeft className="w-4 h-4" />إيداع</button>
@@ -214,6 +226,13 @@ function VaultInner() {
       <SnapshotModal open={snapOpen || editSnap !== null} onClose={() => { setSnapOpen(false); setEditSnap(null); }} initialPortfolio={editSnap?.pid ?? scopeP?.id} editDate={editSnap?.date} />
       <CashflowModal open={flowOpen !== null || editFlow !== null} onClose={() => { setFlowOpen(null); setEditFlow(null); }} initialType={flowOpen ?? 'deposit'} editing={editFlow ?? undefined} />
       <SettingsModal open={setOpen} onClose={() => setSetOpen(false)} />
+      <SmartAdvisorModal
+        open={advisorOpen}
+        onClose={() => setAdvisorOpen(false)}
+        initialLens={effLens}
+        scopeIds={scopeIds}
+        scopeLabel={scopeP?.name ?? 'الكل'}
+      />
       <span className="hidden">{months.length}</span>
     </div>
   );
