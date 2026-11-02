@@ -316,6 +316,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
     egx30: true,
     egx70: true,
   });
+  const [capZoom, setCapZoom] = useState<boolean>(true);
 
   const applyBankRate = (r: number) => {
     const clamped = Math.max(0, Math.min(100, r));
@@ -367,6 +368,12 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
     return Math.max(...data.map(d => (unit === 'egp' ? d.pProfit : d.pTwr)));
   }, [data, unit]);
 
+  // أعلى قمة للقيمة السوقية داخل الفترة المختارة (لرسم خط القمة في شارت رأس المال)
+  const peakNavInWin = useMemo(() => {
+    if (!data.length) return 0;
+    return Math.max(...data.map(d => d.nav));
+  }, [data]);
+
   const growthKey = unit === 'egp' ? 'pProfit' : 'pTwr';
   const off = mode === 'growth' ? splitOffset(data.map(d => d[growthKey])) : 1;
 
@@ -397,28 +404,137 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
         <>
           {/* Header Area — Rich Dual Metrics without Redundancy */}
           <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
-            {mode === 'capital' && last && (
-              <>
-                <div>
-                  <div className="text-[11px] font-bold text-slate-400">المركز المالي ومصادر النمو</div>
-                  <div className="flex flex-wrap items-baseline gap-2.5 mt-0.5">
-                    <span dir="ltr" className="text-2xl font-black tabular-nums text-slate-900 dark:text-white">
-                      {fmt(last.nav)} ج.م
-                    </span>
-                    <span dir="ltr" className={cx('rounded-lg px-2 py-0.5 text-xs font-black', last.profit >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500')}>
-                      {fmtSigned(last.profit)} ج.م ({fmtPct((last.index - 1) * 100, 1)})
-                    </span>
+            {mode === 'capital' && last && first && (
+              <div className="w-full space-y-3">
+                {/* 4 Period-Aware KPI Cards — Zero Redundancy with Hero */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                  {/* 1. تطور القيمة السوقية بالفترة */}
+                  <div className="rounded-xl p-2.5 bg-slate-50/80 dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/[0.07]">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
+                      <span>تطور القيمة السوقية</span>
+                      <span dir="ltr" className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-white/10 text-slate-600 dark:text-slate-300">
+                        {period === 'All' ? 'الكل' : period}
+                      </span>
+                    </div>
+                    <div dir="ltr" className="text-base sm:text-lg font-black tabular-nums text-slate-900 dark:text-white mt-0.5 text-right">
+                      {fmt(last.nav)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
+                    </div>
+                    <div dir="ltr" className="flex items-center justify-between text-[10px] font-bold mt-0.5">
+                      <span className={tone(last.nav - first.nav)}>
+                        {fmtSigned(last.nav - first.nav)} ({first.nav > 0 ? fmtPct(((last.nav - first.nav) / first.nav) * 100, 1) : '0%'})
+                      </span>
+                      <span className="text-slate-400">من {fmtCompact(first.nav)}</span>
+                    </div>
                   </div>
-                  <div className="text-[11px] font-bold text-slate-400 mt-0.5">
-                    صافي الإيداعات: <b dir="ltr" className="text-indigo-500">{fmt(last.deposits)} ج.م</b>
+
+                  {/* 2. قمة الفترة (Peak NAV) */}
+                  <div className="rounded-xl p-2.5 bg-amber-500/[0.05] border border-amber-500/20">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                      <span>قمة القيمة بالفترة</span>
+                      <span className="flex items-center gap-1 text-[9px] font-black">
+                        <i className="w-2 h-0.5 bg-amber-400 inline-block" /> Peak
+                      </span>
+                    </div>
+                    <div dir="ltr" className="text-base sm:text-lg font-black tabular-nums text-amber-600 dark:text-amber-400 mt-0.5 text-right">
+                      {fmt(peakNavInWin)} <span className="text-[10px] font-bold opacity-75">ج.م</span>
+                    </div>
+                    <div dir="ltr" className="flex items-center justify-between text-[10px] font-bold mt-0.5">
+                      <span className={last.nav >= peakNavInWin ? 'text-emerald-500' : 'text-amber-600 dark:text-amber-400'}>
+                        {last.nav >= peakNavInWin ? 'عند القمة الآن' : `${fmtSigned(last.nav - peakNavInWin)} عن القمة`}
+                      </span>
+                      <span className="text-slate-400">
+                        {peakNavInWin > 0 ? `${(((last.nav - peakNavInWin) / peakNavInWin) * 100).toFixed(1)}%` : '0%'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 3. صافي الإيداعات وتدفقات الفترة */}
+                  <div className="rounded-xl p-2.5 bg-indigo-500/[0.05] border border-indigo-500/20">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                      <span>صافي الإيداعات</span>
+                      <span dir="ltr" className="text-[9px] font-black">
+                        {last.nav > 0 ? `${((last.deposits / last.nav) * 100).toFixed(0)}% من القيمة` : '100%'}
+                      </span>
+                    </div>
+                    <div dir="ltr" className="text-base sm:text-lg font-black tabular-nums text-indigo-600 dark:text-indigo-400 mt-0.5 text-right">
+                      {fmt(last.deposits)} <span className="text-[10px] font-bold opacity-75">ج.م</span>
+                    </div>
+                    <div dir="ltr" className="flex items-center justify-between text-[10px] font-bold mt-0.5">
+                      <span className={last.deposits - first.deposits === 0 ? 'text-slate-400' : tone(last.deposits - first.deposits)}>
+                        {last.deposits - first.deposits === 0 ? 'بدون إيداع/سحب' : `${fmtSigned(last.deposits - first.deposits)} بالفترة`}
+                      </span>
+                      <span className="text-slate-400">تدفق الفترة</span>
+                    </div>
+                  </div>
+
+                  {/* 4. الفائض الربحي التراكمي فوق الإيداعات */}
+                  <div className={cx('rounded-xl p-2.5 border', last.profit >= 0 ? 'bg-emerald-500/[0.05] border-emerald-500/20' : 'bg-rose-500/[0.05] border-rose-500/20')}>
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                      <span>الفائض فوق الإيداعات</span>
+                      <span dir="ltr" className={cx('text-[9px] font-black', tone(last.profit))}>
+                        {fmtPct((last.index - 1) * 100, 1)} TWR
+                      </span>
+                    </div>
+                    <div dir="ltr" className={cx('text-base sm:text-lg font-black tabular-nums mt-0.5 text-right', tone(last.profit))}>
+                      {fmtSigned(last.profit)} <span className="text-[10px] font-bold opacity-75">ج.م</span>
+                    </div>
+                    <div dir="ltr" className="flex items-center justify-between text-[10px] font-bold mt-0.5">
+                      <span className={tone(last.pProfit)}>
+                        {fmtSigned(last.pProfit)} ({fmtPct(last.pTwr, 1)})
+                      </span>
+                      <span className="text-slate-400">عائد الفترة</span>
+                    </div>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-3 text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                  <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full" style={{ background: accent }} />القيمة السوقية</span>
-                  <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-indigo-400" />صافي الإيداعات</span>
-                  <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-emerald-400" />صافي العوائد</span>
+
+                {/* Controls & Legend Strip */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                  <div className="flex flex-wrap items-center gap-3 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                    <span className="flex items-center gap-1.5">
+                      <i className="w-2.5 h-2.5 rounded-full" style={{ background: accent }} />
+                      القيمة السوقية
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <i className="w-2.5 h-2.5 rounded-full bg-indigo-400" />
+                      صافي الإيداعات (درج)
+                    </span>
+                    <span className="flex items-center gap-1.5 text-amber-500">
+                      <i className="w-3 h-0.5 border-t-2 border-dashed border-amber-400 inline-block" />
+                      قمة الفترة ({fmtCompact(peakNavInWin)})
+                    </span>
+                    {!capZoom && (
+                      <span className="flex items-center gap-1.5 text-emerald-500">
+                        <i className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                        صافي العوائد
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Smart Auto-Zoom Toggle */}
+                  <div className="inline-flex rounded-xl p-0.5 bg-slate-100 dark:bg-white/[0.05] border border-slate-200/70 dark:border-white/[0.07]">
+                    <button
+                      type="button"
+                      onClick={() => setCapZoom(true)}
+                      className={cx(
+                        'px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition',
+                        capZoom ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'
+                      )}
+                    >
+                      مُركّز (Zoom)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCapZoom(false)}
+                      className={cx(
+                        'px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition',
+                        !capZoom ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'
+                      )}
+                    >
+                      شامل + خط العوائد
+                    </button>
+                  </div>
                 </div>
-              </>
+              </div>
             )}
 
             {mode === 'growth' && last && (
@@ -819,14 +935,40 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                   </defs>
                   <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
                   <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
-                  <YAxis orientation="right" tickFormatter={fmtCompact} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={46} domain={['auto', 'auto']} />
+                  <YAxis
+                    orientation="right"
+                    tickFormatter={fmtCompact}
+                    tick={{ fontSize: 10, fill: '#94a3b8' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={48}
+                    domain={
+                      capZoom
+                        ? [
+                            (dataMin: number) => Math.max(0, Math.floor((dataMin * 0.95) / 10000) * 10000),
+                            (dataMax: number) => Math.ceil((dataMax * 1.02) / 10000) * 10000,
+                          ]
+                        : ['auto', 'auto']
+                    }
+                  />
+                  {peakNavInWin > 0 && (
+                    <ReferenceLine
+                      y={peakNavInWin}
+                      stroke="#fbbf24"
+                      strokeDasharray="3 3"
+                      strokeOpacity={0.75}
+                    />
+                  )}
                   <Tooltip cursor={{ stroke: '#94a3b8', strokeDasharray: '4 4' }} content={<ChartTip labelFmt={fmtDate} rows={p => [
                     { name: 'القيمة السوقية', value: `${fmt(+p.nav)} ج.م`, color: accent },
                     { name: 'صافي الإيداعات', value: `${fmt(+p.deposits)} ج.م (${+p.nav > 0 ? ((+p.deposits / +p.nav) * 100).toFixed(0) : 100}%)`, color: '#818cf8' },
-                    { name: 'صافي العوائد التراكمية', value: `${fmtSigned(+p.profit)} ج.م (${fmtPct((+p.index - 1) * 100, 1)})`, color: +p.profit >= 0 ? '#34d399' : '#fb7185' },
+                    { name: 'الفائض الربحي التراكمي', value: `${fmtSigned(+p.profit)} ج.م (${fmtPct((+p.index - 1) * 100, 1)})`, color: +p.profit >= 0 ? '#34d399' : '#fb7185' },
+                    { name: 'الفارق عن قمة الفترة', value: +p.nav >= peakNavInWin ? 'قمة الفترة 🏆' : `${fmtSigned(+p.nav - peakNavInWin)} ج.م (${peakNavInWin > 0 ? (((+p.nav - peakNavInWin) / peakNavInWin) * 100).toFixed(1) : 0}%)`, color: '#fbbf24' },
                   ]} />} />
                   <Area type="stepAfter" dataKey="deposits" stroke="#818cf8" strokeWidth={2} fill="url(#gDep)" dot={false} />
-                  <Area type="monotone" dataKey="profit" stroke="#34d399" strokeWidth={1.5} strokeDasharray="3 3" fill="url(#gProfCap)" dot={false} />
+                  {!capZoom && (
+                    <Area type="monotone" dataKey="profit" stroke="#34d399" strokeWidth={1.5} strokeDasharray="3 3" fill="url(#gProfCap)" dot={false} />
+                  )}
                   <Area type="monotone" dataKey="nav" stroke={accent} strokeWidth={2.5} fill="url(#gNav)" dot={data.length < 25 ? { r: 3, fill: accent } : false} activeDot={{ r: 5 }} />
                 </ComposedChart>
               ) : mode === 'benchmark' ? (
