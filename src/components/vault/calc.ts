@@ -535,6 +535,9 @@ export interface MarketIndexPerf {
   y1: number;  // 1Y %
   ytd: number; // YTD %
   y5: number;  // 5Y %
+  sma30?: number;
+  sma50?: number;
+  sma100?: number;
 }
 
 export interface BenchmarksState {
@@ -557,6 +560,9 @@ export const DEFAULT_BENCHMARKS: BenchmarksState = {
     y1: 26.28,
     ytd: 15.68,
     y5: 318.41,
+    sma30: 51844.2,
+    sma50: 53334.6,
+    sma100: 53197.6,
   },
   egx70: {
     symbol: 'EGX70',
@@ -570,12 +576,15 @@ export const DEFAULT_BENCHMARKS: BenchmarksState = {
     y1: 34.57,
     ytd: 23.93,
     y5: 603.35,
+    sma30: 18237.6,
+    sma50: 19427.8,
+    sma100: 18557.3,
   },
   updatedAt: Date.now(),
   live: false,
 };
 
-const BENCH_CACHE_KEY = 'egx_vault_benchmarks_v1';
+const BENCH_CACHE_KEY = 'egx_vault_benchmarks_v2';
 
 export function loadCachedBenchmarks(): BenchmarksState {
   try {
@@ -593,7 +602,7 @@ export async function fetchEgxBenchmarks(): Promise<BenchmarksState> {
   try {
     const body = JSON.stringify({
       symbols: { tickers: ['EGX:EGX30', 'EGX:EGX70EWI'] },
-      columns: ['close', 'change', 'Perf.W', 'Perf.1M', 'Perf.3M', 'Perf.6M', 'Perf.Y', 'Perf.YTD', 'Perf.5Y'],
+      columns: ['close', 'change', 'Perf.W', 'Perf.1M', 'Perf.3M', 'Perf.6M', 'Perf.Y', 'Perf.YTD', 'Perf.5Y', 'SMA30', 'SMA50', 'SMA100'],
     });
     // Using text/plain avoids CORS preflight and works directly from browser to TradingView Egypt scanner
     const res = await fetch('https://scanner.tradingview.com/egypt/scan', {
@@ -620,6 +629,9 @@ export async function fetchEgxBenchmarks(): Promise<BenchmarksState> {
             y1: r30[6] ?? prev.egx30.y1,
             ytd: r30[7] ?? prev.egx30.ytd,
             y5: r30[8] ?? prev.egx30.y5,
+            sma30: r30[9] ?? prev.egx30.sma30,
+            sma50: r30[10] ?? prev.egx30.sma50,
+            sma100: r30[11] ?? prev.egx30.sma100,
           }
         : prev.egx30,
       egx70: r70
@@ -635,6 +647,9 @@ export async function fetchEgxBenchmarks(): Promise<BenchmarksState> {
             y1: r70[6] ?? prev.egx70.y1,
             ytd: r70[7] ?? prev.egx70.ytd,
             y5: r70[8] ?? prev.egx70.y5,
+            sma30: r70[9] ?? prev.egx70.sma30,
+            sma50: r70[10] ?? prev.egx70.sma50,
+            sma100: r70[11] ?? prev.egx70.sma100,
           }
         : prev.egx70,
       updatedAt: Date.now(),
@@ -651,18 +666,39 @@ export async function fetchEgxBenchmarks(): Promise<BenchmarksState> {
   }
 }
 
-/** حساب مستوى المؤشر قبل `daysAgo` يوماً بناءً على نقاط الأداء الرسمية (1W, 1M, 3M, 6M, 1Y, 5Y) */
+/** حساب مستوى المؤشر قبل `daysAgo` يوماً بناءً على نقاط الأداء الرسمية والمتوسطات المتحركة الفعلية */
 function indexLevelAtDaysAgo(perf: MarketIndexPerf, daysAgo: number): number {
   const c = perf.close || 10000;
   if (daysAgo <= 0) return c;
+  const lvl1W = c / Math.max(0.1, 1 + perf.w / 100);
+  const lvl1M = c / Math.max(0.1, 1 + perf.m1 / 100);
+  const lvl3M = c / Math.max(0.1, 1 + perf.m3 / 100);
+  const lvl6M = c / Math.max(0.1, 1 + perf.m6 / 100);
+  const lvl1Y = c / Math.max(0.1, 1 + perf.y1 / 100);
+  const lvl5Y = c / Math.max(0.1, 1 + perf.y5 / 100);
+
+  // استخراج مستوى المؤشر الفعلي في منتصف الربع (حوالي 58 يوماً مضت - بداية سبتمبر) من المتوسطات المتحركة SMA30 و SMA50
+  const lvl2M =
+    perf.sma50 && perf.sma30
+      ? Math.max(0.1, (50 * perf.sma50 - 30 * perf.sma30) / 20)
+      : (lvl1M + lvl3M) / 2;
+
+  // استخراج مستوى المؤشر قبل ~4.5 شهر (حوالي 135 يوماً مضت) من SMA50 و SMA100
+  const lvl4_5M =
+    perf.sma100 && perf.sma50
+      ? Math.max(0.1, 2 * perf.sma100 - perf.sma50)
+      : (lvl3M + lvl6M) / 2;
+
   const anchors: { d: number; level: number }[] = [
     { d: 0, level: c },
-    { d: 7, level: c / Math.max(0.1, 1 + perf.w / 100) },
-    { d: 30, level: c / Math.max(0.1, 1 + perf.m1 / 100) },
-    { d: 91, level: c / Math.max(0.1, 1 + perf.m3 / 100) },
-    { d: 182, level: c / Math.max(0.1, 1 + perf.m6 / 100) },
-    { d: 365, level: c / Math.max(0.1, 1 + perf.y1 / 100) },
-    { d: 1825, level: c / Math.max(0.1, 1 + perf.y5 / 100) },
+    { d: 7, level: lvl1W },
+    { d: 30, level: lvl1M },
+    { d: 58, level: lvl2M },
+    { d: 91, level: lvl3M },
+    { d: 135, level: lvl4_5M },
+    { d: 182, level: lvl6M },
+    { d: 365, level: lvl1Y },
+    { d: 1825, level: lvl5Y },
   ];
   for (let i = 0; i < anchors.length - 1; i++) {
     const a = anchors[i];
@@ -686,7 +722,7 @@ export interface BenchmarkPoint extends ChartPoint {
   egx70Profit: number;
 }
 
-/** بناء سلسلة مقارنة أداء المحفظة مقابل (عائد البنك السنوي + EGX30 + EGX70) بنفس تواريخ وحجم الإيداعات */
+/** بناء سلسلة مقارنة أداء المحفظة مقابل (عائد البنك السنوي + EGX30 + EGX70) بنفس تواريخ وحجم رأس المال العامل */
 export function buildBenchmarkSeries(
   winData: ChartPoint[],
   bench: BenchmarksState,
@@ -698,43 +734,47 @@ export function buildBenchmarkSeries(
   const first = chronological[0];
   const last = chronological[chronological.length - 1];
   const endD = dayNum(last.date);
-  const startDaysAgo = Math.max(0, endD - dayNum(first.date));
+  const startD = dayNum(first.date);
+  const startDaysAgo = Math.max(0, endD - startD);
 
   const base30 = indexLevelAtDaysAgo(bench.egx30, startDaysAgo);
   const base70 = indexLevelAtDaysAgo(bench.egx70, startDaysAgo);
 
-  let bankIndex = 1;
-  let bankProfit = 0;
-  let egx30Profit = 0;
-  let egx70Profit = 0;
-  let prevLvl30 = base30;
-  let prevLvl70 = base70;
+  // رأس المال المرجعي العامل في بداية الفترة لحساب المكافئ بالجنيه المصري بدقة متطابقة مع النسب المئوية
+  let weightedCapSum = 0;
+  let totalDaysAcc = 0;
 
   const out: BenchmarkPoint[] = chronological.map((p, idx) => {
-    const daysAgo = Math.max(0, endD - dayNum(p.date));
-    const lvl30 = indexLevelAtDaysAgo(bench.egx30, daysAgo);
-    const lvl70 = indexLevelAtDaysAgo(bench.egx70, daysAgo);
+    const curD = dayNum(p.date);
+    const daysElapsed = Math.max(0, curD - startD);
+    const daysAgo = Math.max(0, endD - curD);
 
     if (idx > 0) {
       const prev = chronological[idx - 1];
-      const dt = Math.max(0, dayNum(p.date) - dayNum(prev.date));
-      const rBank = Math.pow(1 + bankAnnualPct / 100, dt / 365) - 1;
-      const r30 = prevLvl30 > 0 ? lvl30 / prevLvl30 - 1 : 0;
-      const r70 = prevLvl70 > 0 ? lvl70 / prevLvl70 - 1 : 0;
-
-      const capBase = Math.max(0, prev.deposits);
-      bankIndex *= 1 + rBank;
-      bankProfit += capBase * rBank;
-      egx30Profit += capBase * r30;
-      egx70Profit += capBase * r70;
+      const dt = Math.max(1, curD - dayNum(prev.date));
+      weightedCapSum += Math.max(0, prev.deposits) * dt;
+      totalDaysAcc += dt;
     }
 
-    prevLvl30 = lvl30;
-    prevLvl70 = lvl70;
+    // متوسط رأس المال المستثمر خلال الفترة حتى هذه النقطة
+    // وإذا كانت للمحفظة نسبة pTwr وعائد pProfit معروفين، نستخدم رأس المال الفعلي الضمني لتتطابق الفروق بالجنيه 100% مع الفروق بالنسبة المئوية
+    const avgInvestedCap =
+      Math.abs(p.pTwr) > 0.25 && Math.abs(p.pProfit) > 100
+        ? Math.abs(p.pProfit / (p.pTwr / 100))
+        : totalDaysAcc > 0
+        ? weightedCapSum / totalDaysAcc
+        : Math.max(0, first.deposits || first.nav);
 
+    const lvl30 = indexLevelAtDaysAgo(bench.egx30, daysAgo);
+    const lvl70 = indexLevelAtDaysAgo(bench.egx70, daysAgo);
+
+    const bankPct = (Math.pow(1 + bankAnnualPct / 100, daysElapsed / 365) - 1) * 100;
     const egx30Pct = base30 > 0 ? (lvl30 / base30 - 1) * 100 : 0;
     const egx70Pct = base70 > 0 ? (lvl70 / base70 - 1) * 100 : 0;
-    const bankPct = (bankIndex - 1) * 100;
+
+    const bankProfit = avgInvestedCap * (bankPct / 100);
+    const egx30Profit = avgInvestedCap * (egx30Pct / 100);
+    const egx70Profit = avgInvestedCap * (egx70Pct / 100);
 
     return {
       ...p,

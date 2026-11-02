@@ -303,12 +303,30 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
   const [unit, setUnit] = useState<'egp' | 'pct'>('egp');
   const [bench, setBench] = useState<BenchmarksState>(() => loadCachedBenchmarks());
   const [syncingBench, setSyncingBench] = useState(false);
-  const [bankRate, setBankRate] = useState<number>(27);
+  const [bankRate, setBankRate] = useState<number>(() => {
+    const saved = Number(localStorage.getItem('egx_vault_bank_rate'));
+    return !isNaN(saved) && saved > 0 && saved <= 100 ? saved : 27;
+  });
+  const [customBankStr, setCustomBankStr] = useState<string>(() => {
+    const saved = Number(localStorage.getItem('egx_vault_bank_rate'));
+    return String(!isNaN(saved) && saved > 0 && saved <= 100 ? saved : 27);
+  });
   const [showLines, setShowLines] = useState<{ bank: boolean; egx30: boolean; egx70: boolean }>({
     bank: true,
     egx30: true,
-    egx70: false,
+    egx70: true,
   });
+
+  const applyBankRate = (r: number) => {
+    const clamped = Math.max(0, Math.min(100, r));
+    setBankRate(clamped);
+    setCustomBankStr(String(clamped));
+    try {
+      localStorage.setItem('egx_vault_bank_rate', String(clamped));
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -454,11 +472,11 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
 
             {mode === 'benchmark' && lastBench && (
               <div className="w-full space-y-3">
-                {/* Top Controls Row: Series Toggles + Bank Rate + Unit Switch + Live Sync */}
+                {/* Top Controls Row: Series Toggles + Bank Rate (Presets + Manual Input) + Unit Switch + Live Sync */}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-black text-emerald-600 dark:text-emerald-400">
-                      <i className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/35 px-2.5 py-1 text-[11px] font-black text-emerald-600 dark:text-emerald-400">
+                      <i className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                       محفظتي
                     </span>
 
@@ -469,10 +487,10 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                         'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-black transition',
                         showLines.bank
                           ? 'bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400'
-                          : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-60'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-50'
                       )}
                     >
-                      <i className="w-2 h-2 rounded-full bg-amber-400" />
+                      <i className="w-2.5 h-2.5 rounded-full bg-amber-500" />
                       عائد البنك ({bankRate}%)
                     </button>
 
@@ -482,11 +500,11 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                       className={cx(
                         'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-black transition',
                         showLines.egx30
-                          ? 'bg-blue-500/15 border-blue-500/40 text-blue-600 dark:text-blue-400'
-                          : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-60'
+                          ? 'bg-sky-500/15 border-sky-500/40 text-sky-600 dark:text-sky-400'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-50'
                       )}
                     >
-                      <i className="w-2 h-2 rounded-full bg-blue-500" />
+                      <i className="w-2.5 h-2.5 rounded-full bg-sky-500" />
                       EGX30 ({fmt(bench.egx30.close, 0)})
                     </button>
 
@@ -496,11 +514,11 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                       className={cx(
                         'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-black transition',
                         showLines.egx70
-                          ? 'bg-purple-500/15 border-purple-500/40 text-purple-600 dark:text-purple-400'
-                          : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-60'
+                          ? 'bg-pink-500/15 border-pink-500/40 text-pink-600 dark:text-pink-400'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-50'
                       )}
                     >
-                      <i className="w-2 h-2 rounded-full bg-purple-500" />
+                      <i className="w-2.5 h-2.5 rounded-full bg-pink-500" />
                       EGX70 ({fmt(bench.egx70.close, 0)})
                     </button>
 
@@ -516,14 +534,14 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    {/* Bank Annual Rate Pills */}
+                    {/* Bank Annual Rate Pills + Manual Input */}
                     <div className="inline-flex items-center gap-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[10px] font-black">
-                      <Landmark className="w-3 h-3 text-amber-500 mx-1.5" />
-                      {[20, 24, 27, 30].map(r => (
+                      <Landmark className="w-3 h-3 text-amber-500 mx-1" />
+                      {[20, 24, 27].map(r => (
                         <button
                           key={r}
                           type="button"
-                          onClick={() => setBankRate(r)}
+                          onClick={() => applyBankRate(r)}
                           className={cx(
                             'rounded-lg px-2 py-1 transition',
                             bankRate === r ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-slate-600'
@@ -532,6 +550,31 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                           {r}%
                         </button>
                       ))}
+                      <div className="flex items-center bg-white dark:bg-slate-900 rounded-lg px-1.5 py-0.5 border border-slate-200/80 dark:border-slate-700 ml-0.5">
+                        <input
+                          type="number"
+                          dir="ltr"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          value={customBankStr}
+                          onChange={e => {
+                            setCustomBankStr(e.target.value);
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v >= 0 && v <= 100) {
+                              setBankRate(v);
+                              try {
+                                localStorage.setItem('egx_vault_bank_rate', String(v));
+                              } catch {
+                                // ignore
+                              }
+                            }
+                          }}
+                          title="أدخل نسبة فائدة البنك يدوياً"
+                          className="w-10 bg-transparent text-center text-[11px] font-black text-amber-600 dark:text-amber-400 focus:outline-none tabular-nums"
+                        />
+                        <span className="text-[9px] text-slate-400">%</span>
+                      </div>
                     </div>
 
                     {/* Unit Toggle (% vs EGP) */}
@@ -560,94 +603,150 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                   </div>
                 </div>
 
-                {/* 4 Compact Alpha & Opportunity Cost Cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {/* My Portfolio */}
-                  <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] px-3 py-2">
-                    <div className="flex items-center justify-between text-[10px] font-black text-emerald-600 dark:text-emerald-400">
-                      <span>أداء محفظتي</span>
-                      <span dir="ltr">{period === 'All' ? 'الكل' : period}</span>
+                {/* 4 Crystal-Clear Comparison Cards: Actual Return as Big Number + Explicit Winner Badge */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                  {/* 1. My Portfolio */}
+                  <div className="rounded-2xl border border-emerald-500/35 bg-emerald-500/[0.06] p-3 flex flex-col justify-between gap-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-black text-emerald-600 dark:text-emerald-400">
+                      <span className="flex items-center gap-1.5">
+                        <i className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                        أداء محفظتي
+                      </span>
+                      <span dir="ltr" className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px]">
+                        {period === 'All' ? 'الكل' : period}
+                      </span>
                     </div>
-                    <div dir="ltr" className={cx('text-base font-black tabular-nums text-right mt-0.5', tone(lastBench.pTwr))}>
-                      {unit === 'pct' ? fmtPct(lastBench.pTwr) : `${fmtSigned(lastBench.pProfit)} ج.م`}
+                    <div>
+                      <div dir="ltr" className={cx('text-xl font-black tabular-nums text-right', tone(lastBench.pTwr))}>
+                        {unit === 'pct' ? fmtPct(lastBench.pTwr) : `${fmtSigned(lastBench.pProfit)} ج.م`}
+                      </div>
+                      <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right">
+                        {unit === 'pct' ? `${fmtSigned(lastBench.pProfit)} ج.م` : fmtPct(lastBench.pTwr)}
+                      </div>
                     </div>
-                    <div dir="ltr" className="text-[10px] font-bold text-slate-400 text-right">
-                      {unit === 'pct' ? `${fmtSigned(lastBench.pProfit)} ج.م` : fmtPct(lastBench.pTwr)}
+                    <div className="rounded-xl bg-slate-900/5 dark:bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-500 dark:text-slate-300 flex items-center justify-between">
+                      <span>المرجع الأساسي</span>
+                      <span dir="ltr">{fmt(lastBench.nav)} ج.م</span>
                     </div>
                   </div>
 
-                  {/* vs Bank */}
+                  {/* 2. Bank Benchmark */}
                   {(() => {
                     const diffPct = lastBench.pTwr - lastBench.bankPct;
                     const diffEgp = lastBench.pProfit - lastBench.bankProfit;
-                    const win = diffPct >= 0;
+                    const iWin = diffPct >= 0;
                     return (
-                      <div className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.05] px-3 py-2">
-                        <div className="flex items-center justify-between text-[10px] font-black text-amber-600 dark:text-amber-400">
-                          <span>البنك ({bankRate}%)</span>
-                          <span dir="ltr" className="text-slate-500 dark:text-slate-300">
-                            {unit === 'pct' ? fmtPct(lastBench.bankPct, 1) : fmtCompact(lastBench.bankProfit)}
+                      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.05] p-3 flex flex-col justify-between gap-1.5">
+                        <div className="flex items-center justify-between text-[11px] font-black text-amber-600 dark:text-amber-400">
+                          <span className="flex items-center gap-1.5">
+                            <i className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                            لو في البنك ({bankRate}%)
                           </span>
+                          <span className="text-[9px] text-slate-400">عائد الفترة</span>
                         </div>
-                        <div dir="ltr" className={cx('text-base font-black tabular-nums text-right mt-0.5', win ? 'text-emerald-500' : 'text-rose-500')}>
-                          {unit === 'pct' ? fmtPct(diffPct, 1) : `${fmtSigned(diffEgp)} ج.م`}
+                        <div>
+                          <div dir="ltr" className="text-xl font-black tabular-nums text-right text-amber-600 dark:text-amber-400">
+                            {unit === 'pct' ? fmtPct(lastBench.bankPct) : `${fmtSigned(lastBench.bankProfit)} ج.م`}
+                          </div>
+                          <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right">
+                            {unit === 'pct' ? `${fmtSigned(lastBench.bankProfit)} ج.م` : fmtPct(lastBench.bankPct)}
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between text-[9px] font-black text-slate-400">
-                          <span>{win ? 'تفوقك عالبنك' : 'أقل من البنك'}</span>
-                          <b dir="ltr" className={win ? 'text-emerald-500' : 'text-rose-500'}>
-                            {unit === 'pct' ? fmtSigned(diffEgp) : fmtPct(diffPct, 1)}
+                        <div
+                          className={cx(
+                            'rounded-xl px-2.5 py-1 text-[10px] font-black flex items-center justify-between',
+                            iWin
+                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                              : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                          )}
+                        >
+                          <span>{iWin ? '✓ أنت متفوق بـ' : 'البنك متفوق بـ'}</span>
+                          <b dir="ltr">
+                            {unit === 'pct'
+                              ? `+${Math.abs(diffPct).toFixed(1)}% (${fmtCompact(Math.abs(diffEgp))})`
+                              : `+${fmt(Math.abs(diffEgp))} (${Math.abs(diffPct).toFixed(1)}%)`}
                           </b>
                         </div>
                       </div>
                     );
                   })()}
 
-                  {/* vs EGX30 */}
+                  {/* 3. EGX30 Benchmark */}
                   {(() => {
                     const diffPct = lastBench.pTwr - lastBench.egx30Pct;
                     const diffEgp = lastBench.pProfit - lastBench.egx30Profit;
-                    const win = diffPct >= 0;
+                    const iWin = diffPct >= 0;
                     return (
-                      <div className="rounded-2xl border border-blue-500/25 bg-blue-500/[0.05] px-3 py-2">
-                        <div className="flex items-center justify-between text-[10px] font-black text-blue-600 dark:text-blue-400">
-                          <span>مؤشر EGX30</span>
-                          <span dir="ltr" className="text-slate-500 dark:text-slate-300">
-                            {unit === 'pct' ? fmtPct(lastBench.egx30Pct, 1) : fmtCompact(lastBench.egx30Profit)}
+                      <div className="rounded-2xl border border-sky-500/30 bg-sky-500/[0.05] p-3 flex flex-col justify-between gap-1.5">
+                        <div className="flex items-center justify-between text-[11px] font-black text-sky-600 dark:text-sky-400">
+                          <span className="flex items-center gap-1.5">
+                            <i className="w-2.5 h-2.5 rounded-full bg-sky-500" />
+                            مؤشر EGX30
                           </span>
+                          <span className="text-[9px] text-slate-400">أداء المؤشر</span>
                         </div>
-                        <div dir="ltr" className={cx('text-base font-black tabular-nums text-right mt-0.5', win ? 'text-emerald-500' : 'text-rose-500')}>
-                          {unit === 'pct' ? fmtPct(diffPct, 1) : `${fmtSigned(diffEgp)} ج.م`}
+                        <div>
+                          <div dir="ltr" className={cx('text-xl font-black tabular-nums text-right', tone(lastBench.egx30Pct))}>
+                            {unit === 'pct' ? fmtPct(lastBench.egx30Pct) : `${fmtSigned(lastBench.egx30Profit)} ج.م`}
+                          </div>
+                          <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right">
+                            {unit === 'pct' ? `${fmtSigned(lastBench.egx30Profit)} ج.م` : fmtPct(lastBench.egx30Pct)}
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between text-[9px] font-black text-slate-400">
-                          <span>{win ? 'تفوقك (Alpha)' : 'فارق المؤشر'}</span>
-                          <b dir="ltr" className={win ? 'text-emerald-500' : 'text-rose-500'}>
-                            {unit === 'pct' ? fmtSigned(diffEgp) : fmtPct(diffPct, 1)}
+                        <div
+                          className={cx(
+                            'rounded-xl px-2.5 py-1 text-[10px] font-black flex items-center justify-between',
+                            iWin
+                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                              : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                          )}
+                        >
+                          <span>{iWin ? '✓ أنت متفوق بـ' : 'EGX30 متفوق بـ'}</span>
+                          <b dir="ltr">
+                            {unit === 'pct'
+                              ? `+${Math.abs(diffPct).toFixed(1)}% (${fmtCompact(Math.abs(diffEgp))})`
+                              : `+${fmt(Math.abs(diffEgp))} (${Math.abs(diffPct).toFixed(1)}%)`}
                           </b>
                         </div>
                       </div>
                     );
                   })()}
 
-                  {/* vs EGX70 */}
+                  {/* 4. EGX70 Benchmark */}
                   {(() => {
                     const diffPct = lastBench.pTwr - lastBench.egx70Pct;
                     const diffEgp = lastBench.pProfit - lastBench.egx70Profit;
-                    const win = diffPct >= 0;
+                    const iWin = diffPct >= 0;
                     return (
-                      <div className="rounded-2xl border border-purple-500/25 bg-purple-500/[0.05] px-3 py-2">
-                        <div className="flex items-center justify-between text-[10px] font-black text-purple-600 dark:text-purple-400">
-                          <span>مؤشر EGX70</span>
-                          <span dir="ltr" className="text-slate-500 dark:text-slate-300">
-                            {unit === 'pct' ? fmtPct(lastBench.egx70Pct, 1) : fmtCompact(lastBench.egx70Profit)}
+                      <div className="rounded-2xl border border-pink-500/30 bg-pink-500/[0.05] p-3 flex flex-col justify-between gap-1.5">
+                        <div className="flex items-center justify-between text-[11px] font-black text-pink-600 dark:text-pink-400">
+                          <span className="flex items-center gap-1.5">
+                            <i className="w-2.5 h-2.5 rounded-full bg-pink-500" />
+                            مؤشر EGX70
                           </span>
+                          <span className="text-[9px] text-slate-400">أداء المؤشر</span>
                         </div>
-                        <div dir="ltr" className={cx('text-base font-black tabular-nums text-right mt-0.5', win ? 'text-emerald-500' : 'text-rose-500')}>
-                          {unit === 'pct' ? fmtPct(diffPct, 1) : `${fmtSigned(diffEgp)} ج.م`}
+                        <div>
+                          <div dir="ltr" className={cx('text-xl font-black tabular-nums text-right', tone(lastBench.egx70Pct))}>
+                            {unit === 'pct' ? fmtPct(lastBench.egx70Pct) : `${fmtSigned(lastBench.egx70Profit)} ج.م`}
+                          </div>
+                          <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right">
+                            {unit === 'pct' ? `${fmtSigned(lastBench.egx70Profit)} ج.م` : fmtPct(lastBench.egx70Pct)}
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between text-[9px] font-black text-slate-400">
-                          <span>{win ? 'تفوقك (Alpha)' : 'فارق المؤشر'}</span>
-                          <b dir="ltr" className={win ? 'text-emerald-500' : 'text-rose-500'}>
-                            {unit === 'pct' ? fmtSigned(diffEgp) : fmtPct(diffPct, 1)}
+                        <div
+                          className={cx(
+                            'rounded-xl px-2.5 py-1 text-[10px] font-black flex items-center justify-between',
+                            iWin
+                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                              : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                          )}
+                        >
+                          <span>{iWin ? '✓ أنت متفوق بـ' : 'EGX70 متفوق بـ'}</span>
+                          <b dir="ltr">
+                            {unit === 'pct'
+                              ? `+${Math.abs(diffPct).toFixed(1)}% (${fmtCompact(Math.abs(diffEgp))})`
+                              : `+${fmt(Math.abs(diffEgp))} (${Math.abs(diffPct).toFixed(1)}%)`}
                           </b>
                         </div>
                       </div>
@@ -774,7 +873,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                                 {
                                   name: 'مؤشر EGX30',
                                   value: `${fmtPct(+p.egx30Pct)} (${fmtSigned(+p.egx30Profit)} ج.م)`,
-                                  color: '#3b82f6',
+                                  color: '#0ea5e9',
                                 },
                               ]
                             : []),
@@ -783,7 +882,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                                 {
                                   name: 'مؤشر EGX70',
                                   value: `${fmtPct(+p.egx70Pct)} (${fmtSigned(+p.egx70Profit)} ج.م)`,
-                                  color: '#a855f7',
+                                  color: '#ec4899',
                                 },
                               ]
                             : []),
@@ -814,7 +913,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                     <Line
                       type="monotone"
                       dataKey={unit === 'egp' ? 'egx30Profit' : 'egx30Pct'}
-                      stroke="#3b82f6"
+                      stroke="#0ea5e9"
                       strokeWidth={2.2}
                       dot={false}
                     />
@@ -823,7 +922,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                     <Line
                       type="monotone"
                       dataKey={unit === 'egp' ? 'egx70Profit' : 'egx70Pct'}
-                      stroke="#a855f7"
+                      stroke="#ec4899"
                       strokeWidth={2.2}
                       dot={false}
                     />
