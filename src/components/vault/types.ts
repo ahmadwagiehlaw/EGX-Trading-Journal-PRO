@@ -71,6 +71,7 @@ export interface VaultMonthProfit {
   retainedPartner: number;
   distributedMine: number;
   distributedPartner: number;
+  manualMine?: boolean; // إذا قام المستخدم بتعديل حصته يدوياً لهذا الشهر يتم احترام تعديله وعدم استبداله بالحساب التلقائي
   note?: string;
   updatedAt: number;
 }
