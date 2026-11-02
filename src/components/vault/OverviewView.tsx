@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
+import { Area, AreaChart, Bar, BarChart, Cell, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
 import { Activity, Flame, ShieldAlert, ShieldCheck, Sparkles, Target, TrendingDown, TrendingUp, Trophy, Calendar, ArrowUpRight, ArrowDownRight, Zap, Compass, Crown, Banknote, Users, Layers, ChevronUp } from 'lucide-react';
 import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone } from './ui';
 import { useVault } from './VaultContext';
-import type { Point, Stats, Period } from './calc';
-import { PERIODS, windowSeries, allocation, comparePortfolios, fmt, fmtCompact, fmtPct, fmtSigned, fmtDate, shortDate, monthLabel } from './calc';
+import type { Point, Stats, Period, PeriodRet } from './calc';
+import { PERIODS, windowSeries, monthlyReturns, allocation, comparePortfolios, fmt, fmtCompact, fmtPct, fmtSigned, fmtDate, shortDate, monthLabel, MONTHS_EN } from './calc';
 
-type Mode = 'capital' | 'profit' | 'twr' | 'dd' | 'decomposition';
+type Mode = 'capital' | 'growth' | 'monthly' | 'dd';
 
 const splitOffset = (vals: number[]) => {
   const max = Math.max(...vals, 0);
@@ -283,89 +283,233 @@ function Mini({ label, value, color }: { label: string; value: string; color?: s
 export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point[]; accent?: string; dir?: 'rtl' | 'ltr' }) {
   const [mode, setMode] = useState<Mode>('capital');
   const [period, setPeriod] = useState<Period>('3M');
+  const [unit, setUnit] = useState<'egp' | 'pct'>('egp');
   const data = useMemo(() => windowSeries(pts, period, dir), [pts, period, dir]);
   const first = dir === 'rtl' ? data[data.length - 1] : data[0];
   const last = dir === 'rtl' ? data[0] : data[data.length - 1];
 
-  const header = last && (
-    mode === 'capital' ? { label: 'القيمة السوقية', value: `${fmt(last.nav)} ج.م`, sub: `صافي الإيداعات ${fmt(last.deposits)}`, n: 0 }
-    : mode === 'profit' ? { label: `عوائد الفترة`, value: `${fmtSigned(last.pProfit)} ج.م`, sub: `إجمالي منذ البداية ${fmtSigned(last.profit)}`, n: last.pProfit }
-    : mode === 'twr' ? { label: 'نمو الفترة', value: fmtPct(last.pTwr), sub: `منذ البداية ${fmtPct((last.index - 1) * 100)}`, n: last.pTwr }
-    : mode === 'dd' ? { label: 'أقصى هبوط بالفترة', value: fmtPct(Math.min(...data.map(d => d.pDd))), sub: `الحالي ${fmtPct(last.pDd)}`, n: -1 }
-    : { label: 'مصادر نمو القيمة السوقية', value: `${fmt(last.nav)} ج.م`, sub: `إيداعات: ${fmt(last.deposits)} ج.م | أرباح السوق: ${fmtSigned(last.profit)} ج.م`, n: last.profit }
-  );
+  // بيانات الأداء الشهري (أعمدة ربح/تصحيح كل شهر بالجنيه والنسبة المئوية)
+  const monthBars = useMemo<PeriodRet[]>(() => {
+    const allM = monthlyReturns(pts);
+    return dir === 'rtl' ? [...allM].reverse() : allM;
+  }, [pts, dir]);
 
-  const key = mode === 'profit' ? 'pProfit' : mode === 'twr' ? 'pTwr' : 'pDd';
-  const off = mode === 'profit' || mode === 'twr' ? splitOffset(data.map(d => d[key as 'pProfit'])) : 1;
+  // أعلى قمة عوائد داخل الفترة المختارة (لرسم خط قمة الأرباح)
+  const peakProfitInWin = useMemo(() => {
+    if (!data.length) return 0;
+    return Math.max(...data.map(d => (unit === 'egp' ? d.pProfit : d.pTwr)));
+  }, [data, unit]);
+
+  const growthKey = unit === 'egp' ? 'pProfit' : 'pTwr';
+  const off = mode === 'growth' ? splitOffset(data.map(d => d[growthKey])) : 1;
 
   return (
     <Card
       title="تحليل الأداء"
-      right={<Segmented size="sm" value={mode} onChange={setMode} options={[{ v: 'capital', label: 'رأس المال' }, { v: 'profit', label: 'العوائد' }, { v: 'twr', label: 'النمو %' }, { v: 'dd', label: 'الهبوط' }, { v: 'decomposition', label: 'مصادر النمو' }]} />}
+      right={
+        <Segmented
+          size="sm"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { v: 'capital', label: 'رأس المال' },
+            { v: 'growth', label: 'العوائد والنمو' },
+            { v: 'monthly', label: 'شهرياً' },
+            { v: 'dd', label: 'الهبوط' },
+          ]}
+        />
+      }
     >
       {!data.length ? (
         <Empty icon={<Activity className="w-10 h-10" />} text="سجّل أول قيمة سوقية لتظهر الرسوم" />
       ) : (
         <>
+          {/* Header Area — Rich Dual Metrics without Redundancy */}
           <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
-            <div>
-              <div className="text-[11px] font-bold text-slate-400">{header!.label}</div>
-              <div dir="ltr" className={cx('text-2xl font-black tabular-nums text-right', mode !== 'capital' && tone(header!.n))}>{header!.value}</div>
-              <div className="text-[11px] font-bold text-slate-400 mt-0.5">{header!.sub}</div>
-            </div>
-            {mode === 'capital' && (
-              <div className="flex gap-4 text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full" style={{ background: accent }} />القيمة السوقية</span>
-                <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-indigo-400" />صافي الإيداعات</span>
-              </div>
+            {mode === 'capital' && last && (
+              <>
+                <div>
+                  <div className="text-[11px] font-bold text-slate-400">المركز المالي ومصادر النمو</div>
+                  <div className="flex flex-wrap items-baseline gap-2.5 mt-0.5">
+                    <span dir="ltr" className="text-2xl font-black tabular-nums text-slate-900 dark:text-white">
+                      {fmt(last.nav)} ج.م
+                    </span>
+                    <span dir="ltr" className={cx('rounded-lg px-2 py-0.5 text-xs font-black', last.profit >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500')}>
+                      {fmtSigned(last.profit)} ج.م ({fmtPct((last.index - 1) * 100, 1)})
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-bold text-slate-400 mt-0.5">
+                    صافي الإيداعات: <b dir="ltr" className="text-indigo-500">{fmt(last.deposits)} ج.م</b>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                  <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full" style={{ background: accent }} />القيمة السوقية</span>
+                  <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-indigo-400" />صافي الإيداعات</span>
+                  <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-emerald-400" />صافي العوائد</span>
+                </div>
+              </>
             )}
-            {mode === 'decomposition' && (
-              <div className="flex flex-wrap gap-3 text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full" style={{ background: accent }} />القيمة السوقية</span>
-                <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-indigo-400" />صافي الإيداعات</span>
-                <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-emerald-400" />أرباح السوق</span>
+
+            {mode === 'growth' && last && (
+              <>
+                <div>
+                  <div className="text-[11px] font-bold text-slate-400">
+                    {period === 'All' ? 'إجمالي العوائد التراكمية والنمو منذ البداية' : `تغير العوائد والنمو خلال الفترة (${period})`}
+                  </div>
+                  <div className="flex flex-wrap items-baseline gap-2.5 mt-0.5">
+                    <span dir="ltr" className={cx('text-2xl font-black tabular-nums', tone(last.pProfit))}>
+                      {fmtSigned(last.pProfit)} ج.م
+                    </span>
+                    <span dir="ltr" className={cx('rounded-lg px-2 py-0.5 text-xs font-black', last.pTwr >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500')}>
+                      {fmtPct(last.pTwr)}
+                    </span>
+                  </div>
+                  {period !== 'All' && (
+                    <div className="text-[11px] font-bold text-slate-400 mt-0.5">
+                      الإجمالي منذ البداية: <b dir="ltr" className={tone(last.profit)}>{fmtSigned(last.profit)} ج.م ({fmtPct((last.index - 1) * 100)})</b>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Toggle between EGP Curve and % Curve */}
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[11px] font-black">
+                    <button
+                      type="button"
+                      onClick={() => setUnit('egp')}
+                      className={cx(
+                        'rounded-lg px-2.5 py-1 transition',
+                        unit === 'egp' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400'
+                      )}
+                    >
+                      بالجنيه (ج.م)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUnit('pct')}
+                      className={cx(
+                        'rounded-lg px-2.5 py-1 transition',
+                        unit === 'pct' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400'
+                      )}
+                    >
+                      بالنسبة (%)
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {mode === 'monthly' && (
+              <>
+                <div>
+                  <div className="text-[11px] font-bold text-slate-400">صافي أرباح وتصحيحات كل شهر</div>
+                  <div className="flex flex-wrap items-baseline gap-2.5 mt-0.5">
+                    <span className="text-lg font-black text-slate-900 dark:text-white">
+                      {monthBars.filter(m => m.gain >= 0).length} شهور رابحة
+                    </span>
+                    <span className="text-xs font-bold text-slate-400">
+                      من أصل {monthBars.length} شهر
+                    </span>
+                  </div>
+                </div>
+                <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[11px] font-black">
+                  <button
+                    type="button"
+                    onClick={() => setUnit('egp')}
+                    className={cx(
+                      'rounded-lg px-2.5 py-1 transition',
+                      unit === 'egp' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400'
+                    )}
+                  >
+                    بالجنيه (ج.م)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUnit('pct')}
+                    className={cx(
+                      'rounded-lg px-2.5 py-1 transition',
+                      unit === 'pct' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400'
+                    )}
+                  >
+                    بالنسبة (%)
+                  </button>
+                </div>
+              </>
+            )}
+
+            {mode === 'dd' && last && (
+              <div>
+                <div className="text-[11px] font-bold text-slate-400">أقصى هبوط بالفترة ({period === 'All' ? 'الكل' : period})</div>
+                <div dir="ltr" className="text-2xl font-black tabular-nums text-rose-500 text-right mt-0.5">
+                  {fmtPct(Math.min(...data.map(d => d.pDd)))}
+                </div>
+                <div className="text-[11px] font-bold text-slate-400 mt-0.5">
+                  الهبوط الحالي من القمة: <b dir="ltr" className="text-rose-400">{fmtPct(last.pDd)}</b>
+                </div>
               </div>
             )}
           </div>
+
+          {/* Chart Canvas */}
           <div dir="ltr" className="h-72 sm:h-80 -mx-2">
             <ResponsiveContainer width="100%" height="100%">
               {mode === 'capital' ? (
                 <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gNav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={accent} stopOpacity={0.35} /><stop offset="100%" stopColor={accent} stopOpacity={0} /></linearGradient>
-                    <linearGradient id="gDep" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#818cf8" stopOpacity={0.25} /><stop offset="100%" stopColor="#818cf8" stopOpacity={0} /></linearGradient>
+                    <linearGradient id="gDep" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#818cf8" stopOpacity={0.22} /><stop offset="100%" stopColor="#818cf8" stopOpacity={0} /></linearGradient>
+                    <linearGradient id="gProfCap" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#34d399" stopOpacity={0.18} /><stop offset="100%" stopColor="#34d399" stopOpacity={0} /></linearGradient>
                   </defs>
                   <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
                   <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
                   <YAxis orientation="right" tickFormatter={fmtCompact} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={46} domain={['auto', 'auto']} />
                   <Tooltip cursor={{ stroke: '#94a3b8', strokeDasharray: '4 4' }} content={<ChartTip labelFmt={fmtDate} rows={p => [
-                    { name: 'القيمة السوقية', value: fmt(+p.nav), color: accent },
-                    { name: 'صافي الإيداعات', value: fmt(+p.deposits), color: '#818cf8' },
-                    { name: 'العوائد', value: fmtSigned(+p.profit), color: +p.profit >= 0 ? '#34d399' : '#fb7185' },
+                    { name: 'القيمة السوقية', value: `${fmt(+p.nav)} ج.م`, color: accent },
+                    { name: 'صافي الإيداعات', value: `${fmt(+p.deposits)} ج.م (${+p.nav > 0 ? ((+p.deposits / +p.nav) * 100).toFixed(0) : 100}%)`, color: '#818cf8' },
+                    { name: 'صافي العوائد التراكمية', value: `${fmtSigned(+p.profit)} ج.م (${fmtPct((+p.index - 1) * 100, 1)})`, color: +p.profit >= 0 ? '#34d399' : '#fb7185' },
                   ]} />} />
                   <Area type="stepAfter" dataKey="deposits" stroke="#818cf8" strokeWidth={2} fill="url(#gDep)" dot={false} />
+                  <Area type="monotone" dataKey="profit" stroke="#34d399" strokeWidth={1.5} strokeDasharray="3 3" fill="url(#gProfCap)" dot={false} />
                   <Area type="monotone" dataKey="nav" stroke={accent} strokeWidth={2.5} fill="url(#gNav)" dot={data.length < 25 ? { r: 3, fill: accent } : false} activeDot={{ r: 5 }} />
                 </ComposedChart>
-              ) : mode === 'decomposition' ? (
-                <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="gNavDec" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={accent} stopOpacity={0.3} /><stop offset="100%" stopColor={accent} stopOpacity={0} /></linearGradient>
-                    <linearGradient id="gDepDec" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#818cf8" stopOpacity={0.2} /><stop offset="100%" stopColor="#818cf8" stopOpacity={0} /></linearGradient>
-                    <linearGradient id="gProfDec" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#34d399" stopOpacity={0.2} /><stop offset="100%" stopColor="#34d399" stopOpacity={0} /></linearGradient>
-                  </defs>
+              ) : mode === 'monthly' ? (
+                <BarChart data={monthBars} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
-                  <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
-                  <YAxis orientation="right" tickFormatter={fmtCompact} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={46} domain={['auto', 'auto']} />
-                  <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.3} />
-                  <Tooltip cursor={{ stroke: '#94a3b8', strokeDasharray: '4 4' }} content={<ChartTip labelFmt={fmtDate} rows={p => [
-                    { name: 'القيمة السوقية الإجمالية', value: `${fmt(+p.nav)} ج.م`, color: accent },
-                    { name: 'صافي رأس المال المودع', value: `${fmt(+p.deposits)} ج.م (${+p.nav > 0 ? ((+p.deposits / +p.nav) * 100).toFixed(1) : 100}%)`, color: '#818cf8' },
-                    { name: 'أرباح السوق الصافية', value: `${fmtSigned(+p.profit)} ج.م (${+p.nav > 0 ? ((+p.profit / +p.nav) * 100).toFixed(1) : 0}%)`, color: +p.profit >= 0 ? '#34d399' : '#fb7185' },
-                  ]} />} />
-                  <Area type="stepAfter" dataKey="deposits" stroke="#818cf8" strokeWidth={2} fill="url(#gDepDec)" dot={false} />
-                  <Area type="monotone" dataKey="profit" stroke={last?.profit >= 0 ? '#34d399' : '#fb7185'} strokeWidth={2} fill="url(#gProfDec)" dot={false} />
-                  <Area type="monotone" dataKey="nav" stroke={accent} strokeWidth={2.5} fill="url(#gNavDec)" dot={data.length < 25 ? { r: 3, fill: accent } : false} activeDot={{ r: 5 }} />
-                </ComposedChart>
+                  <XAxis
+                    dataKey="key"
+                    tickFormatter={(k: string) => `${MONTHS_EN[+k.slice(5, 7) - 1]} ${k.slice(2, 4)}`}
+                    tick={{ fontSize: 10, fill: '#94a3b8' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    orientation="right"
+                    tickFormatter={unit === 'egp' ? fmtCompact : (v: number) => `${v.toFixed(0)}%`}
+                    tick={{ fontSize: 10, fill: '#94a3b8' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={46}
+                  />
+                  <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.45} />
+                  <Tooltip
+                    cursor={{ fill: 'rgba(148,163,184,0.1)' }}
+                    content={
+                      <ChartTip
+                        labelFmt={monthLabel}
+                        rows={p => [
+                          { name: 'عائد الشهر (ج.م)', value: `${fmtSigned(+p.gain)} ج.م`, color: +p.gain >= 0 ? '#34d399' : '#fb7185' },
+                          { name: 'نسبة نمو الشهر (%)', value: fmtPct(+p.pct), color: +p.pct >= 0 ? '#10b981' : '#f43f5e' },
+                          { name: 'القيمة بنهاية الشهر', value: `${fmt(+p.endNav)} ج.م`, color: '#818cf8' },
+                        ]}
+                      />
+                    }
+                  />
+                  <Bar dataKey={unit === 'egp' ? 'gain' : 'pct'} radius={[6, 6, 0, 0]} maxBarSize={34}>
+                    {monthBars.map(m => (
+                      <Cell key={m.key} fill={m.gain >= 0 ? '#10b981' : '#f43f5e'} />
+                    ))}
+                  </Bar>
+                </BarChart>
               ) : (
                 <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <defs>
@@ -382,22 +526,65 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                   </defs>
                   <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
                   <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
-                  <YAxis orientation="right" tickFormatter={mode === 'profit' ? fmtCompact : (v: number) => `${v.toFixed(0)}%`} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={46} />
+                  <YAxis
+                    orientation="right"
+                    tickFormatter={mode === 'growth' && unit === 'egp' ? fmtCompact : (v: number) => `${v.toFixed(0)}%`}
+                    tick={{ fontSize: 10, fill: '#94a3b8' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={46}
+                  />
                   <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.5} />
-                  <Tooltip cursor={{ stroke: '#94a3b8', strokeDasharray: '4 4' }} content={<ChartTip labelFmt={fmtDate} rows={p => mode === 'profit'
-                    ? [{ name: 'عوائد الفترة', value: fmtSigned(+p.pProfit), color: '#34d399' }, { name: 'إجمالي العوائد', value: fmtSigned(+p.profit), color: '#818cf8' }]
-                    : mode === 'twr' ? [{ name: 'نمو الفترة', value: fmtPct(+p.pTwr), color: '#34d399' }]
-                    : [{ name: 'الهبوط', value: fmtPct(+p.pDd), color: '#fb7185' }]} />} />
-                  <Area type="monotone" dataKey={key} stroke={mode === 'dd' ? '#fb7185' : 'url(#gSplitStroke)'} strokeWidth={2.5} fill="url(#gSplitFill)" dot={false} activeDot={{ r: 5 }} />
+                  {mode === 'growth' && peakProfitInWin > 0 && (
+                    <ReferenceLine
+                      y={peakProfitInWin}
+                      stroke="#fbbf24"
+                      strokeDasharray="4 4"
+                      strokeOpacity={0.6}
+                    />
+                  )}
+                  <Tooltip
+                    cursor={{ stroke: '#94a3b8', strokeDasharray: '4 4' }}
+                    content={
+                      <ChartTip
+                        labelFmt={fmtDate}
+                        rows={p =>
+                          mode === 'growth'
+                            ? [
+                                { name: period === 'All' ? 'إجمالي العوائد (ج.م)' : `عوائد الفترة (${period})`, value: `${fmtSigned(+p.pProfit)} ج.م`, color: +p.pProfit >= 0 ? '#34d399' : '#fb7185' },
+                                { name: period === 'All' ? 'إجمالي النمو (%)' : `نمو الفترة (${period})`, value: fmtPct(+p.pTwr), color: +p.pTwr >= 0 ? '#10b981' : '#f43f5e' },
+                                ...(period !== 'All'
+                                  ? [{ name: 'إجمالي العوائد منذ البداية', value: `${fmtSigned(+p.profit)} ج.م (${fmtPct((+p.index - 1) * 100)})`, color: '#818cf8' }]
+                                  : []),
+                              ]
+                            : [{ name: 'الهبوط من القمة', value: fmtPct(+p.pDd), color: '#fb7185' }]
+                        }
+                      />
+                    }
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey={mode === 'growth' ? growthKey : 'pDd'}
+                    stroke={mode === 'dd' ? '#fb7185' : 'url(#gSplitStroke)'}
+                    strokeWidth={2.5}
+                    fill="url(#gSplitFill)"
+                    dot={false}
+                    activeDot={{ r: 5 }}
+                  />
                 </AreaChart>
               )}
             </ResponsiveContainer>
           </div>
-          <div className="mt-4 flex justify-center">
-            <Segmented value={period} onChange={setPeriod} options={PERIODS.map(p => ({ v: p, label: p === 'All' ? 'الكل' : p }))} />
-          </div>
-          {first && last && first.date !== last.date && (
-            <div className="mt-3 text-center text-[11px] font-bold text-slate-400">{fmtDate(first.date)} ← {fmtDate(last.date)}</div>
+
+          {mode !== 'monthly' && (
+            <>
+              <div className="mt-4 flex justify-center">
+                <Segmented value={period} onChange={setPeriod} options={PERIODS.map(p => ({ v: p, label: p === 'All' ? 'الكل' : p }))} />
+              </div>
+              {first && last && first.date !== last.date && (
+                <div className="mt-3 text-center text-[11px] font-bold text-slate-400">{fmtDate(first.date)} ← {fmtDate(last.date)}</div>
+              )}
+            </>
           )}
         </>
       )}

@@ -178,13 +178,19 @@ export function windowSeries(pts: Point[], period: Period, dir: 'rtl' | 'ltr' = 
   const cutoff = PERIOD_DAYS[period] === 0 ? -Infinity : lastN - PERIOD_DAYS[period];
   let win = pts.filter(p => dayNum(p.date) >= cutoff);
   if (!win.length) win = [pts[pts.length - 1]];
-  const before = [...pts].reverse().find(p => dayNum(p.date) < cutoff);
-  const base = before ?? win[0];
+  // عند اختيار "الكل" (All) تكون العوائد والنمو التراكمي منذ البداية بالكامل،
+  // وعند اختيار فترة زمنية محددة (1M/3M/6M/1Y/2Y) تقاس العوائد والنمو من أول نقطة داخل الفترة المختارة بدقة (تبدأ من 0 عند win[0])
+  const base = win[0];
   let peak = 0;
   const mapped = win.map(p => {
-    const rel = p.index / base.index;
+    const rel = base.index > 0 ? p.index / base.index : 1;
     peak = Math.max(peak, rel);
-    return { ...p, pProfit: p.profit - base.profit, pTwr: (rel - 1) * 100, pDd: (rel / peak - 1) * 100 };
+    return {
+      ...p,
+      pProfit: period === 'All' ? p.profit : p.profit - base.profit,
+      pTwr: period === 'All' ? (p.index - 1) * 100 : (rel - 1) * 100,
+      pDd: period === 'All' ? p.dd * 100 : (rel / peak - 1) * 100,
+    };
   });
 
   return dir === 'rtl' ? [...mapped].reverse() : mapped;
