@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
-import { Activity, Flame, ShieldAlert, ShieldCheck, Sparkles, Target, TrendingDown, TrendingUp, Trophy, Calendar, ArrowUpRight, ArrowDownRight, Zap, Compass, Crown, Banknote, Users, Layers } from 'lucide-react';
+import { Activity, Flame, ShieldAlert, ShieldCheck, Sparkles, Target, TrendingDown, TrendingUp, Trophy, Calendar, ArrowUpRight, ArrowDownRight, Zap, Compass, Crown, Banknote, Users, Layers, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone } from './ui';
 import { useVault } from './VaultContext';
 import type { Point, Stats, Period } from './calc';
@@ -33,6 +33,7 @@ function Ring({ value, color, size = 54, children }: { value: number; color: str
 
 export function Hero({ pts, stats, scopeLabel, lensLabel }: { pts: Point[]; stats: Stats; scopeLabel: string; lensLabel: string }) {
   const { cashflows } = useVault();
+  const [peakOpen, setPeakOpen] = useState(false);
   const last = pts[pts.length - 1];
   const spark = pts.slice(-60);
   const up = stats.profit >= 0;
@@ -44,6 +45,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel }: { pts: Point[]; stat
   }, [pts]);
   const toPeak = peakPt && last ? Math.max(0, peakPt.nav - last.nav) : 0;
   const peakPct = peakPt && peakPt.nav > 0 ? Math.min(100, Math.max(0, (stats.nav / peakPt.nav) * 100)) : 100;
+  const diffPctFromPeak = peakPt && peakPt.nav > 0 ? ((stats.nav - peakPt.nav) / peakPt.nav) * 100 : 0;
 
   // إجمالي الأرباح المجنية نقداً من المحفظة (جني أرباح + سداد الفيزا + أرباح الشريك)
   const harvestedCash = useMemo(() => {
@@ -77,8 +79,8 @@ export function Hero({ pts, stats, scopeLabel, lensLabel }: { pts: Point[]; stat
       )}
 
       <div className="relative">
-        {/* Top Row: Right = Main NAV | Left = Visual Peak Target & Cash Velocity Widget */}
-        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
+        {/* Top Row: Right = Main NAV | Left = Compact Graphical Peak Badge (Expandable on Click) */}
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           {/* Right Side: Scope Badges + Giant Market Value */}
           <div>
             <div className="flex flex-wrap items-center gap-2 text-[11px] font-black">
@@ -99,55 +101,124 @@ export function Hero({ pts, stats, scopeLabel, lensLabel }: { pts: Point[]; stat
             </div>
           </div>
 
-          {/* Left Side: Sleek Glassmorphic Peak Target & Cash Widget (Fills the Left Space) */}
-          <div className="w-full lg:w-[350px] rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-md p-3.5 space-y-3 shadow-inner">
-            {peakPt && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-1.5 font-black text-amber-300">
-                    <Crown className="w-3.5 h-3.5 shrink-0" />
-                    <span>القمة التاريخية</span>
-                    <b dir="ltr" className="text-white tabular-nums font-black">{fmt(peakPt.nav)}</b>
-                  </span>
-                  <span className={cx(
-                    'rounded-full px-2 py-0.5 text-[10px] font-black',
-                    toPeak > 0 ? 'bg-amber-400/15 text-amber-300' : 'bg-emerald-400/20 text-emerald-300'
-                  )}>
-                    {toPeak > 0 ? `متبقي ${fmtCompact(toPeak)} · ${peakPct.toFixed(0)}%` : 'في القمة ✨ 100%'}
-                  </span>
+          {/* Left Side: Compact Graphical Peak Pill (Default) ⇄ Full Expanded Card (On Click) */}
+          {peakPt && (
+            <div className="self-start sm:self-auto">
+              {!peakOpen ? (
+                /* ── الوضع الأساسي المدمج والجرافيكي المميز (لا يغطي الشارت أبداً) ── */
+                <button
+                  type="button"
+                  onClick={() => setPeakOpen(true)}
+                  title="اضغط لعرض تفاصيل القمة التاريخية والجني النقدي"
+                  className="group relative flex items-center gap-3 rounded-2xl border border-white/12 bg-white/[0.06] hover:bg-white/[0.11] backdrop-blur-md px-3.5 py-2 transition-all duration-200 shadow-lg hover:border-amber-400/30 active:scale-95"
+                >
+                  {/* Graphical Radial Progress Ring with Crown & % */}
+                  <div className="relative w-10 h-10 shrink-0 flex items-center justify-center">
+                    <svg width={40} height={40} className="-rotate-90">
+                      <circle cx={20} cy={20} r={16} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={3.5} />
+                      <circle
+                        cx={20}
+                        cy={20}
+                        r={16}
+                        fill="none"
+                        stroke={toPeak > 0 ? '#fbbf24' : '#34d399'}
+                        strokeWidth={3.5}
+                        strokeLinecap="round"
+                        strokeDasharray={2 * Math.PI * 16}
+                        strokeDashoffset={2 * Math.PI * 16 * (1 - peakPct / 100)}
+                        style={{ transition: 'stroke-dashoffset 0.8s ease' }}
+                      />
+                    </svg>
+                    <span dir="ltr" className="absolute inset-0 flex items-center justify-center text-[9px] font-black tabular-nums text-amber-300">
+                      {peakPct.toFixed(0)}%
+                    </span>
+                  </div>
+
+                  {/* Highest Market Value + Small Diff & % */}
+                  <div className="text-right">
+                    <div className="flex items-center gap-1.5">
+                      <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span dir="ltr" className="text-sm sm:text-base font-black tabular-nums text-white tracking-tight">
+                        {fmt(peakPt.nav)}
+                      </span>
+                    </div>
+                    <div dir="ltr" className="flex items-center justify-end gap-1.5 text-[10px] font-black tabular-nums mt-0.5">
+                      {toPeak > 0 ? (
+                        <>
+                          <span className="text-amber-300/90">-{fmtCompact(toPeak)}</span>
+                          <span className="rounded bg-amber-400/15 px-1 py-0.2 text-[9px] text-amber-300">
+                            {diffPctFromPeak.toFixed(1)}%
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-emerald-300">في القمة ✨</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-transform group-hover:translate-y-0.5 ml-0.5" />
+                </button>
+              ) : (
+                /* ── الوضع المفتوح عند الضغط (نفس الكارت التفصيلي الجميل) ── */
+                <div
+                  onClick={() => setPeakOpen(false)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setPeakOpen(false); }}
+                  title="اضغط لطي الكارت"
+                  className="w-full sm:w-[340px] cursor-pointer rounded-2xl border border-amber-400/25 bg-slate-900/80 hover:bg-slate-900/90 backdrop-blur-xl p-3.5 space-y-3 shadow-2xl transition-all duration-200 animate-in fade-in zoom-in-95"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-1.5 font-black text-amber-300">
+                        <Crown className="w-3.5 h-3.5 shrink-0" />
+                        <span>القمة التاريخية</span>
+                        <b dir="ltr" className="text-white tabular-nums font-black">{fmt(peakPt.nav)}</b>
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className={cx(
+                          'rounded-full px-2 py-0.5 text-[10px] font-black',
+                          toPeak > 0 ? 'bg-amber-400/15 text-amber-300' : 'bg-emerald-400/20 text-emerald-300'
+                        )}>
+                          {toPeak > 0 ? `متبقي ${fmtCompact(toPeak)} · ${peakPct.toFixed(0)}%` : 'في القمة ✨ 100%'}
+                        </span>
+                        <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                      </div>
+                    </div>
+
+                    {/* Visual Progress Bar to Peak */}
+                    <div className="relative h-2 w-full rounded-full bg-white/10 overflow-hidden" dir="ltr">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-emerald-400 to-amber-300 transition-all duration-700"
+                        style={{ width: `${peakPct}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 2 Compact Mini-Pills inside the Expanded Widget */}
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10">
+                    <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
+                        <Banknote className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                        <span>جني نقدي</span>
+                      </span>
+                      <b dir="ltr" className="text-xs font-black tabular-nums text-emerald-300">+{fmtCompact(harvestedCash)}</b>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
+                        <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                        <span>شهرياً</span>
+                      </span>
+                      <b dir="ltr" className={cx('text-xs font-black tabular-nums', (monthlyGainRate ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
+                        {monthlyGainRate !== null ? fmtCompact(monthlyGainRate) : '—'}
+                      </b>
+                    </div>
+                  </div>
                 </div>
-
-                {/* Visual Progress Bar to Peak */}
-                <div className="relative h-2 w-full rounded-full bg-white/10 overflow-hidden" dir="ltr">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-emerald-400 to-amber-300 transition-all duration-700"
-                    style={{ width: `${peakPct}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* 2 Compact Mini-Pills inside the Left Widget */}
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10">
-              <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
-                <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
-                  <Banknote className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-                  <span>جني نقدي</span>
-                </span>
-                <b dir="ltr" className="text-xs font-black tabular-nums text-emerald-300">+{fmtCompact(harvestedCash)}</b>
-              </div>
-
-              <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
-                <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
-                  <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span>شهرياً</span>
-                </span>
-                <b dir="ltr" className={cx('text-xs font-black tabular-nums', (monthlyGainRate ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
-                  {monthlyGainRate !== null ? fmtCompact(monthlyGainRate) : '—'}
-                </b>
-              </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
 
         {/* Bottom 4 KPIs — Unobstructed over the Glowing Sparkline Chart */}
