@@ -80,33 +80,32 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
       const effectiveRetainedPartner = remainingCarryAfterDist + rawRetP;
       const isCarriedPartner = remainingCarryAfterDist > 0 && rawRetP === 0;
 
-      // صافي الربح الجديد المفرز للشريك في هذا الشهر (توزيع جديد غير مغطى بالمرحل + تجنيب جديد)
-      const freshDistP = Math.max(0, distP - carriedInPartner);
-      const newEarnedPartner = freshDistP + rawRetP;
+      // صافي الربح الجديد المفرز للشريك في هذا الشهر:
+      // - في الشهر المخصص فيه رصيد مجنب يدوي: ربح الشريك الإجمالي بالشهر = الموزع + المجنب اليدوي
+      // - في شهور الترحيل التلقائي (بدون مجنب يدوي جديد): ربح الشريك الموزع = الموزع فقط
+      const partnerEarnedBasis = distP + rawRetP;
 
       runningPartnerReserve = effectiveRetainedPartner;
 
-      // حساب حصتي (60%) تلقائياً قياساً على حصة الشريك (40%) ما لم يكن المستخدم قد عدل حصته يدوياً
-      const hasExplicitMine = Boolean(m.manualMine) || (m.retainedMine > 0 || m.distributedMine > 0);
+  // حساب حصتي (60%) تلقائياً قياساً على حصة الشريك (40%):
+      // وبما أنك تعيد استثمار أرباحك بالكامل، فإن أرباحك الشهرية في الشهر الذي جُنبت فيه أرباح لـ لولو
+      // تساوي 60% مقابل (موزع لولو + مجنب لولو اليدوي معاً)، وفي شهور الترحيل التلقائي تساوي 60% مقابل الموزع فقط!
+      const hasExplicitMine = Boolean(m.manualMine);
       const isAutoMine = !hasExplicitMine && (rawRetP > 0 || distP > 0 || effectiveRetainedPartner > 0);
 
-      // في حال الحساب التلقائي: تقاس حصتي الموزعة والمجنبة بنسبة 60/40 (× 1.5)
-      // ملاحظة: لو كان توزيع الشريك مسدداً من مجنب شهر سابق تم احتساب حصتي مقابله بالفعل، نحسب لحصتي الموزع مقابل التوزيع أيضاً لعرضه، بينما إجمالي الربح الشهري لحصتي يقاس على الربح الجديد أو الموزع الفعلي
       const effectiveDistributedMine = hasExplicitMine
         ? (m.distributedMine || 0)
-        : Math.round(distP * partnerToMineRatio);
+        : Math.round(partnerEarnedBasis * partnerToMineRatio);
 
       const effectiveRetainedMine = hasExplicitMine
         ? (m.retainedMine || 0)
-        : Math.round(rawRetP * partnerToMineRatio);
+        : 0;
 
-      // صافي الربح الشهري لحصتي بدون ازدواجية المرحل
-      const netFreshMine = hasExplicitMine
-        ? (m.distributedMine || 0) + (m.retainedMine || 0)
-        : Math.round(newEarnedPartner * partnerToMineRatio);
+      // إجمالي حصتي المحققة والمعاد استثمارها في هذا الشهر
+      const netFreshMine = effectiveDistributedMine + effectiveRetainedMine;
 
       cumMine += netFreshMine;
-      cumPartner += newEarnedPartner;
+      cumPartner += partnerEarnedBasis;
 
       return {
         id: m.id,
@@ -116,7 +115,7 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
         paidFromReservePartner,
         effectiveRetainedPartner,
         isCarriedPartner,
-        newEarnedPartner,
+        newEarnedPartner: partnerEarnedBasis,
         rawRetainedMine: m.retainedMine || 0,
         rawDistributedMine: m.distributedMine || 0,
         effectiveRetainedMine,
@@ -169,6 +168,9 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
   }, [months.length]);
 
   // تحديث الحقول مع الحساب التبادلي التلقائي (60% لي ↔ 40% للشريك) مع احترام التعديل اليدوي
+  // ملاحظة جوهرية: المجنب اليدوي للشريك هو جزء أصيل من ربح الشريك في ذلك الشهر قررنا عدم توزيعه ليرحل،
+  // وبالتالي أرباحي (60%) في نفس الشهر تُحسب مقابل مجموع (الموزع لـ لولو + المجنب اليدوي لـ لولو) معاً!
+  // أما في شهور الترحيل التلقائي (حيث المجنب اليدوي = 0) فتُحسب أرباحي (60%) مقابل الموزع فقط.
   const handleFieldChange = (
     k: 'retainedMine' | 'retainedPartner' | 'distributedMine' | 'distributedPartner',
     val: string
@@ -178,28 +180,23 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
       const next = { ...prev, [k]: val };
       if (!partner || !autoSync) return next;
 
-      if (k === 'distributedPartner') {
-        // إذا أدخل أرباح الشريك الموزعة -> نحسب حصتي الموزعة تلقائياً (60/40 = ×1.5) ما لم يثبت المستخدم تعديلاً يدوياً خاصاً
+      if (k === 'distributedPartner' || k === 'retainedPartner') {
+        const distP = k === 'distributedPartner' ? num : (parseFloat(prev.distributedPartner) || 0);
+        const rawRetP = k === 'retainedPartner' ? num : (parseFloat(prev.retainedPartner) || 0);
+        const totalPartnerMonth = distP + rawRetP;
         if (!manualMineOverride) {
-          next.distributedMine = num > 0 ? String(Math.round(num * partnerToMineRatio)) : '';
-        }
-      } else if (k === 'retainedPartner') {
-        if (!manualMineOverride) {
-          next.retainedMine = num > 0 ? String(Math.round(num * partnerToMineRatio)) : '';
+          next.distributedMine = totalPartnerMonth > 0 ? String(Math.round(totalPartnerMonth * partnerToMineRatio)) : '';
         }
       } else if (k === 'distributedMine') {
         // إذا أدخل المستخدم حصته بيده: لو كان حقل الشريك فارغاً نحسب الشريك تلقائياً، وإلا نعتبره تخصيصاً يدوياً لحصته ونحترمه
-        if (!prev.distributedPartner || parseFloat(prev.distributedPartner) === 0) {
+        const curPartnerTotal = (parseFloat(prev.distributedPartner) || 0) + (parseFloat(prev.retainedPartner) || 0);
+        if (curPartnerTotal === 0) {
           next.distributedPartner = num > 0 ? String(Math.round(num * mineToPartnerRatio)) : '';
         } else {
           setManualMineOverride(true);
         }
       } else if (k === 'retainedMine') {
-        if (!prev.retainedPartner || parseFloat(prev.retainedPartner) === 0) {
-          next.retainedPartner = num > 0 ? String(Math.round(num * mineToPartnerRatio)) : '';
-        } else {
-          setManualMineOverride(true);
-        }
+        setManualMineOverride(true);
       }
       return next;
     });
@@ -514,11 +511,14 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
                   type="button"
                   onClick={() => {
                     setManualMineOverride(false);
-                    setF(s => ({
-                      ...s,
-                      retainedMine: n(s.retainedPartner) > 0 ? String(Math.round(n(s.retainedPartner) * partnerToMineRatio)) : '',
-                      distributedMine: n(s.distributedPartner) > 0 ? String(Math.round(n(s.distributedPartner) * partnerToMineRatio)) : '',
-                    }));
+                    setF(s => {
+                      const totalP = n(s.distributedPartner) + n(s.retainedPartner);
+                      return {
+                        ...s,
+                        retainedMine: '',
+                        distributedMine: totalP > 0 ? String(Math.round(totalP * partnerToMineRatio)) : '',
+                      };
+                    });
                   }}
                   className="underline font-black"
                 >
