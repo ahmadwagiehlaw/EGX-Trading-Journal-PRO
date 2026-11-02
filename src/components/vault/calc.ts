@@ -210,18 +210,26 @@ export interface PeriodRet {
 export function periodReturn(pts: Point[], S: string, E: string, key: string): PeriodRet | null {
   const win = pts.filter(p => p.date > S && p.date <= E);
   if (!win.length) return null;
-  let startNav = 0;
-  for (const p of pts) if (p.date <= S) startNav = p.nav;
+  let prev: Point | null = null;
+  for (const p of pts) if (p.date <= S) prev = p;
   const end = win[win.length - 1];
-  const total = Math.max(1, dayNum(E) - dayNum(S));
+  const basePt = prev ?? win[0];
+  const startNav = prev ? prev.nav : win[0].deposits;
+  const total = Math.max(1, dayNum(E) - dayNum(prev ? S : win[0].date));
   let flow = 0;
   let wFlow = 0;
-  for (const p of win) {
-    flow += p.flow;
-    wFlow += p.flow * Math.min(1, (dayNum(E) - dayNum(p.date) + 0.5) / total);
+  let lastDep = basePt.deposits;
+  const flowPts = prev ? win : win.slice(1);
+  for (const p of flowPts) {
+    const stepFlow = p.deposits - lastDep;
+    lastDep = p.deposits;
+    flow += stepFlow;
+    wFlow += stepFlow * Math.min(1, Math.max(0, (dayNum(E) - dayNum(p.date) + 0.5) / total));
   }
-  const gain = end.nav - startNav - flow;
-  const denom = startNav + wFlow;
+  const gain = end.profit - (prev ? prev.profit : 0);
+  // إذا كان الشهر الأول يحتوي فقط على قراءة التأسيس الافتتاحية بدون أي تغير ربحي، نتخطاه حتى لا يشوه متوسط الشهور ونسبة الفوز
+  if (!prev && win.length === 1 && Math.abs(gain) < 0.5) return null;
+  const denom = Math.max(1, startNav + wFlow);
   return { key, gain, pct: denom > 0 ? (gain / denom) * 100 : 0, flow, startNav, endNav: end.nav, points: win.length };
 }
 
@@ -486,20 +494,23 @@ export function partnerSplit(
   });
 
   // 2. حصتي: المحفظة هي ملك المستخدم بالكامل، مخصوماً منها التزام رأس مال الشريك عند دخوله
-  const mine: Point[] = pts.map(p => {
+  let prevMineDep = 0;
+  const mine: Point[] = pts.map((p, idx) => {
     const curPartnerCap = getPartnerCapAt(p.date);
     const nav = Math.max(0, p.nav - curPartnerCap);
     const deposits = Math.max(0, p.deposits - curPartnerCap);
+    const flow = idx === 0 ? 0 : deposits - prevMineDep;
+    prevMineDep = deposits;
     const profit = nav - deposits;
     const ret = deposits > 0 ? (profit / deposits) * 100 : p.ret;
     const k = p.nav > 0 ? nav / p.nav : 0;
-    // يتبع مؤشر نمو حصة المستخدم عائده الحقيقي الإيجابي ليعكس بدقة الأرباح التراكمية الإيجابية (+66%)
-    const index = deposits > 0 ? 1 + ret / 100 : p.index;
+    // يتبع مؤشر نمو حصة المستخدم عائده الحقيقي الإيجابي ليعكس بدقة الأرباح التراكمية الإيجابية
+    const index = deposits > 0 ? Math.max(0.1, 1 + ret / 100) : p.index;
     return {
       ...p,
       nav,
       deposits,
-      flow: p.flow,
+      flow,
       profit,
       ret,
       index,
@@ -509,4 +520,232 @@ export function partnerSplit(
   });
 
   return { partner, mine, hasPartner: true };
+}
+
+/* ───────── Market Benchmarks (EGX30 · EGX70 · Bank Risk-Free Rate) ───────── */
+export interface MarketIndexPerf {
+  symbol: string;
+  label: string;
+  close: number;
+  change: number;
+  w: number;   // 1W %
+  m1: number;  // 1M %
+  m3: number;  // 3M %
+  m6: number;  // 6M %
+  y1: number;  // 1Y %
+  ytd: number; // YTD %
+  y5: number;  // 5Y %
+}
+
+export interface BenchmarksState {
+  egx30: MarketIndexPerf;
+  egx70: MarketIndexPerf;
+  updatedAt: number;
+  live: boolean;
+}
+
+export const DEFAULT_BENCHMARKS: BenchmarksState = {
+  egx30: {
+    symbol: 'EGX30',
+    label: 'EGX 30',
+    close: 48403.1,
+    change: -0.7,
+    w: -1.71,
+    m1: -6.75,
+    m3: -10.85,
+    m6: -8.5,
+    y1: 26.28,
+    ytd: 15.68,
+    y5: 318.41,
+  },
+  egx70: {
+    symbol: 'EGX70',
+    label: 'EGX 70',
+    close: 16293.7,
+    change: -2.23,
+    w: 6.54,
+    m1: -12.67,
+    m3: -16.16,
+    m6: 12.76,
+    y1: 34.57,
+    ytd: 23.93,
+    y5: 603.35,
+  },
+  updatedAt: Date.now(),
+  live: false,
+};
+
+const BENCH_CACHE_KEY = 'egx_vault_benchmarks_v1';
+
+export function loadCachedBenchmarks(): BenchmarksState {
+  try {
+    const raw = localStorage.getItem(BENCH_CACHE_KEY);
+    if (!raw) return DEFAULT_BENCHMARKS;
+    const parsed = JSON.parse(raw);
+    if (parsed?.egx30?.close && parsed?.egx70?.close) return parsed;
+  } catch {
+    // ignore
+  }
+  return DEFAULT_BENCHMARKS;
+}
+
+export async function fetchEgxBenchmarks(): Promise<BenchmarksState> {
+  try {
+    const body = JSON.stringify({
+      symbols: { tickers: ['EGX:EGX30', 'EGX:EGX70EWI'] },
+      columns: ['close', 'change', 'Perf.W', 'Perf.1M', 'Perf.3M', 'Perf.6M', 'Perf.Y', 'Perf.YTD', 'Perf.5Y'],
+    });
+    // Using text/plain avoids CORS preflight and works directly from browser to TradingView Egypt scanner
+    const res = await fetch('https://scanner.tradingview.com/egypt/scan', {
+      method: 'POST',
+      body,
+    });
+    if (!res.ok) throw new Error('Network error');
+    const json = await res.json();
+    const rows: { s: string; d: number[] }[] = json?.data ?? [];
+    const r30 = rows.find(r => r.s.includes('EGX30'))?.d;
+    const r70 = rows.find(r => r.s.includes('EGX70'))?.d;
+    const prev = loadCachedBenchmarks();
+    const next: BenchmarksState = {
+      egx30: r30
+        ? {
+            symbol: 'EGX30',
+            label: 'EGX 30',
+            close: r30[0] ?? prev.egx30.close,
+            change: r30[1] ?? prev.egx30.change,
+            w: r30[2] ?? prev.egx30.w,
+            m1: r30[3] ?? prev.egx30.m1,
+            m3: r30[4] ?? prev.egx30.m3,
+            m6: r30[5] ?? prev.egx30.m6,
+            y1: r30[6] ?? prev.egx30.y1,
+            ytd: r30[7] ?? prev.egx30.ytd,
+            y5: r30[8] ?? prev.egx30.y5,
+          }
+        : prev.egx30,
+      egx70: r70
+        ? {
+            symbol: 'EGX70',
+            label: 'EGX 70',
+            close: r70[0] ?? prev.egx70.close,
+            change: r70[1] ?? prev.egx70.change,
+            w: r70[2] ?? prev.egx70.w,
+            m1: r70[3] ?? prev.egx70.m1,
+            m3: r70[4] ?? prev.egx70.m3,
+            m6: r70[5] ?? prev.egx70.m6,
+            y1: r70[6] ?? prev.egx70.y1,
+            ytd: r70[7] ?? prev.egx70.ytd,
+            y5: r70[8] ?? prev.egx70.y5,
+          }
+        : prev.egx70,
+      updatedAt: Date.now(),
+      live: true,
+    };
+    try {
+      localStorage.setItem(BENCH_CACHE_KEY, JSON.stringify(next));
+    } catch {
+      // ignore
+    }
+    return next;
+  } catch {
+    return loadCachedBenchmarks();
+  }
+}
+
+/** حساب مستوى المؤشر قبل `daysAgo` يوماً بناءً على نقاط الأداء الرسمية (1W, 1M, 3M, 6M, 1Y, 5Y) */
+function indexLevelAtDaysAgo(perf: MarketIndexPerf, daysAgo: number): number {
+  const c = perf.close || 10000;
+  if (daysAgo <= 0) return c;
+  const anchors: { d: number; level: number }[] = [
+    { d: 0, level: c },
+    { d: 7, level: c / Math.max(0.1, 1 + perf.w / 100) },
+    { d: 30, level: c / Math.max(0.1, 1 + perf.m1 / 100) },
+    { d: 91, level: c / Math.max(0.1, 1 + perf.m3 / 100) },
+    { d: 182, level: c / Math.max(0.1, 1 + perf.m6 / 100) },
+    { d: 365, level: c / Math.max(0.1, 1 + perf.y1 / 100) },
+    { d: 1825, level: c / Math.max(0.1, 1 + perf.y5 / 100) },
+  ];
+  for (let i = 0; i < anchors.length - 1; i++) {
+    const a = anchors[i];
+    const b = anchors[i + 1];
+    if (daysAgo >= a.d && daysAgo <= b.d) {
+      const t = (daysAgo - a.d) / Math.max(1, b.d - a.d);
+      return a.level * Math.pow(b.level / a.level, t);
+    }
+  }
+  const lastA = anchors[anchors.length - 1];
+  const dailyRate = Math.pow(c / lastA.level, 1 / lastA.d);
+  return c / Math.pow(dailyRate, daysAgo);
+}
+
+export interface BenchmarkPoint extends ChartPoint {
+  bankPct: number;
+  bankProfit: number;
+  egx30Pct: number;
+  egx30Profit: number;
+  egx70Pct: number;
+  egx70Profit: number;
+}
+
+/** بناء سلسلة مقارنة أداء المحفظة مقابل (عائد البنك السنوي + EGX30 + EGX70) بنفس تواريخ وحجم الإيداعات */
+export function buildBenchmarkSeries(
+  winData: ChartPoint[],
+  bench: BenchmarksState,
+  bankAnnualPct: number,
+  dir: 'rtl' | 'ltr' = 'rtl'
+): BenchmarkPoint[] {
+  if (!winData.length) return [];
+  const chronological = dir === 'rtl' ? [...winData].reverse() : [...winData];
+  const first = chronological[0];
+  const last = chronological[chronological.length - 1];
+  const endD = dayNum(last.date);
+  const startDaysAgo = Math.max(0, endD - dayNum(first.date));
+
+  const base30 = indexLevelAtDaysAgo(bench.egx30, startDaysAgo);
+  const base70 = indexLevelAtDaysAgo(bench.egx70, startDaysAgo);
+
+  let bankIndex = 1;
+  let bankProfit = 0;
+  let egx30Profit = 0;
+  let egx70Profit = 0;
+  let prevLvl30 = base30;
+  let prevLvl70 = base70;
+
+  const out: BenchmarkPoint[] = chronological.map((p, idx) => {
+    const daysAgo = Math.max(0, endD - dayNum(p.date));
+    const lvl30 = indexLevelAtDaysAgo(bench.egx30, daysAgo);
+    const lvl70 = indexLevelAtDaysAgo(bench.egx70, daysAgo);
+
+    if (idx > 0) {
+      const prev = chronological[idx - 1];
+      const dt = Math.max(0, dayNum(p.date) - dayNum(prev.date));
+      const rBank = Math.pow(1 + bankAnnualPct / 100, dt / 365) - 1;
+      const r30 = prevLvl30 > 0 ? lvl30 / prevLvl30 - 1 : 0;
+      const r70 = prevLvl70 > 0 ? lvl70 / prevLvl70 - 1 : 0;
+
+      const capBase = Math.max(0, prev.deposits);
+      bankIndex *= 1 + rBank;
+      bankProfit += capBase * rBank;
+      egx30Profit += capBase * r30;
+      egx70Profit += capBase * r70;
+    }
+
+    prevLvl30 = lvl30;
+    prevLvl70 = lvl70;
+
+    const egx30Pct = base30 > 0 ? (lvl30 / base30 - 1) * 100 : 0;
+    const egx70Pct = base70 > 0 ? (lvl70 / base70 - 1) * 100 : 0;
+    const bankPct = (bankIndex - 1) * 100;
+
+    return {
+      ...p,
+      bankPct,
+      bankProfit,
+      egx30Pct,
+      egx30Profit,
+      egx70Pct,
+      egx70Profit,
+    };
+  });
+
+  return dir === 'rtl' ? [...out].reverse() : out;
 }

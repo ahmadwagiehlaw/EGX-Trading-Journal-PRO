@@ -1,12 +1,29 @@
-import { useMemo, useState } from 'react';
-import { Area, AreaChart, Bar, BarChart, Cell, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
-import { Activity, Flame, ShieldAlert, ShieldCheck, Sparkles, Target, TrendingDown, TrendingUp, Trophy, Calendar, ArrowUpRight, ArrowDownRight, Zap, Compass, Crown, Banknote, Users, Layers, ChevronUp } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Area, AreaChart, Bar, BarChart, Cell, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
+import { Activity, Flame, ShieldAlert, TrendingDown, TrendingUp, Trophy, Calendar, Zap, Compass, Crown, Banknote, Users, Layers, ChevronUp, RefreshCw, Landmark } from 'lucide-react';
 import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone } from './ui';
 import { useVault } from './VaultContext';
-import type { Point, Stats, Period, PeriodRet } from './calc';
-import { PERIODS, windowSeries, monthlyReturns, allocation, comparePortfolios, fmt, fmtCompact, fmtPct, fmtSigned, fmtDate, shortDate, monthLabel, MONTHS_EN } from './calc';
+import type { Point, Stats, Period, PeriodRet, BenchmarksState } from './calc';
+import {
+  PERIODS,
+  windowSeries,
+  monthlyReturns,
+  allocation,
+  comparePortfolios,
+  loadCachedBenchmarks,
+  fetchEgxBenchmarks,
+  buildBenchmarkSeries,
+  fmt,
+  fmtCompact,
+  fmtPct,
+  fmtSigned,
+  fmtDate,
+  shortDate,
+  monthLabel,
+  MONTHS_EN,
+} from './calc';
 
-type Mode = 'capital' | 'growth' | 'monthly' | 'dd';
+type Mode = 'capital' | 'growth' | 'benchmark' | 'monthly' | 'dd';
 
 const splitOffset = (vals: number[]) => {
   const max = Math.max(...vals, 0);
@@ -284,9 +301,41 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
   const [mode, setMode] = useState<Mode>('capital');
   const [period, setPeriod] = useState<Period>('3M');
   const [unit, setUnit] = useState<'egp' | 'pct'>('egp');
+  const [bench, setBench] = useState<BenchmarksState>(() => loadCachedBenchmarks());
+  const [syncingBench, setSyncingBench] = useState(false);
+  const [bankRate, setBankRate] = useState<number>(27);
+  const [showLines, setShowLines] = useState<{ bank: boolean; egx30: boolean; egx70: boolean }>({
+    bank: true,
+    egx30: true,
+    egx70: false,
+  });
+
+  useEffect(() => {
+    let mounted = true;
+    setSyncingBench(true);
+    fetchEgxBenchmarks().then(b => {
+      if (mounted) {
+        setBench(b);
+        setSyncingBench(false);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const refreshBench = async () => {
+    setSyncingBench(true);
+    const b = await fetchEgxBenchmarks();
+    setBench(b);
+    setSyncingBench(false);
+  };
+
   const data = useMemo(() => windowSeries(pts, period, dir), [pts, period, dir]);
+  const benchData = useMemo(() => buildBenchmarkSeries(data, bench, bankRate, dir), [data, bench, bankRate, dir]);
   const first = dir === 'rtl' ? data[data.length - 1] : data[0];
   const last = dir === 'rtl' ? data[0] : data[data.length - 1];
+  const lastBench = dir === 'rtl' ? benchData[0] : benchData[benchData.length - 1];
 
   // بيانات الأداء الشهري (أعمدة ربح/تصحيح كل شهر بالجنيه والنسبة المئوية)
   const monthBars = useMemo<PeriodRet[]>(() => {
@@ -310,10 +359,14 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
         <Segmented
           size="sm"
           value={mode}
-          onChange={setMode}
+          onChange={v => {
+            setMode(v);
+            if (v === 'benchmark') setUnit('pct');
+          }}
           options={[
             { v: 'capital', label: 'رأس المال' },
             { v: 'growth', label: 'العوائد والنمو' },
+            { v: 'benchmark', label: 'مقارنة السوق' },
             { v: 'monthly', label: 'شهرياً' },
             { v: 'dd', label: 'الهبوط' },
           ]}
@@ -399,6 +452,211 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
               </>
             )}
 
+            {mode === 'benchmark' && lastBench && (
+              <div className="w-full space-y-3">
+                {/* Top Controls Row: Series Toggles + Bank Rate + Unit Switch + Live Sync */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-black text-emerald-600 dark:text-emerald-400">
+                      <i className="w-2 h-2 rounded-full bg-emerald-500" />
+                      محفظتي
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowLines(s => ({ ...s, bank: !s.bank }))}
+                      className={cx(
+                        'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-black transition',
+                        showLines.bank
+                          ? 'bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-60'
+                      )}
+                    >
+                      <i className="w-2 h-2 rounded-full bg-amber-400" />
+                      عائد البنك ({bankRate}%)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowLines(s => ({ ...s, egx30: !s.egx30 }))}
+                      className={cx(
+                        'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-black transition',
+                        showLines.egx30
+                          ? 'bg-blue-500/15 border-blue-500/40 text-blue-600 dark:text-blue-400'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-60'
+                      )}
+                    >
+                      <i className="w-2 h-2 rounded-full bg-blue-500" />
+                      EGX30 ({fmt(bench.egx30.close, 0)})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowLines(s => ({ ...s, egx70: !s.egx70 }))}
+                      className={cx(
+                        'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-black transition',
+                        showLines.egx70
+                          ? 'bg-purple-500/15 border-purple-500/40 text-purple-600 dark:text-purple-400'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-60'
+                      )}
+                    >
+                      <i className="w-2 h-2 rounded-full bg-purple-500" />
+                      EGX70 ({fmt(bench.egx70.close, 0)})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={refreshBench}
+                      title="تحديث المؤشرات مباشرة من البورصة المصرية"
+                      className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[10px] font-black text-slate-500 hover:text-slate-900 dark:hover:text-white transition"
+                    >
+                      <RefreshCw className={cx('w-3 h-3', syncingBench && 'animate-spin text-emerald-500')} />
+                      <span>{bench.live ? 'مباشر' : 'تحديث'}</span>
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Bank Annual Rate Pills */}
+                    <div className="inline-flex items-center gap-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[10px] font-black">
+                      <Landmark className="w-3 h-3 text-amber-500 mx-1.5" />
+                      {[20, 24, 27, 30].map(r => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setBankRate(r)}
+                          className={cx(
+                            'rounded-lg px-2 py-1 transition',
+                            bankRate === r ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                          )}
+                        >
+                          {r}%
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Unit Toggle (% vs EGP) */}
+                    <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[11px] font-black">
+                      <button
+                        type="button"
+                        onClick={() => setUnit('pct')}
+                        className={cx(
+                          'rounded-lg px-2.5 py-1 transition',
+                          unit === 'pct' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400'
+                        )}
+                      >
+                        بالنسبة (%)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setUnit('egp')}
+                        className={cx(
+                          'rounded-lg px-2.5 py-1 transition',
+                          unit === 'egp' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400'
+                        )}
+                      >
+                        بالجنيه (ج.م)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4 Compact Alpha & Opportunity Cost Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {/* My Portfolio */}
+                  <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] px-3 py-2">
+                    <div className="flex items-center justify-between text-[10px] font-black text-emerald-600 dark:text-emerald-400">
+                      <span>أداء محفظتي</span>
+                      <span dir="ltr">{period === 'All' ? 'الكل' : period}</span>
+                    </div>
+                    <div dir="ltr" className={cx('text-base font-black tabular-nums text-right mt-0.5', tone(lastBench.pTwr))}>
+                      {unit === 'pct' ? fmtPct(lastBench.pTwr) : `${fmtSigned(lastBench.pProfit)} ج.م`}
+                    </div>
+                    <div dir="ltr" className="text-[10px] font-bold text-slate-400 text-right">
+                      {unit === 'pct' ? `${fmtSigned(lastBench.pProfit)} ج.م` : fmtPct(lastBench.pTwr)}
+                    </div>
+                  </div>
+
+                  {/* vs Bank */}
+                  {(() => {
+                    const diffPct = lastBench.pTwr - lastBench.bankPct;
+                    const diffEgp = lastBench.pProfit - lastBench.bankProfit;
+                    const win = diffPct >= 0;
+                    return (
+                      <div className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.05] px-3 py-2">
+                        <div className="flex items-center justify-between text-[10px] font-black text-amber-600 dark:text-amber-400">
+                          <span>البنك ({bankRate}%)</span>
+                          <span dir="ltr" className="text-slate-500 dark:text-slate-300">
+                            {unit === 'pct' ? fmtPct(lastBench.bankPct, 1) : fmtCompact(lastBench.bankProfit)}
+                          </span>
+                        </div>
+                        <div dir="ltr" className={cx('text-base font-black tabular-nums text-right mt-0.5', win ? 'text-emerald-500' : 'text-rose-500')}>
+                          {unit === 'pct' ? fmtPct(diffPct, 1) : `${fmtSigned(diffEgp)} ج.م`}
+                        </div>
+                        <div className="flex items-center justify-between text-[9px] font-black text-slate-400">
+                          <span>{win ? 'تفوقك عالبنك' : 'أقل من البنك'}</span>
+                          <b dir="ltr" className={win ? 'text-emerald-500' : 'text-rose-500'}>
+                            {unit === 'pct' ? fmtSigned(diffEgp) : fmtPct(diffPct, 1)}
+                          </b>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* vs EGX30 */}
+                  {(() => {
+                    const diffPct = lastBench.pTwr - lastBench.egx30Pct;
+                    const diffEgp = lastBench.pProfit - lastBench.egx30Profit;
+                    const win = diffPct >= 0;
+                    return (
+                      <div className="rounded-2xl border border-blue-500/25 bg-blue-500/[0.05] px-3 py-2">
+                        <div className="flex items-center justify-between text-[10px] font-black text-blue-600 dark:text-blue-400">
+                          <span>مؤشر EGX30</span>
+                          <span dir="ltr" className="text-slate-500 dark:text-slate-300">
+                            {unit === 'pct' ? fmtPct(lastBench.egx30Pct, 1) : fmtCompact(lastBench.egx30Profit)}
+                          </span>
+                        </div>
+                        <div dir="ltr" className={cx('text-base font-black tabular-nums text-right mt-0.5', win ? 'text-emerald-500' : 'text-rose-500')}>
+                          {unit === 'pct' ? fmtPct(diffPct, 1) : `${fmtSigned(diffEgp)} ج.م`}
+                        </div>
+                        <div className="flex items-center justify-between text-[9px] font-black text-slate-400">
+                          <span>{win ? 'تفوقك (Alpha)' : 'فارق المؤشر'}</span>
+                          <b dir="ltr" className={win ? 'text-emerald-500' : 'text-rose-500'}>
+                            {unit === 'pct' ? fmtSigned(diffEgp) : fmtPct(diffPct, 1)}
+                          </b>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* vs EGX70 */}
+                  {(() => {
+                    const diffPct = lastBench.pTwr - lastBench.egx70Pct;
+                    const diffEgp = lastBench.pProfit - lastBench.egx70Profit;
+                    const win = diffPct >= 0;
+                    return (
+                      <div className="rounded-2xl border border-purple-500/25 bg-purple-500/[0.05] px-3 py-2">
+                        <div className="flex items-center justify-between text-[10px] font-black text-purple-600 dark:text-purple-400">
+                          <span>مؤشر EGX70</span>
+                          <span dir="ltr" className="text-slate-500 dark:text-slate-300">
+                            {unit === 'pct' ? fmtPct(lastBench.egx70Pct, 1) : fmtCompact(lastBench.egx70Profit)}
+                          </span>
+                        </div>
+                        <div dir="ltr" className={cx('text-base font-black tabular-nums text-right mt-0.5', win ? 'text-emerald-500' : 'text-rose-500')}>
+                          {unit === 'pct' ? fmtPct(diffPct, 1) : `${fmtSigned(diffEgp)} ج.م`}
+                        </div>
+                        <div className="flex items-center justify-between text-[9px] font-black text-slate-400">
+                          <span>{win ? 'تفوقك (Alpha)' : 'فارق المؤشر'}</span>
+                          <b dir="ltr" className={win ? 'text-emerald-500' : 'text-rose-500'}>
+                            {unit === 'pct' ? fmtSigned(diffEgp) : fmtPct(diffPct, 1)}
+                          </b>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+
             {mode === 'monthly' && (
               <>
                 <div>
@@ -471,6 +729,105 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                   <Area type="stepAfter" dataKey="deposits" stroke="#818cf8" strokeWidth={2} fill="url(#gDep)" dot={false} />
                   <Area type="monotone" dataKey="profit" stroke="#34d399" strokeWidth={1.5} strokeDasharray="3 3" fill="url(#gProfCap)" dot={false} />
                   <Area type="monotone" dataKey="nav" stroke={accent} strokeWidth={2.5} fill="url(#gNav)" dot={data.length < 25 ? { r: 3, fill: accent } : false} activeDot={{ r: 5 }} />
+                </ComposedChart>
+              ) : mode === 'benchmark' ? (
+                <ComposedChart data={benchData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gBenchMine" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
+                  <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
+                  <YAxis
+                    orientation="right"
+                    tickFormatter={unit === 'egp' ? fmtCompact : (v: number) => `${v.toFixed(0)}%`}
+                    tick={{ fontSize: 10, fill: '#94a3b8' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={46}
+                  />
+                  <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.45} />
+                  <Tooltip
+                    cursor={{ stroke: '#94a3b8', strokeDasharray: '4 4' }}
+                    content={
+                      <ChartTip
+                        labelFmt={fmtDate}
+                        rows={p => [
+                          {
+                            name: 'أداء محفظتي',
+                            value: `${fmtPct(+p.pTwr)} (${fmtSigned(+p.pProfit)} ج.م)`,
+                            color: '#10b981',
+                          },
+                          ...(showLines.bank
+                            ? [
+                                {
+                                  name: `عائد البنك (${bankRate}%)`,
+                                  value: `${fmtPct(+p.bankPct)} (${fmtSigned(+p.bankProfit)} ج.م)`,
+                                  color: '#f59e0b',
+                                },
+                              ]
+                            : []),
+                          ...(showLines.egx30
+                            ? [
+                                {
+                                  name: 'مؤشر EGX30',
+                                  value: `${fmtPct(+p.egx30Pct)} (${fmtSigned(+p.egx30Profit)} ج.م)`,
+                                  color: '#3b82f6',
+                                },
+                              ]
+                            : []),
+                          ...(showLines.egx70
+                            ? [
+                                {
+                                  name: 'مؤشر EGX70',
+                                  value: `${fmtPct(+p.egx70Pct)} (${fmtSigned(+p.egx70Profit)} ج.م)`,
+                                  color: '#a855f7',
+                                },
+                              ]
+                            : []),
+                        ]}
+                      />
+                    }
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey={unit === 'egp' ? 'pProfit' : 'pTwr'}
+                    stroke="#10b981"
+                    strokeWidth={2.5}
+                    fill="url(#gBenchMine)"
+                    dot={false}
+                    activeDot={{ r: 5 }}
+                  />
+                  {showLines.bank && (
+                    <Line
+                      type="monotone"
+                      dataKey={unit === 'egp' ? 'bankProfit' : 'bankPct'}
+                      stroke="#f59e0b"
+                      strokeWidth={2}
+                      strokeDasharray="5 4"
+                      dot={false}
+                    />
+                  )}
+                  {showLines.egx30 && (
+                    <Line
+                      type="monotone"
+                      dataKey={unit === 'egp' ? 'egx30Profit' : 'egx30Pct'}
+                      stroke="#3b82f6"
+                      strokeWidth={2.2}
+                      dot={false}
+                    />
+                  )}
+                  {showLines.egx70 && (
+                    <Line
+                      type="monotone"
+                      dataKey={unit === 'egp' ? 'egx70Profit' : 'egx70Pct'}
+                      stroke="#a855f7"
+                      strokeWidth={2.2}
+                      dot={false}
+                    />
+                  )}
                 </ComposedChart>
               ) : mode === 'monthly' ? (
                 <BarChart data={monthBars} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -817,8 +1174,8 @@ export function KpiGrid({ stats }: { stats: Stats }) {
   const s = stats;
   const absDD = Math.abs(s.maxDD);
   const ddStatus = absDD < 10 ? { text: 'مخاطر منخفضة', color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
-    : absDD <= 20 ? { text: 'تصحيح معتاد في الأسهم', color: 'text-amber-500', bg: 'bg-amber-500/10' }
-    : { text: 'تراجع حاد يتطلب حذر', color: 'text-rose-500', bg: 'bg-rose-500/10' };
+    : absDD <= 20 ? { text: 'تصحيح معتاد', color: 'text-amber-500', bg: 'bg-amber-500/10' }
+    : { text: 'تراجع حاد', color: 'text-rose-500', bg: 'bg-rose-500/10' };
 
   // Calculate recovery to peak
   const hasDD = s.maxDD < -0.5 && s.nav > 0;
@@ -829,16 +1186,13 @@ export function KpiGrid({ stats }: { stats: Stats }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* 1. Risk & Capital Defense Cockpit */}
-      <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900/90 dark:via-slate-900/40 dark:to-slate-900/90 p-5 shadow-sm space-y-4">
+      <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900/90 dark:via-slate-900/40 dark:to-slate-900/90 p-5 shadow-sm flex flex-col justify-between gap-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center">
               <ShieldAlert className="w-4 h-4" />
             </div>
-            <div>
-              <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">حماية رأس المال والمخاطر</h3>
-              <p className="text-[10px] font-bold text-slate-400">تقييم سلامة المحفظة والهبوط</p>
-            </div>
+            <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">حماية رأس المال والمخاطر</h3>
           </div>
           <span className={cx('text-[10px] font-black px-2.5 py-1 rounded-full', ddStatus.bg, ddStatus.color)}>
             {ddStatus.text}
@@ -846,9 +1200,9 @@ export function KpiGrid({ stats }: { stats: Stats }) {
         </div>
 
         {/* Max Drawdown Progress Bar */}
-        <div className="bg-slate-100/80 dark:bg-slate-800/60 rounded-2xl p-4 space-y-2 border border-slate-200/50 dark:border-slate-800/40">
+        <div className="bg-slate-100/80 dark:bg-slate-800/60 rounded-2xl p-4 space-y-2.5 border border-slate-200/50 dark:border-slate-800/40">
           <div className="flex items-baseline justify-between">
-            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">أقصى هبوط من القمة السابقة</span>
+            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">أقصى هبوط</span>
             <span dir="ltr" className="text-xl font-black text-rose-500 tabular-nums">
               {s.maxDD === 0 ? '0.0%' : `${s.maxDD.toFixed(1)}%`}
             </span>
@@ -860,15 +1214,18 @@ export function KpiGrid({ stats }: { stats: Stats }) {
             />
           </div>
           {hasDD && recoveryAmt > 0 && (
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-300 pt-1">
-              <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span>مستهدف استعادة القمة: <b dir="ltr" className="font-black text-orange-500">+{fmt(recoveryAmt)} ج.م</b> (+{recoveryPct.toFixed(1)}%)</span>
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300 pt-0.5">
+              <span className="flex items-center gap-1 text-slate-400">
+                <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                استعادة القمة
+              </span>
+              <b dir="ltr" className="font-black text-orange-500">+{fmt(recoveryAmt)} ج.م (+{recoveryPct.toFixed(1)}%)</b>
             </div>
           )}
         </div>
 
         {/* 3 Sub-Metrics */}
-        <div className="grid grid-cols-3 gap-2.5 pt-1">
+        <div className="grid grid-cols-3 gap-2.5">
           <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-3 text-center">
             <div className="text-[10px] font-bold text-slate-400">عامل الربحية</div>
             <div dir="ltr" className="text-base font-black text-slate-800 dark:text-slate-100 tabular-nums mt-0.5">
@@ -885,7 +1242,7 @@ export function KpiGrid({ stats }: { stats: Stats }) {
               {s.vol === null ? '—' : `±${s.vol.toFixed(1)}%`}
             </div>
             <div className="text-[9px] font-black text-slate-400 mt-0.5">
-              {s.vol === null ? '—' : s.vol <= 5 ? 'هادئ ومستقر' : 'تذبذب نشط'}
+              {s.vol === null ? '—' : s.vol <= 5 ? 'هادئ' : 'نشط'}
             </div>
           </div>
 
@@ -895,23 +1252,20 @@ export function KpiGrid({ stats }: { stats: Stats }) {
               {s.netDeposits > 0 ? fmtSigned((s.profit / s.netDeposits) * 1000) : '—'}
             </div>
             <div className="text-[9px] font-black text-slate-400 mt-0.5 truncate">
-              خلال {s.days} يوم
+              {s.days} يوم
             </div>
           </div>
         </div>
       </div>
 
       {/* 2. Monthly Rhythm & Consistency Cockpit */}
-      <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900/90 dark:via-slate-900/40 dark:to-slate-900/90 p-5 shadow-sm space-y-4">
+      <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900/90 dark:via-slate-900/40 dark:to-slate-900/90 p-5 shadow-sm flex flex-col justify-between gap-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
               <Calendar className="w-4 h-4" />
             </div>
-            <div>
-              <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">نبض الأداء والاتساق الشهري</h3>
-              <p className="text-[10px] font-bold text-slate-400">متابعة ثبات الأداء واستمرارية النتائج</p>
-            </div>
+            <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">نبض الأداء الشهري</h3>
           </div>
 
           {s.streak !== 0 && (
@@ -923,66 +1277,63 @@ export function KpiGrid({ stats }: { stats: Stats }) {
         </div>
 
         {/* Win Rate & Monthly Summary */}
-        <div className="flex items-center justify-between gap-4 bg-slate-100/80 dark:bg-slate-800/60 rounded-2xl p-4 border border-slate-200/50 dark:border-slate-800/40">
+        <div className="flex items-center justify-between gap-4 bg-slate-100/80 dark:bg-slate-800/60 rounded-2xl px-4 py-3 border border-slate-200/50 dark:border-slate-800/40">
           <div className="flex items-center gap-3">
-            <Ring value={s.winRate ?? 0} color={s.winRate && s.winRate >= 50 ? '#10b981' : '#f43f5e'} size={50}>
+            <Ring value={s.winRate ?? 0} color={s.winRate && s.winRate >= 50 ? '#10b981' : '#f43f5e'} size={46}>
               {s.winRate === null ? '—' : `${s.winRate.toFixed(0)}%`}
             </Ring>
             <div>
-              <div className="text-xs font-black text-slate-800 dark:text-slate-100">نسبة الشهور الرابحة</div>
+              <div className="text-xs font-black text-slate-800 dark:text-slate-100">الشهور الرابحة</div>
               <div className="text-[10px] font-bold text-slate-400 mt-0.5">
-                {s.months.filter(m => m.gain >= 0).length} من إجمالي {s.months.length} شهر
+                {s.months.filter(m => m.gain >= 0).length} من {s.months.length} شهر
               </div>
             </div>
           </div>
 
           <div className="text-left border-r border-slate-200 dark:border-slate-700 pr-4">
-            <div className="text-[10px] font-bold text-slate-400">متوسط عائد الشهر</div>
+            <div className="text-[10px] font-bold text-slate-400">متوسط الشهر</div>
             <div dir="ltr" className={cx('text-lg font-black tabular-nums', s.avgMonth !== null && tone(s.avgMonth))}>
               {s.avgMonth === null ? '—' : fmtPct(s.avgMonth)}
             </div>
           </div>
         </div>
 
-        {/* Monthly Breakdown Capsules */}
-        <div className="space-y-1.5">
-          <div className="text-[10px] font-black text-slate-400 px-1">سجل أداء الشهور المسجلة:</div>
-          <div className="grid grid-cols-2 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto pr-1">
-            {s.months.length === 0 ? (
-              <p className="col-span-2 text-center text-xs font-bold text-slate-400 py-3">لا توجد أشهر كافية مكتملة بعد</p>
-            ) : (
-              s.months.map(m => {
-                const isGain = m.gain >= 0;
-                return (
-                  <div
-                    key={m.key}
-                    className={cx(
-                      'flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-bold transition-all',
-                      isGain
-                        ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400'
-                        : 'border-rose-500/30 bg-rose-500/5 text-rose-600 dark:text-rose-400'
-                    )}
-                  >
-                    <span className="text-[11px] font-black text-slate-800 dark:text-slate-200">{monthLabel(m.key)}</span>
-                    <div className="text-left">
-                      <span dir="ltr" className="font-black tabular-nums block text-[11px]">{fmtPct(m.pct)}</span>
-                      <span dir="ltr" className="text-[9px] font-bold opacity-80 block">{fmtSigned(m.gain)} ج.م</span>
-                    </div>
+        {/* Monthly Heatmap Compact Grid (No Cramped Scrollbar) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+          {s.months.length === 0 ? (
+            <p className="col-span-3 text-center text-xs font-bold text-slate-400 py-3">لا توجد أشهر مكتملة بعد</p>
+          ) : (
+            s.months.slice(-9).map(m => {
+              const isGain = m.gain >= 0;
+              return (
+                <div
+                  key={m.key}
+                  className={cx(
+                    'flex items-center justify-between px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all',
+                    isGain
+                      ? 'border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-600 dark:text-emerald-400'
+                      : 'border-rose-500/25 bg-rose-500/[0.06] text-rose-600 dark:text-rose-400'
+                  )}
+                >
+                  <span className="text-[10px] font-black text-slate-700 dark:text-slate-200 truncate">{monthLabel(m.key)}</span>
+                  <div className="text-left shrink-0">
+                    <span dir="ltr" className="font-black tabular-nums block text-[10px] leading-tight">{fmtPct(m.pct, 1)}</span>
+                    <span dir="ltr" className="text-[9px] font-bold opacity-80 block leading-tight">{fmtCompact(m.gain)}</span>
                   </div>
-                );
-              })
-            )}
-          </div>
+                </div>
+              );
+            })
+          )}
         </div>
 
         {/* Best vs Worst Comparison */}
-        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/60">
+        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/60">
           <div className="flex items-center gap-2">
             <Trophy className="w-3.5 h-3.5 text-amber-500 shrink-0" />
             <div className="min-w-0">
-              <span className="text-[10px] font-bold text-slate-400 block truncate">أفضل شهر</span>
-              <span className="text-xs font-black text-slate-800 dark:text-slate-200 truncate block">
-                {s.best ? `${monthLabel(s.best.key)} (${fmtPct(s.best.pct)})` : '—'}
+              <span className="text-[9px] font-bold text-slate-400 block">أفضل شهر</span>
+              <span className="text-[11px] font-black text-slate-800 dark:text-slate-200 truncate block">
+                {s.best ? `${monthLabel(s.best.key)} (${fmtPct(s.best.pct, 1)})` : '—'}
               </span>
             </div>
           </div>
@@ -990,120 +1341,13 @@ export function KpiGrid({ stats }: { stats: Stats }) {
           <div className="flex items-center gap-2">
             <TrendingDown className="w-3.5 h-3.5 text-rose-500 shrink-0" />
             <div className="min-w-0">
-              <span className="text-[10px] font-bold text-slate-400 block truncate">أضعف شهر</span>
-              <span className="text-xs font-black text-slate-800 dark:text-slate-200 truncate block">
-                {s.worst ? `${monthLabel(s.worst.key)} (${fmtPct(s.worst.pct)})` : '—'}
+              <span className="text-[9px] font-bold text-slate-400 block">أضعف شهر</span>
+              <span className="text-[11px] font-black text-slate-800 dark:text-slate-200 truncate block">
+                {s.worst ? `${monthLabel(s.worst.key)} (${fmtPct(s.worst.pct, 1)})` : '—'}
               </span>
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-export function Insights({ stats }: { stats: Stats }) {
-  const s = stats;
-  const cards: { icon: any; title: string; desc: string; tag: string; color: string; border: string; bg: string }[] = [];
-
-  // 1. Current Month Assessment
-  if (s.months.length) {
-    const last = s.months[s.months.length - 1];
-    const prev = s.months.length > 1 ? s.months[s.months.length - 2] : null;
-    const isGain = last.gain >= 0;
-    const improved = prev && last.pct > prev.pct;
-    cards.push({
-      icon: isGain ? <ArrowUpRight className="w-4 h-4 text-emerald-500" /> : <ArrowDownRight className="w-4 h-4 text-rose-500" />,
-      title: `تقييم شهر ${monthLabel(last.key)}`,
-      desc: isGain
-        ? `حقق الشهر أداءً إيجابياً بنمو ${fmtPct(last.pct)} وأرباح ${fmtSigned(last.gain)} ج.م تدعم نمو المحفظة الإجمالي.`
-        : `سجل الشهر تراجعاً قدره ${fmtPct(last.pct)} (${fmtSigned(last.gain)} ج.م)${improved ? '، مع تماسك وتقليص ملحوظ في حدة التراجع مقارنة بالشهر السابق.' : '.'}`,
-      tag: isGain ? 'نمو إيجابي' : improved ? 'تماسك وتقليص هبوط' : 'تصحيح سعري',
-      color: isGain ? 'text-emerald-500' : 'text-rose-500',
-      border: isGain ? 'border-emerald-500/25' : 'border-rose-500/25',
-      bg: isGain ? 'bg-emerald-500/5' : 'bg-rose-500/5',
-    });
-  }
-
-  // 2. Risk & Drawdown Advice
-  if (s.maxDD < -0.5) {
-    const absDD = Math.abs(s.maxDD);
-    cards.push({
-      icon: <ShieldCheck className="w-4 h-4 text-amber-500" />,
-      title: 'حزام الأمان وإدارة المخاطر',
-      desc: absDD <= 15
-        ? `أقصى هبوط مسجل (${s.maxDD.toFixed(1)}%) يعتبر ضمن النطاق الطبيعي لتصحيحات البورصة المصرية EGX، ومؤشر أمان السيولة مستقر.`
-        : `تراجع المحفظة وصل لـ ${s.maxDD.toFixed(1)}%؛ يُنصح بمراجعة تنويع الأصول والالتزام بوقف الخسائر للصفقات النشطة.`,
-      tag: absDD <= 15 ? 'هبوط آمن وطبيعي' : 'تنبيه إدارة مخاطر',
-      color: 'text-amber-500',
-      border: 'border-amber-500/25',
-      bg: 'bg-amber-500/5',
-    });
-  }
-
-  // 3. Peak Recovery Milestone
-  if (s.maxDD < -0.5 && s.nav > 0) {
-    const peakNav = s.nav / (1 + s.maxDD / 100);
-    const recAmt = peakNav - s.nav;
-    const recPct = ((peakNav / s.nav) - 1) * 100;
-    cards.push({
-      icon: <Target className="w-4 h-4 text-indigo-500" />,
-      title: 'مستهدف استعادة القمة (Peak Milestone)',
-      desc: `تحتاج المحفظة إلى نمو استثماري قدره ${recPct.toFixed(1)}% (حوالي ${fmt(recAmt)} ج.م) لاستعادة أعلى رصيد تاريخي وصلت إليه سابقاً.`,
-      tag: 'مستهدف رقمي',
-      color: 'text-indigo-500',
-      border: 'border-indigo-500/25',
-      bg: 'bg-indigo-500/5',
-    });
-  }
-
-  // 4. Annualized Growth Projection
-  if (s.annualized !== null) {
-    cards.push({
-      icon: <Compass className="w-4 h-4 text-purple-500" />,
-      title: 'مؤشر النمو السنوي المركب التقديري (CAGR)',
-      desc: `بناءً على وتيرة النشاط خلال ${s.days} يوماً الماضية، يُقدّر معدل النمو السنوي المركب المكافئ بحوالي ${fmtPct(s.annualized, 1)}.`,
-      tag: 'إسقاط سنوي',
-      color: 'text-purple-500',
-      border: 'border-purple-500/25',
-      bg: 'bg-purple-500/5',
-    });
-  }
-
-  if (!cards.length) return null;
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 px-1">
-        <Sparkles className="w-4 h-4 text-amber-500" />
-        <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">قراءات المستشار المالي وتحليل الأداء الذكي</h3>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {cards.map(c => (
-          <div
-            key={c.title}
-            className={cx(
-              'rounded-2xl p-4 border transition-all duration-200 flex flex-col justify-between gap-2.5',
-              c.bg,
-              c.border
-            )}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-white dark:bg-slate-900 shadow-sm flex items-center justify-center shrink-0">
-                  {c.icon}
-                </div>
-                <h4 className="text-xs font-black text-slate-900 dark:text-slate-100">{c.title}</h4>
-              </div>
-              <span className={cx('text-[10px] font-black px-2 py-0.5 rounded-md shrink-0 bg-white dark:bg-slate-900 shadow-sm', c.color)}>
-                {c.tag}
-              </span>
-            </div>
-            <p className="text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-300">
-              {c.desc}
-            </p>
-          </div>
-        ))}
       </div>
     </div>
   );

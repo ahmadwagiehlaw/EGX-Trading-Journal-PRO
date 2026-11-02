@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, BarChart3, CalendarDays, Layers, LineChart, PiggyBank, Plus, ScrollText, Settings2, Landmark } from 'lucide-react';
 import { VaultProvider, useVault } from './VaultContext';
 import { buildSeries, computeStats, partnerSplit } from './calc';
-import { Hero, MainChart, WealthGrowthDecomposition, KpiGrid, Insights } from './OverviewView';
+import { Hero, MainChart, WealthGrowthDecomposition, KpiGrid } from './OverviewView';
 import { CalendarView } from './CalendarView';
 import { PortfoliosView } from './PortfoliosView';
 import { FlowsView } from './FlowsView';
@@ -202,7 +202,6 @@ function VaultInner() {
                 onFocusPortfolio={pid => setScope(pid)}
               />
               <KpiGrid stats={stats} />
-              <Insights stats={stats} />
             </div>
           )}
           {tab === 'calendar' && <CalendarView pts={pts} />}
