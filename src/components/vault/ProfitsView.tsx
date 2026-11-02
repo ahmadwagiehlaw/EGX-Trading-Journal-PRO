@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Area, Bar, ComposedChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Check, Trash2, PiggyBank, HandCoins, Percent, Sparkles, ArrowRightLeft, RefreshCw, TrendingUp } from 'lucide-react';
+import { Check, Trash2, PiggyBank, HandCoins, Percent, ArrowRightLeft, RefreshCw, TrendingUp, ChevronDown, ChevronUp, Calculator } from 'lucide-react';
 import { Card, ChartTip, Empty, Field, Segmented, inputCls, cx } from './ui';
 import { useVault } from './VaultContext';
 import type { PeriodRet } from './calc';
@@ -51,6 +51,8 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
   const [chartView, setChartView] = useState<ChartView>('compare');
   const [autoSync, setAutoSync] = useState(true);
   const [manualMineOverride, setManualMineOverride] = useState(false);
+  const [showRetained, setShowRetained] = useState(false);
+  const [showCalc, setShowCalc] = useState(false);
   const [f, setF] = useState({
     retainedMine: '',
     retainedPartner: '',
@@ -148,6 +150,7 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
     const raw = months.find(x => x.id === id);
     if (raw && row) {
       setManualMineOverride(Boolean(raw.manualMine));
+      setShowRetained(Boolean(raw.retainedPartner > 0 || raw.retainedMine > 0));
       setF({
         retainedMine: String(row.effectiveRetainedMine || ''),
         retainedPartner: String(raw.retainedPartner || ''),
@@ -157,6 +160,7 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
       });
     } else {
       setManualMineOverride(false);
+      setShowRetained(false);
       setF({ retainedMine: '', retainedPartner: '', distributedMine: '', distributedPartner: '', note: '' });
     }
   };
@@ -257,71 +261,59 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
   // معاينة الترحيل الفوري للشهر المختار في الفورم
   const previewDistP = n(f.distributedPartner);
   const previewRawRetP = n(f.retainedPartner);
-  const previewUsedFromCarry = Math.min(carryIntoSelectedMonth, previewDistP);
   const previewRemainingCarry = Math.max(0, carryIntoSelectedMonth - previewDistP) + previewRawRetP;
 
   return (
     <div className="space-y-4">
-      {/* تنبيه + شريط القاعدة الذكية */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-gradient-to-l from-indigo-500/10 via-emerald-500/10 to-amber-500/10 border border-indigo-500/20 px-4 py-3 text-[11px] font-bold text-slate-700 dark:text-slate-200">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-          <span>
-            <b>محرك التوزيع والترحيل الذكي ({mySharePct}% حصتي / {partnerSharePct}% {partnerName}):</b> أي أرباح مجنبة لـ {partnerName} يُخصم منها توزيع الشهر التالي تلقائياً ويُرحّل المتبقي، وتُحسب أرباحك الشهرية المعاد استثمارها قياساً عليها بدون أي تأثير على ماليات الخزنة.
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={syncAllHistoricalMine}
-          className="flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 text-[11px] font-black shadow-sm transition shrink-0"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>تثبيت أرباحي (60%) لكل الشهور</span>
-        </button>
-      </div>
-
-      {/* 4 كروت تنفيذية تقارن حصتي المعاد استثمارها بحصة الشريك والمجنب المرحل */}
+      {/* 4 كروت تنفيذية مدمجة بدون شرح مطول */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <K
           icon={<TrendingUp className="w-4 h-4" />}
-          label={`إجمالي أرباحي المحققة (${mySharePct}%)`}
+          label={`أرباحي المحققة (${mySharePct}%)`}
           value={fmt(summary.totalMineEarned)}
-          sub={`متوسط ${fmt(summary.avgMonthlyMine)} ج.م / شهر (معاد استثمارها)`}
+          sub={`متوسط ${fmt(summary.avgMonthlyMine)} / شهر`}
           cls="text-emerald-500"
         />
         <K
           icon={<HandCoins className="w-4 h-4" />}
-          label={`إجمالي الموزع لـ ${partnerName} (${partnerSharePct}%)`}
+          label={`الموزع لـ ${partnerName} (${partnerSharePct}%)`}
           value={fmt(summary.totalDistPartner)}
-          sub={`يعادل ${fmt(summary.totalMineDistributedEq)} ج.م لحصتي (60%)`}
+          sub={`مقابل ${fmt(summary.totalMineDistributedEq)} لحصتي`}
           cls="text-amber-500"
         />
         <K
           icon={<PiggyBank className="w-4 h-4" />}
-          label={`رصيد مجنب ${partnerName} المتبقي حالياً`}
+          label={`مجنب ${partnerName} المرحّل`}
           value={fmt(summary.activePartnerReserve)}
-          sub="متاح لتغطية توزيعات الشهور القادمة"
+          sub="رصيد متاح للشهور القادمة"
           cls="text-violet-500"
         />
         <K
           icon={<Percent className="w-4 h-4" />}
-          label="نسبة الأرباح المفرزة من الإيداعات"
+          label="نسبة الأرباح من الإيداعات"
           value={netDeposits > 0 ? `${(((summary.totalMineEarned + summary.totalDistPartner + summary.activePartnerReserve) / netDeposits) * 100).toFixed(1)}%` : '—'}
-          sub={nav > 0 ? `${(((summary.totalMineEarned + summary.totalDistPartner) / nav) * 100).toFixed(1)}% من القيمة السوقية` : ''}
+          sub={nav > 0 ? `${(((summary.totalMineEarned + summary.totalDistPartner) / nav) * 100).toFixed(1)}% من السوقية` : ''}
           cls="text-sky-500"
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* الفورم الذكي لتسجيل الشهر */}
-        <Card title="تسجيل شهر وحاسبة التوزيع" className="lg:col-span-2">
-          <div className="space-y-3">
-            <div className="flex items-end justify-between gap-2">
-              <div className="flex-1">
-                <Field label="الشهر">
-                  <input type="month" value={month} onChange={e => load(e.target.value)} className={inputCls} />
-                </Field>
-              </div>
+      {/* جزآن متساويان في الارتفاع والحجم: تسجيل الشهر + الشارت التحليلي */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-stretch">
+        {/* الفورم الذكي المدمج لتسجيل الشهر */}
+        <Card
+          title="تسجيل الشهر"
+          className="lg:col-span-2 flex flex-col justify-between"
+          right={
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={syncAllHistoricalMine}
+                title="مزامنة وتثبيت حصة 60% لكل الشهور السابقة"
+                className="flex items-center gap-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-1 text-[10px] font-black transition"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>مزامنة 60%</span>
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -329,48 +321,144 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
                   if (!autoSync) setManualMineOverride(false);
                 }}
                 className={cx(
-                  'flex items-center gap-1 rounded-xl px-2.5 py-2.5 text-[10px] font-black border transition shrink-0',
+                  'flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black border transition',
                   autoSync && !manualMineOverride
                     ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
                     : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
                 )}
-                title="تبديل الربط التلقائي 60% / 40%"
               >
-                <ArrowRightLeft className="w-3.5 h-3.5" />
-                <span>{autoSync && !manualMineOverride ? `ربط تلقائي ${mySharePct}/${partnerSharePct}` : 'تعديل يدوي حر'}</span>
+                <ArrowRightLeft className="w-3 h-3" />
+                <span>{autoSync && !manualMineOverride ? `${mySharePct}/${partnerSharePct}` : 'يدوي'}</span>
               </button>
             </div>
+          }
+        >
+          <div className="space-y-3">
+            {/* اختيار الشهر + شارة المرحل إن وجد */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <input type="month" value={month} onChange={e => load(e.target.value)} className={cx(inputCls, '!py-2 text-xs font-black')} />
+              </div>
+              {partner && carryIntoSelectedMonth > 0 && (
+                <div className="flex items-center gap-1.5 rounded-xl border border-violet-500/30 bg-violet-500/10 px-2.5 py-2 text-[10px] font-black text-violet-600 dark:text-violet-300 shrink-0" title="يُخصم منه توزيع الشهر تلقائياً">
+                  <span>🔄 مرحّل: <b dir="ltr">{fmt(carryIntoSelectedMonth)}</b></span>
+                  <span className="text-slate-400">←</span>
+                  <span>متبقي: <b dir="ltr">{fmt(previewRemainingCarry)}</b></span>
+                </div>
+              )}
+            </div>
 
-            {/* بانر الرصيد المجنب المرحل من الشهر السابق */}
-            {partner && carryIntoSelectedMonth > 0 && (
-              <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 p-2.5 space-y-1 text-[11px]">
-                <div className="flex items-center justify-between font-black text-violet-700 dark:text-violet-300">
-                  <span>🔄 مجنب مرحّل من الشهر السابق لـ {partnerName}:</span>
-                  <span dir="ltr" className="tabular-nums">{fmt(carryIntoSelectedMonth)} ج.م</span>
-                </div>
-                <div className="flex items-center justify-between text-[10px] font-bold text-slate-600 dark:text-slate-300">
-                  <span>يُخصم منه توزيع الشهر ({fmt(previewUsedFromCarry)})</span>
-                  <span className="text-violet-600 dark:text-violet-300 font-black">
-                    المتبقي المرحّل: <b dir="ltr">{fmt(previewRemainingCarry)} ج.م</b>
-                  </span>
-                </div>
+            {/* الحقول الأساسية الدائمة: الموزع للشريك + الموزع/المعاد استثماره لي */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <Field label={`ربحي (${mySharePct}%)`}>
+                <input
+                  inputMode="decimal"
+                  dir="ltr"
+                  value={f.distributedMine}
+                  onChange={e => handleFieldChange('distributedMine', e.target.value)}
+                  placeholder="0"
+                  className={cx(inputCls, '!py-2 text-left tabular-nums font-black')}
+                  style={{ borderTop: '3px solid #34d399' }}
+                />
+              </Field>
+              {partner && (
+                <Field label={`موزع لـ ${partnerName} (${partnerSharePct}%)`}>
+                  <input
+                    inputMode="decimal"
+                    dir="ltr"
+                    value={f.distributedPartner}
+                    onChange={e => handleFieldChange('distributedPartner', e.target.value)}
+                    placeholder="0"
+                    className={cx(inputCls, '!py-2 text-left tabular-nums font-black')}
+                    style={{ borderTop: '3px solid #fbbf24' }}
+                  />
+                </Field>
+              )}
+            </div>
+
+            {/* أزرار قابلة للطي: 1) تخصيص مجنب جديد  2) حاسبة سريعة */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowRetained(v => !v)}
+                className={cx(
+                  'flex-1 flex items-center justify-between rounded-xl border px-3 py-2 text-[11px] font-black transition',
+                  showRetained || n(f.retainedPartner) > 0 || n(f.retainedMine) > 0
+                    ? 'border-violet-500/40 bg-violet-500/10 text-violet-600 dark:text-violet-300'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                )}
+              >
+                <span className="flex items-center gap-1.5">
+                  <PiggyBank className="w-3.5 h-3.5 text-violet-500" />
+                  <span>الأرباح المجنبة</span>
+                  {(n(f.retainedPartner) > 0 || n(f.retainedMine) > 0) && (
+                    <b dir="ltr" className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[10px]">
+                      {fmt(n(f.retainedPartner) + n(f.retainedMine))}
+                    </b>
+                  )}
+                </span>
+                {showRetained ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+
+              {partner && (
+                <button
+                  type="button"
+                  onClick={() => setShowCalc(v => !v)}
+                  className={cx(
+                    'flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[11px] font-black transition shrink-0',
+                    showCalc
+                      ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300'
+                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  )}
+                  title="حاسبة تقسيم إجمالي الربح"
+                >
+                  <Calculator className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>حاسبة</span>
+                  {showCalc ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+              )}
+            </div>
+
+            {/* القسم القابل للطي 1: الأرباح المجنبة (يفتح عند الحاجة فقط) */}
+            {showRetained && (
+              <div className="grid grid-cols-2 gap-2.5 rounded-2xl border border-violet-500/25 bg-violet-500/[0.04] p-2.5 animate-in fade-in duration-150">
+                <Field label={`مجنب لي (${mySharePct}%)`}>
+                  <input
+                    inputMode="decimal"
+                    dir="ltr"
+                    value={f.retainedMine}
+                    onChange={e => handleFieldChange('retainedMine', e.target.value)}
+                    placeholder="0"
+                    className={cx(inputCls, '!py-1.5 text-left tabular-nums text-xs')}
+                    style={{ borderTop: '3px solid #38bdf8' }}
+                  />
+                </Field>
+                {partner && (
+                  <Field label={`مجنب جديد لـ ${partnerName}`}>
+                    <input
+                      inputMode="decimal"
+                      dir="ltr"
+                      value={f.retainedPartner}
+                      onChange={e => handleFieldChange('retainedPartner', e.target.value)}
+                      placeholder={carryIntoSelectedMonth > 0 ? `مرحل: ${fmt(previewRemainingCarry)}` : '0'}
+                      className={cx(inputCls, '!py-1.5 text-left tabular-nums text-xs')}
+                      style={{ borderTop: '3px solid #a78bfa' }}
+                    />
+                  </Field>
+                )}
               </div>
             )}
 
-            {/* حاسبة التوزيع السريع من إجمالي ربح الشهر */}
-            {(() => {
+            {/* القسم القابل للطي 2: حاسبة التوزيع الفورية من إجمالي مبلغ */}
+            {partner && showCalc && (() => {
               const curRet = monthRets.find(x => x.key === month);
               const autoGain = curRet && curRet.gain > 0 ? Math.round(curRet.gain) : 0;
-              return partner ? (
-                <div className="rounded-xl border border-violet-100 dark:border-violet-900/40 bg-violet-50/50 dark:bg-violet-950/20 p-2.5 space-y-2">
-                  <div className="flex items-center justify-between text-[11px] font-black text-violet-700 dark:text-violet-300">
-                    <span>توزيع سريع ({mySharePct}% لي / {partnerSharePct}% {partnerName})</span>
-                    <span className="text-[10px] text-slate-400">حاسبة فورية</span>
-                  </div>
+              return (
+                <div className="rounded-2xl border border-indigo-500/25 bg-indigo-500/[0.04] p-2.5 space-y-2 animate-in fade-in duration-150">
                   {autoGain > 0 && (
-                    <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-violet-200/60 dark:border-violet-800/40 px-2.5 py-1.5 text-[11px]">
-                      <span className="font-bold text-slate-600 dark:text-slate-300">
-                        ربح {monthLabel(month)}: <b dir="ltr" className="text-emerald-600 dark:text-emerald-400">+{fmt(autoGain)}</b>
+                    <div className="flex items-center justify-between gap-1.5 text-[10px]">
+                      <span className="font-bold text-slate-500">
+                        ربح {monthLabel(month)}: <b dir="ltr" className="text-emerald-500">+{fmt(autoGain)}</b>
                       </span>
                       <div className="flex gap-1">
                         <button
@@ -383,7 +471,7 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
                               distributedPartner: String(Math.round(autoGain * (partnerSharePct / 100))),
                             }));
                           }}
-                          className="rounded-md bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-0.5 text-[10px] font-black transition"
+                          className="rounded-md bg-emerald-600 text-white px-2 py-0.5 font-black"
                         >
                           ⚡ كموزع
                         </button>
@@ -391,13 +479,14 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
                           type="button"
                           onClick={() => {
                             setManualMineOverride(false);
+                            setShowRetained(true);
                             setF(s => ({
                               ...s,
                               retainedMine: String(Math.round(autoGain * (mySharePct / 100))),
                               retainedPartner: String(Math.round(autoGain * (partnerSharePct / 100))),
                             }));
                           }}
-                          className="rounded-md bg-violet-600 hover:bg-violet-500 text-white px-2 py-0.5 text-[10px] font-black transition"
+                          className="rounded-md bg-violet-600 text-white px-2 py-0.5 font-black"
                         >
                           ⚡ كمجنب
                         </button>
@@ -407,7 +496,7 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
                   <div className="flex gap-1.5">
                     <input
                       type="number"
-                      placeholder="إجمالي ربح الشهر (100%)..."
+                      placeholder="اكتب إجمالي ربح (100%)..."
                       id="quick_split_val"
                       className={cx(inputCls, '!py-1.5 text-xs text-left tabular-nums')}
                     />
@@ -418,6 +507,7 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
                         const val = parseFloat(el?.value || '') || 0;
                         if (val > 0) {
                           setManualMineOverride(false);
+                          setShowRetained(true);
                           setF(s => ({
                             ...s,
                             retainedMine: String(Math.round(val * (mySharePct / 100))),
@@ -425,7 +515,7 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
                           }));
                         }
                       }}
-                      className="shrink-0 rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-2.5 py-1 text-[11px] font-bold shadow-sm"
+                      className="shrink-0 rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-2.5 py-1 text-[10px] font-black"
                     >
                       كمجنب
                     </button>
@@ -443,70 +533,18 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
                           }));
                         }
                       }}
-                      className="shrink-0 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 text-[11px] font-bold shadow-sm"
+                      className="shrink-0 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 text-[10px] font-black"
                     >
                       كموزع
                     </button>
                   </div>
                 </div>
-              ) : null;
+              );
             })()}
 
-            {/* حقول الإدخال الأربعة مع الحساب التبادلي التلقائي */}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={`مجنبة لي (${mySharePct}%)`}>
-                <input
-                  inputMode="decimal"
-                  dir="ltr"
-                  value={f.retainedMine}
-                  onChange={e => handleFieldChange('retainedMine', e.target.value)}
-                  placeholder="0"
-                  className={cx(inputCls, 'text-left tabular-nums')}
-                  style={{ borderTop: '3px solid #38bdf8' }}
-                />
-              </Field>
-              {partner && (
-                <Field label={`مجنبة جديدة لـ ${partnerName} (${partnerSharePct}%)`}>
-                  <input
-                    inputMode="decimal"
-                    dir="ltr"
-                    value={f.retainedPartner}
-                    onChange={e => handleFieldChange('retainedPartner', e.target.value)}
-                    placeholder={carryIntoSelectedMonth > 0 ? `مرحل: ${fmt(previewRemainingCarry)}` : '0'}
-                    className={cx(inputCls, 'text-left tabular-nums')}
-                    style={{ borderTop: '3px solid #a78bfa' }}
-                  />
-                </Field>
-              )}
-              <Field label={`موزعة/معاد استثمارها لي (${mySharePct}%)`}>
-                <input
-                  inputMode="decimal"
-                  dir="ltr"
-                  value={f.distributedMine}
-                  onChange={e => handleFieldChange('distributedMine', e.target.value)}
-                  placeholder="0"
-                  className={cx(inputCls, 'text-left tabular-nums')}
-                  style={{ borderTop: '3px solid #34d399' }}
-                />
-              </Field>
-              {partner && (
-                <Field label={`موزعة لـ ${partnerName} (${partnerSharePct}%)`}>
-                  <input
-                    inputMode="decimal"
-                    dir="ltr"
-                    value={f.distributedPartner}
-                    onChange={e => handleFieldChange('distributedPartner', e.target.value)}
-                    placeholder="0"
-                    className={cx(inputCls, 'text-left tabular-nums')}
-                    style={{ borderTop: '3px solid #fbbf24' }}
-                  />
-                </Field>
-              )}
-            </div>
-
             {manualMineOverride && (
-              <div className="flex items-center justify-between rounded-xl bg-amber-500/10 px-3 py-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
-                <span>✋ تم تعديل حصتك يدوياً لهذا الشهر (تم احترام تعديلك)</span>
+              <div className="flex items-center justify-between rounded-xl bg-amber-500/10 px-2.5 py-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                <span>✋ تعديل يدوي</span>
                 <button
                   type="button"
                   onClick={() => {
@@ -522,37 +560,43 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
                   }}
                   className="underline font-black"
                 >
-                  إعادة للنسبة 60%
+                  إعادة 60%
                 </button>
               </div>
             )}
 
-            <Field label="ملاحظة">
-              <input value={f.note} onChange={e => setF(s => ({ ...s, note: e.target.value }))} className={inputCls} placeholder="اختياري..." />
-            </Field>
-            <button
-              onClick={save}
-              className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-orange-500 to-amber-500 py-3 text-sm font-black text-white shadow-lg shadow-orange-500/25 hover:brightness-110"
-            >
-              <Check className="w-4 h-4" />
-              حفظ {monthLabel(month)}
-            </button>
+            {/* ملاحظة + زر الحفظ في سطر متناسق */}
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                value={f.note}
+                onChange={e => setF(s => ({ ...s, note: e.target.value }))}
+                className={cx(inputCls, '!py-2.5 text-xs flex-1')}
+                placeholder="ملاحظة سريعة (اختياري)..."
+              />
+              <button
+                onClick={save}
+                className="shrink-0 flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-l from-orange-500 to-amber-500 px-5 py-2.5 text-xs font-black text-white shadow-lg shadow-orange-500/25 hover:brightness-110 transition"
+              >
+                <Check className="w-4 h-4" />
+                <span>حفظ {monthLabel(month)}</span>
+              </button>
+            </div>
           </div>
         </Card>
 
-        {/* الشارت التحليلي القوي مع التبديل بين: مقارنة (حصتي + لولو) | أرباحي (60%) | أرباح لولو (40%) | النمو التراكمي */}
+        {/* الشارت التحليلي الموازن بارتفاع متطابق */}
         <Card
-          title="حركة الأرباح والتحليل الشهري"
-          className="lg:col-span-3"
+          title="تحليل الأرباح"
+          className="lg:col-span-3 flex flex-col justify-between"
           right={
             <Segmented
               size="sm"
               value={chartView}
               onChange={setChartView}
               options={[
-                { v: 'compare', label: 'مقارنة الشركاء' },
-                { v: 'mine', label: `حصتي (${mySharePct}%)` },
-                { v: 'partner', label: `${partnerName} (${partnerSharePct}%)` },
+                { v: 'compare', label: 'مقارنة' },
+                { v: 'mine', label: `حصتي ${mySharePct}%` },
+                { v: 'partner', label: `${partnerName} ${partnerSharePct}%` },
                 { v: 'cumulative', label: 'التراكمي' },
               ]}
             />
@@ -561,38 +605,38 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
           {!computedRows.length ? (
             <Empty text="لسه مفيش أرباح مسجلة" />
           ) : (
-            <div className="space-y-3">
-              {/* وسيلة إيضاح للألوان حسب وضع الشارت */}
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+            <div className="space-y-2">
+              {/* وسيلة إيضاح مختصرة جداً */}
+              <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-slate-400">
                 {chartView === 'compare' && (
-                  <div className="flex flex-wrap gap-3">
-                    <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-emerald-400" />ربحي الشهري المعاد استثماره (60%)</span>
-                    <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-amber-400" />موزع لـ {partnerName} (40%)</span>
-                    <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-violet-400" />رصيد مجنب {partnerName} المتبقي</span>
-                  </div>
+                  <>
+                    <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-emerald-400" />ربحي (60%)</span>
+                    <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-amber-400" />موزع {partnerName} (40%)</span>
+                    <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-violet-400" />مجنب {partnerName}</span>
+                  </>
                 )}
                 {chartView === 'mine' && (
-                  <div className="flex flex-wrap gap-3">
-                    <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-emerald-400" />موزع/معاد استثماره لي</span>
-                    <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-sky-400" />مجنب لي</span>
-                    <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-teal-500" />تراكمي أرباحي</span>
-                  </div>
+                  <>
+                    <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-emerald-400" />ربحي الشهري</span>
+                    <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-sky-400" />مجنب لي</span>
+                    <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-teal-500" />التراكمي</span>
+                  </>
                 )}
                 {chartView === 'partner' && (
-                  <div className="flex flex-wrap gap-3">
-                    <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-amber-400" />موزع لـ {partnerName}</span>
-                    <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-violet-400" />الرصيد المجنب الفعلي (بعد الخصم والترحيل)</span>
-                  </div>
+                  <>
+                    <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-amber-400" />موزع {partnerName}</span>
+                    <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-violet-400" />الرصيد المجنب</span>
+                  </>
                 )}
                 {chartView === 'cumulative' && (
-                  <div className="flex flex-wrap gap-3">
-                    <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-emerald-400" />تراكمي أرباحي المعاد استثمارها (60%)</span>
-                    <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-amber-400" />تراكمي أرباح {partnerName} (40%)</span>
-                  </div>
+                  <>
+                    <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-emerald-400" />تراكمي أرباحي (60%)</span>
+                    <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-amber-400" />تراكمي {partnerName} (40%)</span>
+                  </>
                 )}
               </div>
 
-              <div dir="ltr" className="h-72 -mx-2">
+              <div dir="ltr" className="h-56 -mx-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={computedRows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <defs>
@@ -696,21 +740,21 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
         </Card>
       </div>
 
-      {/* جدول سجل الشهور الشامل (يوضح أرباحي 60% + أرباح لولو 40% + الترحيل التلقائي للمجنب) */}
-      <Card title="سجل الشهور وتفاصيل التوزيع والترحيل" pad={false}>
+      {/* جدول سجل الشهور الشامل */}
+      <Card title="سجل الشهور" pad={false}>
         {!computedRows.length ? (
           <Empty text="لا توجد سجلات" />
         ) : (
           <div className="overflow-x-auto p-3">
-            <table className="w-full min-w-[780px] text-xs font-bold tabular-nums" dir="rtl">
+            <table className="w-full min-w-[740px] text-xs font-bold tabular-nums" dir="rtl">
               <thead>
                 <tr className="text-[10px] text-slate-400 border-b border-slate-100 dark:border-slate-800">
                   <th className="px-2 py-2.5 text-right font-black">الشهر</th>
-                  <th className="px-2 py-2.5 text-right font-black text-emerald-600 dark:text-emerald-400">ربحي المعاد استثماره ({mySharePct}%)</th>
-                  <th className="px-2 py-2.5 text-right font-black text-sky-500">مجنب لي ({mySharePct}%)</th>
-                  <th className="px-2 py-2.5 text-right font-black text-amber-500">موزع لـ {partnerName} ({partnerSharePct}%)</th>
-                  <th className="px-2 py-2.5 text-right font-black text-violet-500">رصيد مجنب {partnerName}</th>
-                  <th className="px-2 py-2.5 text-right font-black">ربح المحفظة بالتقويم</th>
+                  <th className="px-2 py-2.5 text-right font-black text-emerald-600 dark:text-emerald-400">ربحي ({mySharePct}%)</th>
+                  <th className="px-2 py-2.5 text-right font-black text-sky-500">مجنب لي</th>
+                  <th className="px-2 py-2.5 text-right font-black text-amber-500">موزع {partnerName} ({partnerSharePct}%)</th>
+                  <th className="px-2 py-2.5 text-right font-black text-violet-500">مجنب {partnerName}</th>
+                  <th className="px-2 py-2.5 text-right font-black">ربح التقويم</th>
                   <th className="px-2 py-2.5 text-right font-black"></th>
                 </tr>
               </thead>
