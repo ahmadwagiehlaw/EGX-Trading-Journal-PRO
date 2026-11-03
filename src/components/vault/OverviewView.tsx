@@ -374,6 +374,59 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
     return Math.max(...data.map(d => d.nav));
   }, [data]);
 
+  // إحصائيات تفكيك حركات الفترة في شارت رأس المال (غير مكررة مع الهيدر العلوي)
+  const capPeriodMeta = useMemo(() => {
+    if (!data.length || !first || !last) return null;
+    // مرتبة زمنياً من الأقدم للأحدث لحساب عمليات الإيداع والسحب وأيام التربح فوق رأس المال
+    const chrono = dir === 'rtl' ? [...data].reverse() : data;
+    let depAdded = 0;
+    let depWithdrawn = 0;
+    let depEvents = 0;
+    let aboveCapitalPoints = 0;
+    let minNav = Infinity;
+    let minNavDate = '';
+    let maxNavDate = '';
+
+    chrono.forEach((pt, idx) => {
+      if (pt.nav >= pt.deposits) aboveCapitalPoints++;
+      if (pt.nav < minNav) {
+        minNav = pt.nav;
+        minNavDate = pt.date;
+      }
+      if (pt.nav === peakNavInWin) {
+        maxNavDate = pt.date;
+      }
+      if (idx > 0) {
+        const diffDep = pt.deposits - chrono[idx - 1].deposits;
+        if (Math.abs(diffDep) >= 1) {
+          depEvents++;
+          if (diffDep > 0) depAdded += diffDep;
+          else depWithdrawn += Math.abs(diffDep);
+        }
+      }
+    });
+
+    const netFlow = last.deposits - first.deposits;
+    const navDelta = last.nav - first.nav;
+    const marketGainInPeriod = navDelta - netFlow; // ربح/خسارة السوق الصافية داخل الفترة بمعزل عن الإيداعات
+    const abovePct = chrono.length ? Math.round((aboveCapitalPoints / chrono.length) * 100) : 100;
+    const capMultiple = last.deposits > 0 ? last.nav / last.deposits : 1;
+
+    return {
+      navDelta,
+      netFlow,
+      depAdded,
+      depWithdrawn,
+      depEvents,
+      marketGainInPeriod,
+      abovePct,
+      capMultiple,
+      minNav: minNav === Infinity ? 0 : minNav,
+      minNavDate,
+      maxNavDate,
+    };
+  }, [data, first, last, dir, peakNavInWin]);
+
   const growthKey = unit === 'egp' ? 'pProfit' : 'pTwr';
   const off = mode === 'growth' ? splitOffset(data.map(d => d[growthKey])) : 1;
 
@@ -404,119 +457,82 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
         <>
           {/* Header Area — Rich Dual Metrics without Redundancy */}
           <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
-            {mode === 'capital' && last && first && (
-              <div className="w-full space-y-3">
-                {/* 4 Period-Aware KPI Cards — Zero Redundancy with Hero */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                  {/* 1. تطور القيمة السوقية بالفترة */}
-                  <div className="rounded-xl p-2.5 bg-slate-50/80 dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/[0.07]">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
-                      <span>تطور القيمة السوقية</span>
-                      <span dir="ltr" className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-white/10 text-slate-600 dark:text-slate-300">
-                        {period === 'All' ? 'الكل' : period}
-                      </span>
-                    </div>
-                    <div dir="ltr" className="text-base sm:text-lg font-black tabular-nums text-slate-900 dark:text-white mt-0.5 text-right">
-                      {fmt(last.nav)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
-                    </div>
-                    <div dir="ltr" className="flex items-center justify-between text-[10px] font-bold mt-0.5">
-                      <span className={tone(last.nav - first.nav)}>
-                        {fmtSigned(last.nav - first.nav)} ({first.nav > 0 ? fmtPct(((last.nav - first.nav) / first.nav) * 100, 1) : '0%'})
-                      </span>
-                      <span className="text-slate-400">من {fmtCompact(first.nav)}</span>
-                    </div>
-                  </div>
-
-                  {/* 2. قمة الفترة (Peak NAV) */}
-                  <div className="rounded-xl p-2.5 bg-amber-500/[0.05] border border-amber-500/20">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-amber-600 dark:text-amber-400">
-                      <span>قمة القيمة بالفترة</span>
-                      <span className="flex items-center gap-1 text-[9px] font-black">
-                        <i className="w-2 h-0.5 bg-amber-400 inline-block" /> Peak
-                      </span>
-                    </div>
-                    <div dir="ltr" className="text-base sm:text-lg font-black tabular-nums text-amber-600 dark:text-amber-400 mt-0.5 text-right">
-                      {fmt(peakNavInWin)} <span className="text-[10px] font-bold opacity-75">ج.م</span>
-                    </div>
-                    <div dir="ltr" className="flex items-center justify-between text-[10px] font-bold mt-0.5">
-                      <span className={last.nav >= peakNavInWin ? 'text-emerald-500' : 'text-amber-600 dark:text-amber-400'}>
-                        {last.nav >= peakNavInWin ? 'عند القمة الآن' : `${fmtSigned(last.nav - peakNavInWin)} عن القمة`}
-                      </span>
-                      <span className="text-slate-400">
-                        {peakNavInWin > 0 ? `${(((last.nav - peakNavInWin) / peakNavInWin) * 100).toFixed(1)}%` : '0%'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 3. صافي الإيداعات وتدفقات الفترة */}
-                  <div className="rounded-xl p-2.5 bg-indigo-500/[0.05] border border-indigo-500/20">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
-                      <span>صافي الإيداعات</span>
-                      <span dir="ltr" className="text-[9px] font-black">
-                        {last.nav > 0 ? `${((last.deposits / last.nav) * 100).toFixed(0)}% من القيمة` : '100%'}
-                      </span>
-                    </div>
-                    <div dir="ltr" className="text-base sm:text-lg font-black tabular-nums text-indigo-600 dark:text-indigo-400 mt-0.5 text-right">
-                      {fmt(last.deposits)} <span className="text-[10px] font-bold opacity-75">ج.م</span>
-                    </div>
-                    <div dir="ltr" className="flex items-center justify-between text-[10px] font-bold mt-0.5">
-                      <span className={last.deposits - first.deposits === 0 ? 'text-slate-400' : tone(last.deposits - first.deposits)}>
-                        {last.deposits - first.deposits === 0 ? 'بدون إيداع/سحب' : `${fmtSigned(last.deposits - first.deposits)} بالفترة`}
-                      </span>
-                      <span className="text-slate-400">تدفق الفترة</span>
-                    </div>
-                  </div>
-
-                  {/* 4. الفائض الربحي التراكمي فوق الإيداعات */}
-                  <div className={cx('rounded-xl p-2.5 border', last.profit >= 0 ? 'bg-emerald-500/[0.05] border-emerald-500/20' : 'bg-rose-500/[0.05] border-rose-500/20')}>
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                      <span>الفائض فوق الإيداعات</span>
-                      <span dir="ltr" className={cx('text-[9px] font-black', tone(last.profit))}>
-                        {fmtPct((last.index - 1) * 100, 1)} TWR
-                      </span>
-                    </div>
-                    <div dir="ltr" className={cx('text-base sm:text-lg font-black tabular-nums mt-0.5 text-right', tone(last.profit))}>
-                      {fmtSigned(last.profit)} <span className="text-[10px] font-bold opacity-75">ج.م</span>
-                    </div>
-                    <div dir="ltr" className="flex items-center justify-between text-[10px] font-bold mt-0.5">
-                      <span className={tone(last.pProfit)}>
-                        {fmtSigned(last.pProfit)} ({fmtPct(last.pTwr, 1)})
-                      </span>
-                      <span className="text-slate-400">عائد الفترة</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Controls & Legend Strip */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                  <div className="flex flex-wrap items-center gap-3 text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                    <span className="flex items-center gap-1.5">
-                      <i className="w-2.5 h-2.5 rounded-full" style={{ background: accent }} />
-                      القيمة السوقية
+            {mode === 'capital' && last && first && capPeriodMeta && (
+              <div className="w-full flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-slate-200/60 dark:border-white/[0.06]">
+                {/* Right side: Non-Redundant Period Attribution Pills (No repeat of Total NAV / Total Deposits / Total Profit) */}
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+                  {/* 1. صافي تغير الفترة وتفكيك مصدره (سوق أم إيداعات) */}
+                  <div className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100/90 dark:bg-white/[0.04] border border-slate-200/70 dark:border-white/[0.07] px-2.5 py-1">
+                    <span className="text-slate-400">تغير ({period === 'All' ? 'الكل' : period}):</span>
+                    <b dir="ltr" className={cx('tabular-nums font-black', tone(capPeriodMeta.navDelta))}>
+                      {fmtSigned(capPeriodMeta.navDelta)} ج.م
+                    </b>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      سوق:{' '}
+                      <b dir="ltr" className={tone(capPeriodMeta.marketGainInPeriod)}>
+                        {fmtSigned(capPeriodMeta.marketGainInPeriod)}
+                      </b>
                     </span>
-                    <span className="flex items-center gap-1.5">
-                      <i className="w-2.5 h-2.5 rounded-full bg-indigo-400" />
-                      صافي الإيداعات (درج)
+                    {Math.abs(capPeriodMeta.netFlow) >= 1 && (
+                      <>
+                        <span className="text-slate-300 dark:text-slate-700">·</span>
+                        <span className="text-[10px] text-indigo-500">
+                          ضخ صافي: <b dir="ltr">{fmtSigned(capPeriodMeta.netFlow)}</b>
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* 2. نطاق الفترة (القاع ⬅️ القمة مع تاريخ القمة) */}
+                  <div className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500/[0.07] border border-amber-500/25 px-2.5 py-1">
+                    <span className="text-amber-600 dark:text-amber-400">نطاق الفترة:</span>
+                    <span dir="ltr" className="text-slate-500 dark:text-slate-300 font-black tabular-nums">
+                      {fmtCompact(capPeriodMeta.minNav)} ➔ {fmtCompact(peakNavInWin)}
                     </span>
-                    <span className="flex items-center gap-1.5 text-amber-500">
-                      <i className="w-3 h-0.5 border-t-2 border-dashed border-amber-400 inline-block" />
-                      قمة الفترة ({fmtCompact(peakNavInWin)})
-                    </span>
-                    {!capZoom && (
-                      <span className="flex items-center gap-1.5 text-emerald-500">
-                        <i className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                        صافي العوائد
+                    {capPeriodMeta.maxNavDate && (
+                      <span className="text-[10px] text-amber-600/80 dark:text-amber-400/80">
+                        (قمة {shortDate(capPeriodMeta.maxNavDate)})
                       </span>
                     )}
                   </div>
 
-                  {/* Smart Auto-Zoom Toggle */}
+                  {/* 3. مضاعف رأس المال + نسبة البقاء في المنطقة الرابحة فوق الإيداعات */}
+                  <div className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/[0.07] border border-emerald-500/20 px-2.5 py-1">
+                    <span className="text-slate-400">مضاعف الإيداع:</span>
+                    <b dir="ltr" className="text-emerald-600 dark:text-emerald-400 font-black tabular-nums">
+                      {capPeriodMeta.capMultiple.toFixed(2)}x
+                    </b>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      فوق الإيداعات: <b dir="ltr" className="text-emerald-500">{capPeriodMeta.abovePct}%</b> من الفترة
+                    </span>
+                  </div>
+                </div>
+
+                {/* Left side: Legend + Smart Auto-Zoom Toggle in same compact bar */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="hidden xl:flex items-center gap-2.5 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <i className="w-2 h-2 rounded-full" style={{ background: accent }} />
+                      السوقية
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <i className="w-2 h-2 rounded-full bg-indigo-400" />
+                      الإيداعات
+                    </span>
+                    <span className="flex items-center gap-1 text-amber-500">
+                      <i className="w-3.5 h-0 border-t-2 border-dashed border-amber-500 inline-block" />
+                      القمة
+                    </span>
+                  </div>
+
                   <div className="inline-flex rounded-xl p-0.5 bg-slate-100 dark:bg-white/[0.05] border border-slate-200/70 dark:border-white/[0.07]">
                     <button
                       type="button"
                       onClick={() => setCapZoom(true)}
                       className={cx(
-                        'px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition',
+                        'px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition',
                         capZoom ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'
                       )}
                     >
@@ -526,11 +542,11 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                       type="button"
                       onClick={() => setCapZoom(false)}
                       className={cx(
-                        'px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition',
+                        'px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition',
                         !capZoom ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'
                       )}
                     >
-                      شامل + خط العوائد
+                      شامل + العوائد
                     </button>
                   </div>
                 </div>
@@ -954,9 +970,17 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                   {peakNavInWin > 0 && (
                     <ReferenceLine
                       y={peakNavInWin}
-                      stroke="#fbbf24"
-                      strokeDasharray="3 3"
-                      strokeOpacity={0.75}
+                      stroke="#f59e0b"
+                      strokeWidth={2}
+                      strokeDasharray="6 4"
+                      strokeOpacity={0.95}
+                      label={{
+                        value: `قمة الفترة: ${fmt(peakNavInWin)}`,
+                        position: 'insideTopLeft',
+                        fill: '#d97706',
+                        fontSize: 10,
+                        fontWeight: 900,
+                      }}
                     />
                   )}
                   <Tooltip cursor={{ stroke: '#94a3b8', strokeDasharray: '4 4' }} content={<ChartTip labelFmt={fmtDate} rows={p => [
@@ -1136,9 +1160,17 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                   {mode === 'growth' && peakProfitInWin > 0 && (
                     <ReferenceLine
                       y={peakProfitInWin}
-                      stroke="#fbbf24"
-                      strokeDasharray="4 4"
-                      strokeOpacity={0.6}
+                      stroke="#f59e0b"
+                      strokeWidth={2}
+                      strokeDasharray="6 4"
+                      strokeOpacity={0.95}
+                      label={{
+                        value: `القمة: ${unit === 'egp' ? fmtSigned(peakProfitInWin) : fmtPct(peakProfitInWin)}`,
+                        position: 'insideTopLeft',
+                        fill: '#d97706',
+                        fontSize: 10,
+                        fontWeight: 900,
+                      }}
                     />
                   )}
                   <Tooltip
