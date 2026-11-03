@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, Cell, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
-import { Activity, Flame, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Trophy, Calendar, Zap, Crown, Banknote, Users, Layers, ChevronUp, RefreshCw, Landmark, Sparkles, Target } from 'lucide-react';
+import { Activity, Flame, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Trophy, Calendar, Zap, Crown, Banknote, Users, Layers, ChevronUp, RefreshCw, Landmark, Sparkles, Target, CheckCircle2 } from 'lucide-react';
 import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone } from './ui';
 import { useVault } from './VaultContext';
 import type { Point, Stats, Period, PeriodRet, BenchmarksState } from './calc';
@@ -1332,6 +1332,42 @@ export function WealthGrowthDecomposition({
     return { myFutureNav, myFutureSharePct, partnerCap };
   }, [futureNav, settings.partner]);
 
+  // 5. حسابات اتساق الأداء السنوي والكلي مقربة بدقة
+  const currentYear = useMemo(() => {
+    if (stats?.months && stats.months.length > 0) {
+      return stats.months[stats.months.length - 1].key.slice(0, 4);
+    }
+    return new Date().getFullYear().toString();
+  }, [stats]);
+
+  const yearMonths = useMemo(() => {
+    if (!stats?.months) return [];
+    return stats.months.filter(m => m.key.startsWith(currentYear));
+  }, [stats, currentYear]);
+
+  const yearWinningMonths = useMemo(() => {
+    return yearMonths.filter(m => m.gain >= 0).length;
+  }, [yearMonths]);
+
+  const yearWinRate = useMemo(() => {
+    return yearMonths.length > 0 ? Math.round((yearWinningMonths / yearMonths.length) * 100) : 0;
+  }, [yearWinningMonths, yearMonths]);
+
+  const allWinningMonths = useMemo(() => {
+    return stats?.months ? stats.months.filter(m => m.gain >= 0).length : 0;
+  }, [stats]);
+
+  const totalMonthsCount = useMemo(() => {
+    return stats?.months ? stats.months.length : 0;
+  }, [stats]);
+
+  const overallWinRate = useMemo(() => {
+    if (totalMonthsCount > 0) {
+      return Math.round((allWinningMonths / totalMonthsCount) * 100);
+    }
+    return Math.round(Number(stats?.winRate ?? 54));
+  }, [allWinningMonths, totalMonthsCount, stats?.winRate]);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
       {/* ───────── 1. توزيع المحافظ + الشراكة المدمجة (1/3) ───────── */}
@@ -1510,12 +1546,53 @@ export function WealthGrowthDecomposition({
               </div>
             </div>
 
-            {/* Consistency Pill */}
-            <div className="flex items-center justify-between text-[10px] font-bold px-2.5 py-1.5 rounded-xl bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300">
-              <span>اتساق الأداء ونسبة الشهور الرابحة:</span>
-              <b dir="ltr" className="font-black text-[11px]">
-                {stats?.winRate ?? 54}% ({stats?.months?.filter(m => m.gain >= 0).length ?? 7}/{stats?.months?.length ?? 13} شهر)
-              </b>
+            {/* Consistency & Year Distinction Block (Rounded Values & 12M Track) */}
+            <div className="rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200/60 dark:border-white/5 p-3 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold">
+                <span className="flex items-center gap-1.5 text-slate-800 dark:text-slate-100">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>اتساق الأداء العام:</span>
+                  <b dir="ltr" className="font-black text-emerald-600 dark:text-emerald-400">
+                    {overallWinRate}%
+                  </b>
+                  <span className="text-[10px] text-slate-400">({allWinningMonths} من {totalMonthsCount} شهر)</span>
+                </span>
+
+                {yearMonths.length > 0 && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    حصاد {currentYear}: <b dir="ltr">{yearWinningMonths}/{yearMonths.length}</b> رابح ({yearWinRate}%)
+                  </span>
+                )}
+              </div>
+
+              {/* Visual Strip of Year Months with Tooltips */}
+              {yearMonths.length > 0 && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1 w-full" dir="ltr">
+                    {yearMonths.map(m => {
+                      const win = m.gain >= 0;
+                      const monthIdx = Number(m.key.slice(5, 7)) - 1;
+                      const mName = MONTHS_EN[monthIdx] || m.key;
+                      return (
+                        <div
+                          key={m.key}
+                          className={cx(
+                            'flex-1 h-2 rounded-full transition-all duration-300 relative group cursor-pointer hover:scale-y-125',
+                            win ? 'bg-emerald-500' : 'bg-rose-500/80'
+                          )}
+                          title={`${mName} ${currentYear}: ${win ? '+' : ''}${fmtPct(m.pct)} (${fmtSigned(m.gain)} ج.م)`}
+                        />
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center justify-between text-[9px] font-bold text-slate-400">
+                    <span>يناير {currentYear}</span>
+                    <span className="text-emerald-500">🟢 رابح ({yearWinningMonths})</span>
+                    <span className="text-rose-400">🔴 تصحيح ({yearMonths.length - yearWinningMonths})</span>
+                    <span>نوفمبر {currentYear}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
