@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, Cell, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
-import { Activity, Flame, ShieldAlert, TrendingDown, TrendingUp, Trophy, Calendar, Zap, Crown, Banknote, Users, Layers, ChevronUp, RefreshCw, Landmark, Sparkles, Target } from 'lucide-react';
+import { Activity, Flame, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Trophy, Calendar, Zap, Crown, Banknote, Users, Layers, ChevronUp, RefreshCw, Landmark, Sparkles, Target } from 'lucide-react';
 import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone } from './ui';
 import { useVault } from './VaultContext';
 import type { Point, Stats, Period, PeriodRet, BenchmarksState } from './calc';
@@ -1617,18 +1617,42 @@ export function WealthGrowthDecomposition({
   );
 }
 
-export function KpiGrid({ stats }: { stats: Stats }) {
+export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
   const s = stats;
-  const absDD = Math.abs(s.maxDD);
-  const ddStatus = absDD < 10 ? { text: 'مخاطر منخفضة', color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
-    : absDD <= 20 ? { text: 'تصحيح معتاد', color: 'text-amber-500', bg: 'bg-amber-500/10' }
+
+  // 1. الحساب الدقيق للقمة التاريخية الحقيقية والهبوط اللحظي الحالي
+  const peakPt = useMemo(() => (pts && pts.length ? pts.reduce((max, p) => (p.nav > max.nav ? p : max), pts[0]) : null), [pts]);
+  const peakNav = useMemo(() => {
+    if (peakPt && peakPt.nav > 0) return peakPt.nav;
+    if (s.maxDD < -0.5 && s.nav > 0) return s.nav / (1 + s.maxDD / 100);
+    return s.nav;
+  }, [peakPt, s.maxDD, s.nav]);
+
+  const currentNav = s.nav;
+  const currentDdAmt = Math.max(0, peakNav - currentNav);
+  const currentDdPct = peakNav > 0 ? ((currentNav - peakNav) / peakNav) * 100 : 0;
+  const recoveryAmt = currentDdAmt;
+  const recoveryPct = currentNav > 0 ? (currentDdAmt / currentNav) * 100 : 0;
+  const absCurrentDD = Math.abs(currentDdPct);
+  const absMaxDD = Math.abs(s.maxDD);
+
+  // حالة المخاطر اللحظية الدقيقة
+  const ddStatus = absCurrentDD < 1
+    ? { text: 'عند القمة التاريخية 🏆', color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
+    : absCurrentDD <= 10
+    ? { text: 'مخاطر منخفضة', color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
+    : absCurrentDD <= 20
+    ? { text: 'تصحيح معتاد', color: 'text-amber-500', bg: 'bg-amber-500/10' }
     : { text: 'تراجع حاد', color: 'text-rose-500', bg: 'bg-rose-500/10' };
 
-  // Calculate recovery to peak
-  const hasDD = s.maxDD < -0.5 && s.nav > 0;
-  const peakNav = hasDD ? s.nav / (1 + s.maxDD / 100) : s.nav;
-  const recoveryAmt = Math.max(0, peakNav - s.nav);
-  const recoveryPct = s.nav > 0 && hasDD ? ((peakNav / s.nav) - 1) * 100 : 0;
+  // وسادة الأمان لرأس المال (Capital Cushion فوق الإيداعات)
+  const cushionPct = s.netDeposits > 0 ? (s.profit / s.netDeposits) * 100 : 0;
+
+  // كفاءة العائد مقابل التذبذب
+  const riskEfficiency = useMemo(() => {
+    if (!s.vol || s.vol <= 0 || s.avgMonth === null) return null;
+    return s.avgMonth / s.vol;
+  }, [s.vol, s.avgMonth]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1639,67 +1663,112 @@ export function KpiGrid({ stats }: { stats: Stats }) {
             <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center">
               <ShieldAlert className="w-4 h-4" />
             </div>
-            <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">حماية رأس المال والمخاطر</h3>
+            <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">حماية رأس المال وإدارة المخاطر</h3>
           </div>
           <span className={cx('text-[10px] font-black px-2.5 py-1 rounded-full', ddStatus.bg, ddStatus.color)}>
             {ddStatus.text}
           </span>
         </div>
 
-        {/* Max Drawdown Progress Bar */}
-        <div className="bg-slate-100/80 dark:bg-slate-800/60 rounded-2xl p-4 space-y-2.5 border border-slate-200/50 dark:border-slate-800/40">
+        {/* Drawdown & Recovery Dual Gauge */}
+        <div className="bg-slate-100/80 dark:bg-slate-800/60 rounded-2xl p-4 space-y-3 border border-slate-200/50 dark:border-slate-800/40">
           <div className="flex items-baseline justify-between">
-            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">أقصى هبوط</span>
-            <span dir="ltr" className="text-xl font-black text-rose-500 tabular-nums">
-              {s.maxDD === 0 ? '0.0%' : `${s.maxDD.toFixed(1)}%`}
-            </span>
+            <div>
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">الهبوط اللحظي من القمة</span>
+              <div dir="ltr" className="text-xl font-black text-rose-500 tabular-nums">
+                {currentDdPct === 0 ? '0.0%' : `${currentDdPct.toFixed(1)}%`}
+                {currentDdAmt > 0 && (
+                  <span className="text-xs font-bold text-slate-400 mr-1.5">
+                    ({fmtSigned(-currentDdAmt)} ج.م)
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="text-left">
+              <span className="text-[10px] font-bold text-slate-400">أقصى قاع مسجل</span>
+              <div dir="ltr" className="text-sm font-black text-slate-700 dark:text-slate-300 tabular-nums">
+                {s.maxDD === 0 ? '0.0%' : `${s.maxDD.toFixed(1)}%`}
+              </div>
+            </div>
           </div>
-          <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700/60 overflow-hidden flex">
-            <div
-              className="h-full bg-gradient-to-r from-amber-500 to-rose-500 transition-all duration-700"
-              style={{ width: `${Math.min(100, (absDD / 30) * 100)}%` }}
-            />
+
+          {/* Visual Track */}
+          <div className="space-y-1">
+            <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700/60 overflow-hidden flex relative" dir="ltr">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 transition-all duration-700"
+                style={{ width: `${Math.min(100, Math.max(3, (absCurrentDD / Math.max(absMaxDD, 25)) * 100))}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[9px] font-black text-slate-400" dir="ltr">
+              <span>0% (القمة 🏆)</span>
+              <span>الآن ({currentDdPct.toFixed(1)}%)</span>
+              <span>القاع ({s.maxDD.toFixed(1)}%)</span>
+            </div>
           </div>
-          {hasDD && recoveryAmt > 0 && (
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300 pt-0.5">
-              <span className="flex items-center gap-1 text-slate-400">
-                <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                استعادة القمة
+
+          {/* Recovery Target */}
+          {currentDdAmt > 0 ? (
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-200/60 dark:border-slate-700/40">
+              <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                <Zap className="w-3.5 h-3.5 shrink-0" />
+                <span>مستهدف استعادة القمة:</span>
               </span>
-              <b dir="ltr" className="font-black text-orange-500">+{fmt(recoveryAmt)} ج.م (+{recoveryPct.toFixed(1)}%)</b>
+              <div className="flex items-center gap-1.5">
+                <b dir="ltr" className="font-black text-orange-500">
+                  +{fmt(recoveryAmt)} ج.م (+{recoveryPct.toFixed(1)}%)
+                </b>
+                <span className="text-[10px] text-slate-400">
+                  (لـ {fmtCompact(peakNav)})
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-500 pt-1 border-t border-slate-200/60 dark:border-slate-700/40">
+              <ShieldCheck className="w-4 h-4" />
+              <span>المحفظة تتداول حالياً عند أعلى قمة تاريخية مسجلة</span>
             </div>
           )}
         </div>
 
-        {/* 3 Sub-Metrics */}
+        {/* 3 Professional Risk Metrics */}
         <div className="grid grid-cols-3 gap-2.5">
-          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-3 text-center">
-            <div className="text-[10px] font-bold text-slate-400">عامل الربحية</div>
-            <div dir="ltr" className="text-base font-black text-slate-800 dark:text-slate-100 tabular-nums mt-0.5">
-              {s.profitFactor === null ? '—' : s.profitFactor === Infinity ? '∞' : s.profitFactor.toFixed(2)}
+          {/* 1. وسادة الأمان لرأس المال (Capital Cushion) */}
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-2.5 text-center flex flex-col justify-between">
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 truncate">وسادة الأمان للرأسمال</div>
+              <div dir="ltr" className={cx('text-sm sm:text-base font-black tabular-nums mt-0.5', s.profit >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
+                {s.profit >= 0 ? `+${fmtCompact(s.profit)}` : fmtCompact(s.profit)}
+              </div>
             </div>
-            <div className="text-[9px] font-black text-slate-400 mt-0.5">
-              {s.profitFactor === null ? '—' : s.profitFactor >= 1.5 ? 'ممتاز' : s.profitFactor >= 1 ? 'متوازن' : 'تحت الضغط'}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-3 text-center">
-            <div className="text-[10px] font-bold text-slate-400">التذبذب الشهري</div>
-            <div dir="ltr" className="text-base font-black text-slate-800 dark:text-slate-100 tabular-nums mt-0.5">
-              {s.vol === null ? '—' : `±${s.vol.toFixed(1)}%`}
-            </div>
-            <div className="text-[9px] font-black text-slate-400 mt-0.5">
-              {s.vol === null ? '—' : s.vol <= 5 ? 'هادئ' : 'نشط'}
+            <div className="text-[9px] font-black text-slate-400 mt-1">
+              {s.profit >= 0 ? `+${cushionPct.toFixed(1)}% فوق التكلفة` : `${cushionPct.toFixed(1)}% من التكلفة`}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-3 text-center">
-            <div className="text-[10px] font-bold text-slate-400">لكل 1000 ج.م</div>
-            <div dir="ltr" className={cx('text-base font-black tabular-nums mt-0.5', tone(s.profit))}>
-              {s.netDeposits > 0 ? fmtSigned((s.profit / s.netDeposits) * 1000) : '—'}
+          {/* 2. عامل الربحية (Profit Factor) */}
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-2.5 text-center flex flex-col justify-between">
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 truncate">عامل الربحية (PF)</div>
+              <div dir="ltr" className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 tabular-nums mt-0.5">
+                {s.profitFactor === null ? '—' : s.profitFactor === Infinity ? '∞' : s.profitFactor.toFixed(2)}
+              </div>
             </div>
-            <div className="text-[9px] font-black text-slate-400 mt-0.5 truncate">
-              {s.days} يوم
+            <div className="text-[9px] font-black text-slate-400 mt-1">
+              {s.profitFactor === null ? '—' : s.profitFactor >= 1.5 ? 'أرباح تفوق الخسائر' : s.profitFactor >= 1 ? 'متوازن' : 'تحت الضغط'}
+            </div>
+          </div>
+
+          {/* 3. التذبذب الشهري وكفاءة العائد */}
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-2.5 text-center flex flex-col justify-between">
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 truncate">التذبذب الشهري</div>
+              <div dir="ltr" className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 tabular-nums mt-0.5">
+                {s.vol === null ? '—' : `±${s.vol.toFixed(1)}%`}
+              </div>
+            </div>
+            <div className="text-[9px] font-black text-slate-400 mt-1">
+              {riskEfficiency !== null ? `كفاءة ${riskEfficiency.toFixed(1)}x` : s.vol && s.vol <= 5 ? 'هادئ' : 'نشط'}
             </div>
           </div>
         </div>

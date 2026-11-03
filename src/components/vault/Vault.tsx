@@ -213,7 +213,7 @@ function VaultInner() {
                 factor={factor}
                 onFocusPortfolio={pid => setScope(pid)}
               />
-              <KpiGrid stats={stats} />
+              <KpiGrid stats={stats} pts={pts} />
             </div>
           )}
           {tab === 'calendar' && <CalendarView pts={pts} />}
