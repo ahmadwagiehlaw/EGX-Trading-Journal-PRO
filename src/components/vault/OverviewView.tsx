@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, Cell, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
-import { Activity, Flame, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Trophy, Calendar, Zap, Crown, Banknote, Users, Layers, ChevronUp, RefreshCw, Landmark, Sparkles, Target, CheckCircle2 } from 'lucide-react';
+import { Activity, Flame, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Trophy, Calendar, Zap, Crown, Banknote, Users, Layers, ChevronUp, RefreshCw, Landmark, Sparkles, Target, CheckCircle2, Wallet } from 'lucide-react';
 import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone } from './ui';
 import { useVault } from './VaultContext';
 import type { Point, Stats, Period, PeriodRet, BenchmarksState } from './calc';
@@ -106,7 +106,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
           return (
             <>
               {/* Main Row: Right = Giant NAV + Cash chip | Left = Scope badges + Peak trophy */}
-              <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+              <div className="relative flex flex-col gap-4 lg:pt-14">
                 <div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                     <span
@@ -125,29 +125,17 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                       <span dir="ltr">{fmtPct(stats.retPct)}</span>
                     </span>
 
-                    {/* Offensive Cash Chip — icon + number only */}
+                    {/* Offensive Cash — plain icon + number, no frame */}
                     <span
                       dir="ltr"
-                      title={`${heroCash.postureLabel}`}
-                      className={cx(
-                        'inline-flex items-center gap-2 rounded-2xl border pl-1.5 pr-3 py-1 backdrop-blur-md shadow-lg',
-                        heroCash.totalCash > 0
-                          ? 'border-sky-400/35 bg-gradient-to-r from-sky-500/20 via-cyan-500/10 to-emerald-500/15 shadow-sky-500/10'
-                          : 'border-white/10 bg-white/[0.04]'
-                      )}
+                      title={heroCash.postureLabel}
+                      className="inline-flex items-center gap-1.5"
                     >
-                      <span className={cx(
-                        'flex h-7 w-7 items-center justify-center rounded-xl',
-                        heroCash.totalCash > 0
-                          ? 'bg-gradient-to-br from-sky-300 to-emerald-400 text-slate-950 shadow-md shadow-sky-400/30'
-                          : 'bg-white/10 text-slate-400'
-                      )}>
-                        <Banknote className="w-4 h-4" />
-                      </span>
-                      <span className={cx('text-lg font-black tabular-nums tracking-tight', heroCash.totalCash > 0 ? 'text-sky-100' : 'text-slate-400')}>
+                      <Wallet className={cx('w-5 h-5', heroCash.totalCash > 0 ? 'text-amber-300' : 'text-slate-500')} strokeWidth={2.2} />
+                      <span className={cx('text-xl font-black tabular-nums tracking-tight', heroCash.totalCash > 0 ? 'text-amber-100' : 'text-slate-500')}>
                         {fmtCompact(heroCash.totalCash)}
                       </span>
-                      <span className={cx('text-[11px] font-black tabular-nums', heroCash.totalCash > 0 ? 'text-emerald-300' : 'text-slate-500')}>
+                      <span className="text-xs font-bold tabular-nums text-slate-400">
                         {heroCash.cashPct.toFixed(0)}%
                       </span>
                     </span>
@@ -165,7 +153,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                 </div>
 
                 {/* Left cluster: Peak trophy (or expanded card) + scope/date badges */}
-                <div dir="ltr" className="flex flex-wrap items-start gap-2.5 lg:justify-start">
+                <div dir="ltr" className="z-10 flex flex-wrap items-start gap-2.5 lg:absolute lg:left-0 lg:top-0">
                   {peakPt && !peakOpen && (
                     <button
                       type="button"
