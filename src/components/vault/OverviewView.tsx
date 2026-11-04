@@ -84,7 +84,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
       <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-orange-500/20 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-28 -right-10 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl" />
       {spark.length > 1 && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-44 opacity-65" dir="ltr">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-48 opacity-65" dir="ltr">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={spark} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
               <defs>
@@ -107,8 +107,14 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
             <>
               {/* Main Numbers Row: Right = Giant Market Value + Return & Cash | Left = Peak trophy & Badges */}
               <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                {/* Right: Giant NAV + Return Pill & Cash */}
+                {/* Right: Scope pills on top of NAV + Giant NAV + Return & Cash */}
                 <div>
+                  {/* Scope / lens / date — on top of NAV in small clean pills */}
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] font-black pb-1.5 text-slate-400">
+                    <span className="rounded-full bg-white/10 px-2.5 sm:px-3 py-0.5 text-slate-300 backdrop-blur">{scopeLabel}</span>
+                    <span className="rounded-full bg-white/10 px-2.5 sm:px-3 py-0.5 text-slate-300 backdrop-blur">{lensLabel}</span>
+                    {last && <span className="font-bold text-slate-400">آخر تحديث {fmtDate(last.date)}</span>}
+                  </div>
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span
                       dir="ltr"
@@ -241,12 +247,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                       </button>
                     )}
 
-                    {/* Scope / lens / date — compact pills */}
-                    <div dir="rtl" className="flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px] font-black">
-                      <span className="rounded-full bg-white/10 px-2.5 py-1 backdrop-blur">{scopeLabel}</span>
-                      <span className="rounded-full bg-white/10 px-2.5 py-1 backdrop-blur">{lensLabel}</span>
-                      {last && <span className="text-slate-400 font-bold">{fmtDate(last.date)}</span>}
-                    </div>
+
                   </div>
 
                   {peakPt && peakOpen && (
@@ -308,7 +309,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
         })()}
 
         {/* Bottom 4 KPIs — Unobstructed over the Glowing Sparkline Chart */}
-        <div className="mt-8 lg:mt-12 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6">
+        <div className="mt-12 lg:mt-20 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6">
           <Mini label="صافي الإيداعات" value={fmt(stats.netDeposits)} />
           <Mini label="إجمالي العوائد" value={fmtSigned(stats.profit)} color={up ? 'text-emerald-300' : 'text-rose-300'} />
           <Mini label="العائد الزمني (TWR)" value={fmtPct(stats.twrPct)} color={stats.twrPct >= 0 ? 'text-emerald-300' : 'text-rose-300'} />
