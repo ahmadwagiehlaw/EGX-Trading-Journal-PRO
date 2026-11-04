@@ -48,9 +48,14 @@ function Ring({ value, color, size = 54, children }: { value: number; color: str
   );
 }
 
-export function Hero({ pts, stats, scopeLabel, lensLabel }: { pts: Point[]; stats: Stats; scopeLabel: string; lensLabel: string }) {
-  const { cashflows } = useVault();
+export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { pts: Point[]; stats: Stats; scopeLabel: string; lensLabel: string; scopeIds: string[]; factor: number }) {
+  const { cashflows, snapshots, settings } = useVault();
   const [peakOpen, setPeakOpen] = useState(false);
+  const heroPorts = useMemo(() => settings.portfolios.filter(p => p.active), [settings.portfolios]);
+  const heroCash = useMemo(
+    () => computeCashAmmo(snapshots, cashflows, heroPorts, scopeIds, factor),
+    [snapshots, cashflows, heroPorts, scopeIds, factor]
+  );
   const last = pts[pts.length - 1];
   const spark = pts.slice(-60);
   const up = stats.profit >= 0;
@@ -100,91 +105,10 @@ export function Hero({ pts, stats, scopeLabel, lensLabel }: { pts: Point[]; stat
           const atPeak = Boolean(peakPt && toPeak <= 0);
           return (
             <>
-              {/* Top Header Bar: Right = Scope Badges | Left = Pure Graphical Trophy + Giant Peak Number Only */}
-              <div className="flex items-start justify-between gap-2">
-                {/* Right: Scope & Date Badges */}
-                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] font-black pt-0.5">
-                  <span className="rounded-full bg-white/10 px-2.5 sm:px-3 py-1 backdrop-blur">{scopeLabel}</span>
-                  <span className="rounded-full bg-white/10 px-2.5 sm:px-3 py-1 backdrop-blur">{lensLabel}</span>
-                  {last && <span className="text-slate-400 font-bold">آخر تحديث {fmtDate(last.date)}</span>}
-                </div>
-
-                {/* Left: Pure Trophy Graphic + Big Peak Number Only (Zero Text/Labels, Click to Expand) */}
-                {peakPt && !peakOpen && (
-                  <button
-                    type="button"
-                    onClick={() => setPeakOpen(true)}
-                    title="اضغط للتفاصيل"
-                    className={cx(
-                      'group relative shrink-0 overflow-hidden rounded-2xl border px-3.5 py-2 backdrop-blur-md transition-all duration-300 active:scale-95 shadow-lg',
-                      atPeak
-                        ? 'border-amber-400/50 bg-gradient-to-r from-amber-500/20 via-emerald-500/15 to-amber-400/20 shadow-amber-500/15'
-                        : 'border-amber-400/20 bg-white/[0.06] hover:bg-white/[0.12] hover:border-amber-400/45'
-                    )}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      {/* Trophy Graphic with Radial Progress Ring */}
-                      <div className="relative flex h-9 w-9 shrink-0 items-center justify-center">
-                        <svg width={36} height={36} className="absolute inset-0 -rotate-90">
-                          <circle cx={18} cy={18} r={15.5} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={2.5} />
-                          <circle
-                            cx={18}
-                            cy={18}
-                            r={15.5}
-                            fill="none"
-                            stroke={atPeak ? '#34d399' : '#fbbf24'}
-                            strokeWidth={2.5}
-                            strokeLinecap="round"
-                            strokeDasharray={2 * Math.PI * 15.5}
-                            strokeDashoffset={2 * Math.PI * 15.5 * (1 - peakPct / 100)}
-                            style={{ transition: 'stroke-dashoffset 0.8s ease' }}
-                          />
-                        </svg>
-                        <div className={cx(
-                          'flex h-7 w-7 items-center justify-center rounded-full transition-transform group-hover:scale-110',
-                          atPeak
-                            ? 'bg-gradient-to-br from-amber-300 via-yellow-400 to-emerald-400 text-slate-950 shadow-md shadow-amber-400/40'
-                            : 'bg-gradient-to-br from-amber-400/25 to-orange-500/20 text-amber-300'
-                        )}>
-                          <Trophy className="w-3.5 h-3.5 drop-shadow" />
-                        </div>
-                      </div>
-
-                      {/* ONLY the Peak Number in Larger, Bold Typography */}
-                      <span
-                        dir="ltr"
-                        className={cx(
-                          'text-lg sm:text-xl font-black tabular-nums tracking-tight',
-                          atPeak
-                            ? 'bg-gradient-to-r from-amber-200 via-yellow-300 to-emerald-200 bg-clip-text text-transparent'
-                            : 'text-white'
-                        )}
-                      >
-                        {fmt(peakPt.nav)}
-                      </span>
-                    </div>
-
-                    {/* Bottom Sleek Progress Fill Line */}
-                    <div className="mt-1.5 h-1 w-full rounded-full bg-white/10 overflow-hidden" dir="ltr">
-                      <div
-                        className={cx(
-                          'h-full rounded-full transition-all duration-700',
-                          atPeak
-                            ? 'bg-gradient-to-r from-amber-300 via-emerald-400 to-yellow-300'
-                            : 'bg-gradient-to-r from-indigo-400 via-emerald-400 to-amber-300'
-                        )}
-                        style={{ width: `${peakPct}%` }}
-                      />
-                    </div>
-                  </button>
-                )}
-              </div>
-
-              {/* Main Row: Right = Giant Market Value (with Trophy Badge when Peak Broken!) | Left = Expanded Card */}
-              <div className="mt-3 flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+              {/* Main Row: Right = Giant NAV + Cash chip | Left = Scope badges + Peak trophy */}
+              <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                 <div>
-                  <div className="text-xs font-bold text-slate-400">القيمة السوقية الحالية</div>
-                  <div className="mt-1 flex flex-wrap items-baseline gap-3">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                     <span
                       dir="ltr"
                       className={cx(
@@ -196,81 +120,175 @@ export function Hero({ pts, stats, scopeLabel, lensLabel }: { pts: Point[]; stat
                     </span>
                     <span className="text-sm font-bold text-slate-400">ج.م</span>
 
-                    {/* When Current Market Value is at/above Peak -> Trophy Victory Emblem directly on Current NAV! */}
+                    <span className={cx('flex items-center gap-1 rounded-full px-3 py-1 text-xs font-black', up ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300')}>
+                      {up ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                      <span dir="ltr">{fmtPct(stats.retPct)}</span>
+                    </span>
+
+                    {/* Offensive Cash Chip — icon + number only */}
+                    <span
+                      dir="ltr"
+                      title={`${heroCash.postureLabel}`}
+                      className={cx(
+                        'inline-flex items-center gap-2 rounded-2xl border pl-1.5 pr-3 py-1 backdrop-blur-md shadow-lg',
+                        heroCash.totalCash > 0
+                          ? 'border-sky-400/35 bg-gradient-to-r from-sky-500/20 via-cyan-500/10 to-emerald-500/15 shadow-sky-500/10'
+                          : 'border-white/10 bg-white/[0.04]'
+                      )}
+                    >
+                      <span className={cx(
+                        'flex h-7 w-7 items-center justify-center rounded-xl',
+                        heroCash.totalCash > 0
+                          ? 'bg-gradient-to-br from-sky-300 to-emerald-400 text-slate-950 shadow-md shadow-sky-400/30'
+                          : 'bg-white/10 text-slate-400'
+                      )}>
+                        <Banknote className="w-4 h-4" />
+                      </span>
+                      <span className={cx('text-lg font-black tabular-nums tracking-tight', heroCash.totalCash > 0 ? 'text-sky-100' : 'text-slate-400')}>
+                        {fmtCompact(heroCash.totalCash)}
+                      </span>
+                      <span className={cx('text-[11px] font-black tabular-nums', heroCash.totalCash > 0 ? 'text-emerald-300' : 'text-slate-500')}>
+                        {heroCash.cashPct.toFixed(0)}%
+                      </span>
+                    </span>
+
+                    {/* When Current Market Value is at/above Peak -> Trophy Victory Emblem */}
                     {atPeak && (
                       <span
-                        title="القيمة السوقية الحالية في القمة التاريخية!"
+                        title="القمة التاريخية"
                         className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-gradient-to-br from-amber-300 via-yellow-400 to-orange-500 text-slate-950 shadow-lg shadow-amber-400/40 ring-2 ring-amber-300/40 animate-pulse"
                       >
                         <Trophy className="w-4 h-4" />
                       </span>
                     )}
-
-                    <span className={cx('flex items-center gap-1 rounded-full px-3 py-1 text-xs font-black', up ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300')}>
-                      {up ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                      <span dir="ltr">{fmtPct(stats.retPct)}</span>
-                    </span>
                   </div>
                 </div>
 
-                {/* Expanded Detailed Card (Only visible when clicked) */}
-                {peakPt && peakOpen && (
-                  <div
-                    onClick={() => setPeakOpen(false)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setPeakOpen(false); }}
-                    title="اضغط لإغلاق التفاصيل"
-                    className="w-full sm:w-[340px] cursor-pointer rounded-2xl border border-amber-400/30 bg-slate-900/85 hover:bg-slate-900/95 backdrop-blur-xl p-3.5 space-y-3 shadow-2xl transition-all duration-200 animate-in fade-in zoom-in-95"
-                  >
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="flex items-center gap-1.5 font-black text-amber-300">
-                          <Trophy className="w-3.5 h-3.5 shrink-0" />
-                          <b dir="ltr" className="text-white tabular-nums font-black text-sm">{fmt(peakPt.nav)}</b>
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <span dir="ltr" className={cx(
-                            'rounded-full px-2 py-0.5 text-[10px] font-black',
-                            toPeak > 0 ? 'bg-amber-400/15 text-amber-300' : 'bg-emerald-400/20 text-emerald-300'
+                {/* Left cluster: Peak trophy (or expanded card) + scope/date badges */}
+                <div dir="ltr" className="flex flex-wrap items-start gap-2.5 lg:justify-start">
+                  {peakPt && !peakOpen && (
+                    <button
+                      type="button"
+                      onClick={() => setPeakOpen(true)}
+                      title="اضغط للتفاصيل"
+                      className={cx(
+                        'group relative shrink-0 overflow-hidden rounded-2xl border px-3.5 py-2 backdrop-blur-md transition-all duration-300 active:scale-95 shadow-lg',
+                        atPeak
+                          ? 'border-amber-400/50 bg-gradient-to-r from-amber-500/20 via-emerald-500/15 to-amber-400/20 shadow-amber-500/15'
+                          : 'border-amber-400/20 bg-white/[0.06] hover:bg-white/[0.12] hover:border-amber-400/45'
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="relative flex h-9 w-9 shrink-0 items-center justify-center">
+                          <svg width={36} height={36} className="absolute inset-0 -rotate-90">
+                            <circle cx={18} cy={18} r={15.5} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={2.5} />
+                            <circle
+                              cx={18}
+                              cy={18}
+                              r={15.5}
+                              fill="none"
+                              stroke={atPeak ? '#34d399' : '#fbbf24'}
+                              strokeWidth={2.5}
+                              strokeLinecap="round"
+                              strokeDasharray={2 * Math.PI * 15.5}
+                              strokeDashoffset={2 * Math.PI * 15.5 * (1 - peakPct / 100)}
+                              style={{ transition: 'stroke-dashoffset 0.8s ease' }}
+                            />
+                          </svg>
+                          <div className={cx(
+                            'flex h-7 w-7 items-center justify-center rounded-full transition-transform group-hover:scale-110',
+                            atPeak
+                              ? 'bg-gradient-to-br from-amber-300 via-yellow-400 to-emerald-400 text-slate-950 shadow-md shadow-amber-400/40'
+                              : 'bg-gradient-to-br from-amber-400/25 to-orange-500/20 text-amber-300'
                           )}>
-                            {toPeak > 0 ? `-${fmtCompact(toPeak)} (${diffPctFromPeak.toFixed(1)}%) · ${peakPct.toFixed(0)}%` : '100% 🏆'}
-                          </span>
-                          <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                            <Trophy className="w-3.5 h-3.5 drop-shadow" />
+                          </div>
                         </div>
+                        <span
+                          className={cx(
+                            'text-lg sm:text-xl font-black tabular-nums tracking-tight',
+                            atPeak
+                              ? 'bg-gradient-to-r from-amber-200 via-yellow-300 to-emerald-200 bg-clip-text text-transparent'
+                              : 'text-white'
+                          )}
+                        >
+                          {fmt(peakPt.nav)}
+                        </span>
                       </div>
-
-                      {/* Visual Progress Bar to Peak */}
-                      <div className="relative h-2 w-full rounded-full bg-white/10 overflow-hidden" dir="ltr">
+                      <div className="mt-1.5 h-1 w-full rounded-full bg-white/10 overflow-hidden">
                         <div
-                          className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-emerald-400 to-amber-300 transition-all duration-700"
+                          className={cx(
+                            'h-full rounded-full transition-all duration-700',
+                            atPeak
+                              ? 'bg-gradient-to-r from-amber-300 via-emerald-400 to-yellow-300'
+                              : 'bg-gradient-to-r from-indigo-400 via-emerald-400 to-amber-300'
+                          )}
                           style={{ width: `${peakPct}%` }}
                         />
                       </div>
-                    </div>
+                    </button>
+                  )}
 
-                    {/* 2 Compact Mini-Pills inside the Expanded Widget */}
-                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10">
-                      <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
-                          <Banknote className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-                          <span>جني نقدي</span>
-                        </span>
-                        <b dir="ltr" className="text-xs font-black tabular-nums text-emerald-300">+{fmtCompact(harvestedCash)}</b>
+                  {peakPt && peakOpen && (
+                    <div
+                      onClick={() => setPeakOpen(false)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setPeakOpen(false); }}
+                      title="اضغط لإغلاق التفاصيل"
+                      className="w-full sm:w-[340px] cursor-pointer rounded-2xl border border-amber-400/30 bg-slate-900/85 hover:bg-slate-900/95 backdrop-blur-xl p-3.5 space-y-3 shadow-2xl transition-all duration-200 animate-in fade-in zoom-in-95"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1.5 font-black text-amber-300">
+                            <Trophy className="w-3.5 h-3.5 shrink-0" />
+                            <b className="text-white tabular-nums font-black text-sm">{fmt(peakPt.nav)}</b>
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <span className={cx(
+                              'rounded-full px-2 py-0.5 text-[10px] font-black',
+                              toPeak > 0 ? 'bg-amber-400/15 text-amber-300' : 'bg-emerald-400/20 text-emerald-300'
+                            )}>
+                              {toPeak > 0 ? `-${fmtCompact(toPeak)} (${diffPctFromPeak.toFixed(1)}%) · ${peakPct.toFixed(0)}%` : '100% 🏆'}
+                            </span>
+                            <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                          </div>
+                        </div>
+                        <div className="relative h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-emerald-400 to-amber-300 transition-all duration-700"
+                            style={{ width: `${peakPct}%` }}
+                          />
+                        </div>
                       </div>
-
-                      <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
-                          <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                          <span>شهرياً</span>
-                        </span>
-                        <b dir="ltr" className={cx('text-xs font-black tabular-nums', (monthlyGainRate ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
-                          {monthlyGainRate !== null ? fmtCompact(monthlyGainRate) : '—'}
-                        </b>
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10">
+                        <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
+                            <Banknote className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                            <span>جني نقدي</span>
+                          </span>
+                          <b className="text-xs font-black tabular-nums text-emerald-300">+{fmtCompact(harvestedCash)}</b>
+                        </div>
+                        <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
+                            <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                            <span>شهرياً</span>
+                          </span>
+                          <b className={cx('text-xs font-black tabular-nums', (monthlyGainRate ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
+                            {monthlyGainRate !== null ? fmtCompact(monthlyGainRate) : '—'}
+                          </b>
+                        </div>
                       </div>
                     </div>
+                  )}
+
+                  {/* Scope / lens / date — compact, moved to the left */}
+                  <div dir="rtl" className="flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px] font-black pt-1">
+                    <span className="rounded-full bg-white/10 px-2.5 py-1 backdrop-blur">{scopeLabel}</span>
+                    <span className="rounded-full bg-white/10 px-2.5 py-1 backdrop-blur">{lensLabel}</span>
+                    {last && <span className="text-slate-400 font-bold">{fmtDate(last.date)}</span>}
                   </div>
-                )}
+                </div>
               </div>
             </>
           );

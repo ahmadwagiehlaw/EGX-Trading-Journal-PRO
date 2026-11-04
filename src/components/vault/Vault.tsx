@@ -204,7 +204,7 @@ function VaultInner() {
 
           {tab === 'overview' && (
             <div className="space-y-4">
-              <Hero pts={pts} stats={stats} scopeLabel={scopeP?.name ?? 'الكل'} lensLabel={lensLabel} />
+              <Hero pts={pts} stats={stats} scopeLabel={scopeP?.name ?? 'الكل'} lensLabel={lensLabel} scopeIds={scopeIds} factor={factor} />
               <MainChart pts={pts} accent={scopeP?.color ?? '#f97316'} dir={settings.chartDirection ?? 'rtl'} />
               <WealthGrowthDecomposition
                 stats={stats}

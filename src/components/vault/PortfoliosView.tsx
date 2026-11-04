@@ -6,9 +6,12 @@ import { useVault } from './VaultContext';
 import type { Period } from './calc';
 import { PERIODS, allocation, buildSeries, comparePortfolios, computeCashAmmo, fmt, fmtCompact, fmtPct, fmtSigned, fmtDate, raceData, shortDate, windowSeries } from './calc';
 
+type ChartTab = 'race' | 'quality' | 'nav' | 'assets';
+
 export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; scopeIds: string[]; onFocus: (id: string) => void }) {
   const { settings, snapshots, cashflows } = useVault();
   const [period, setPeriod] = useState<Period>('All');
+  const [chartTab, setChartTab] = useState<ChartTab>('race');
   const ports = useMemo(() => settings.portfolios.filter(p => p.active), [settings.portfolios]);
 
   const rows = useMemo(() => comparePortfolios(snapshots, cashflows, ports), [snapshots, cashflows, ports]);
@@ -100,29 +103,47 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
         })}
       </div>
 
-      {/* Race */}
-      <Card title="سباق النمو (بغض النظر عن حجم المال)" right={<Segmented size="sm" value={period} onChange={setPeriod} options={PERIODS.map(p => ({ v: p, label: p === 'All' ? 'الكل' : p }))} />}>
+      {/* Unified wide chart card — switch between views */}
+      <Card
+        title={chartTab === 'race' ? 'سباق النمو (بغض النظر عن حجم المال)' : chartTab === 'quality' ? 'جودة الإدارة' : chartTab === 'nav' ? 'تطور القيمة السوقية بالمحافظ' : 'توزيع الأصول'}
+        right={
+          <div className="flex flex-wrap items-center gap-2">
+            {chartTab === 'race' && <Segmented size="sm" value={period} onChange={setPeriod} options={PERIODS.map(p => ({ v: p, label: p === 'All' ? 'الكل' : p }))} />}
+            <Segmented
+              size="sm"
+              value={chartTab}
+              onChange={setChartTab}
+              options={[
+                { v: 'race' as ChartTab, label: 'سباق النمو' },
+                { v: 'quality' as ChartTab, label: 'الجودة' },
+                { v: 'nav' as ChartTab, label: 'القيمة السوقية' },
+                { v: 'assets' as ChartTab, label: 'الأصول' },
+              ]}
+            />
+          </div>
+        }
+      >
         <div className="flex flex-wrap gap-4 mb-3 text-[11px] font-bold text-slate-500">
           {ports.map(p => <span key={p.id} className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />{p.name}</span>)}
         </div>
-        <div dir="ltr" className="h-72 -mx-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={race} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
-              <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
-              <YAxis orientation="right" tickFormatter={(v: number) => `${v.toFixed(0)}%`} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={40} />
-              <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.5} />
-              <Tooltip content={<ChartTip labelFmt={fmtDate} rows={p => ports.filter(x => p[x.id] !== undefined).map(x => ({ name: x.name, value: fmtPct(+p[x.id]), color: x.color }))} />} />
-              {ports.map(p => <Line key={p.id} type="monotone" dataKey={p.id} stroke={p.color} strokeWidth={2.5} dot={false} connectNulls />)}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Radar */}
-        <Card title="جودة الإدارة">
-          <div dir="ltr" className="h-72">
+        {chartTab === 'race' && (
+          <div dir="ltr" className="h-80 -mx-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={race} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
+                <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
+                <YAxis orientation="right" tickFormatter={(v: number) => `${v.toFixed(0)}%`} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={40} />
+                <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.5} />
+                <Tooltip content={<ChartTip labelFmt={fmtDate} rows={p => ports.filter(x => p[x.id] !== undefined).map(x => ({ name: x.name, value: fmtPct(+p[x.id]), color: x.color }))} />} />
+                {ports.map(p => <Line key={p.id} type="monotone" dataKey={p.id} stroke={p.color} strokeWidth={2.5} dot={false} connectNulls />)}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {chartTab === 'quality' && (
+          <div dir="ltr" className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <RadarChart data={radarData} outerRadius="72%">
                 <PolarGrid stroke="currentColor" strokeOpacity={0.15} />
@@ -132,13 +153,26 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
               </RadarChart>
             </ResponsiveContainer>
           </div>
-        </Card>
+        )}
 
-        {/* Donut */}
-        <Card title="توزيع الأصول">
-          {alloc.length === 0 ? <Empty text="لا توجد بيانات" /> : (
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div dir="ltr" className="relative h-56 w-56 shrink-0">
+        {chartTab === 'nav' && (
+          <div dir="ltr" className="h-80 -mx-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={stack} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
+                <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
+                <YAxis orientation="right" tickFormatter={fmtCompact} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={46} />
+                <Tooltip content={<ChartTip labelFmt={fmtDate} rows={p => ports.map(x => ({ name: x.name, value: fmt(+p[x.id]), color: x.color }))} />} />
+                {ports.map(p => <Area key={p.id} type="monotone" stackId="1" dataKey={p.id} stroke={p.color} fill={p.color} fillOpacity={0.35} strokeWidth={2} />)}
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {chartTab === 'assets' && (
+          alloc.length === 0 ? <Empty text="لا توجد بيانات" /> : (
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-8 py-2">
+              <div dir="ltr" className="relative h-64 w-64 shrink-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={alloc} dataKey="value" nameKey="label" innerRadius="64%" outerRadius="96%" paddingAngle={3} cornerRadius={8} stroke="none">
@@ -152,7 +186,7 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                   <span dir="ltr" className="text-lg font-black tabular-nums">{fmtCompact(allocTotal)}</span>
                 </div>
               </div>
-              <ul className="w-full space-y-2">
+              <ul className="w-full max-w-sm space-y-2">
                 {alloc.map(s => (
                   <li key={s.key} className="flex items-center justify-between text-xs font-bold">
                     <span className="flex items-center gap-2 text-slate-600 dark:text-slate-300"><i className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />{s.label}</span>
@@ -161,9 +195,9 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                 ))}
               </ul>
             </div>
-          )}
-        </Card>
-      </div>
+          )
+        )}
+      </Card>
 
       {/* Allocation per portfolio */}
       <Card title="تركيبة كل محفظة">
@@ -185,21 +219,6 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
               </div>
             );
           })}
-        </div>
-      </Card>
-
-      {/* Stacked NAV */}
-      <Card title="تطور القيمة السوقية بالمحافظ">
-        <div dir="ltr" className="h-64 -mx-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={stack} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
-              <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
-              <YAxis orientation="right" tickFormatter={fmtCompact} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={46} />
-              <Tooltip content={<ChartTip labelFmt={fmtDate} rows={p => ports.map(x => ({ name: x.name, value: fmt(+p[x.id]), color: x.color }))} />} />
-              {ports.map(p => <Area key={p.id} type="monotone" stackId="1" dataKey={p.id} stroke={p.color} fill={p.color} fillOpacity={0.35} strokeWidth={2} />)}
-            </AreaChart>
-          </ResponsiveContainer>
         </div>
       </Card>
 
