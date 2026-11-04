@@ -120,11 +120,6 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                     </span>
                     <span className="text-sm font-bold text-slate-400">ج.م</span>
 
-                    <span className={cx('flex items-center gap-1 rounded-full px-3 py-1 text-xs font-black', up ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300')}>
-                      {up ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                      <span dir="ltr">{fmtPct(stats.retPct)}</span>
-                    </span>
-
                     {/* Offensive Cash — plain icon + number; colour + hairline gauge hint at the 15% target */}
                     {(() => {
                       const cp = heroCash.cashPct;
@@ -168,6 +163,14 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                         <Trophy className="w-4 h-4" />
                       </span>
                     )}
+                  </div>
+
+                  {/* Return pill — right under the market value */}
+                  <div className="mt-2.5 flex">
+                    <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 text-sm font-black', up ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300')}>
+                      {up ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                      <span dir="ltr">{fmtPct(stats.retPct)}</span>
+                    </span>
                   </div>
                 </div>
 
