@@ -39,6 +39,7 @@ export interface VaultSettings {
   partner: VaultPartnerSettings;
   tags: { deposit: VaultTag[]; withdrawal: VaultTag[] };
   chartDirection?: 'rtl' | 'ltr'; // افتراضياً rtl
+  bankRate?: number; // نسبة فائدة البنك المرجعية (افتراضياً 27%)
 }
 
 export interface VaultSnapshot {
@@ -102,5 +103,6 @@ export const DEFAULT_SETTINGS: VaultSettings = {
     ],
   },
   chartDirection: 'rtl',
+  bankRate: 27,
 };
 

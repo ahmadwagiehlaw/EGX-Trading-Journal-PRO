@@ -4,7 +4,7 @@ import { Crown } from 'lucide-react';
 import { Card, ChartTip, Empty, Segmented, cx, tone } from './ui';
 import { useVault } from './VaultContext';
 import type { Period } from './calc';
-import { PERIODS, allocation, buildSeries, comparePortfolios, fmt, fmtCompact, fmtPct, fmtSigned, fmtDate, raceData, shortDate, windowSeries } from './calc';
+import { PERIODS, allocation, buildSeries, comparePortfolios, computeCashAmmo, fmt, fmtCompact, fmtPct, fmtSigned, fmtDate, raceData, shortDate, windowSeries } from './calc';
 
 export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; scopeIds: string[]; onFocus: (id: string) => void }) {
   const { settings, snapshots, cashflows } = useVault();
@@ -13,6 +13,7 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
 
   const rows = useMemo(() => comparePortfolios(snapshots, cashflows, ports), [snapshots, cashflows, ports]);
   const ranked = [...rows].sort((a, b) => b.score - a.score);
+  const cashAmmo = useMemo(() => computeCashAmmo(snapshots, cashflows, ports, scopeIds, factor), [snapshots, cashflows, ports, scopeIds, factor]);
   const alloc = useMemo(() => allocation(snapshots, cashflows, scopeIds).map(s => ({ ...s, value: s.value * factor })), [snapshots, cashflows, scopeIds, factor]);
   const allocTotal = alloc.reduce((a, s) => a + s.value, 0);
 
@@ -45,6 +46,11 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
         {ranked.map((r, i) => {
           const s = r.stats;
           const series = buildSeries(snapshots, cashflows, [r.portfolio.id]).slice(-40);
+          const pCashObj = cashAmmo.byPortfolio.find(c => c.portfolioId === r.portfolio.id);
+          const pCash = pCashObj?.cashAmount ?? 0;
+          const pCashPct = pCashObj?.cashPct ?? 0;
+          const pInvested = pCashObj?.investedAmount ?? Math.round(s.nav * factor);
+
           return (
             <button key={r.portfolio.id} onClick={() => onFocus(r.portfolio.id)} className="group relative overflow-hidden rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-5 text-right transition hover:-translate-y-1 hover:shadow-xl">
               <div className="absolute inset-x-0 top-0 h-1" style={{ background: r.portfolio.color }} />
@@ -61,6 +67,19 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                 <span dir="ltr" className={tone(s.profit)}>{fmtSigned(s.profit * factor)}</span>
                 <span dir="ltr" className={tone(s.twrPct)}>{fmtPct(s.twrPct)}</span>
               </div>
+
+              {/* تفصيل الأسهم المستثمرة مقابل الكاش الهجومي داخل المحفظة */}
+              <div className="mt-2.5 grid grid-cols-2 gap-1.5 text-[10px] font-black">
+                <div className="rounded-xl bg-emerald-500/[0.06] border border-emerald-500/20 px-2.5 py-1.5 flex items-center justify-between">
+                  <span className="text-emerald-600 dark:text-emerald-400">📈 مستثمر</span>
+                  <b dir="ltr" className="text-slate-800 dark:text-slate-100 tabular-nums">{fmtCompact(pInvested)}</b>
+                </div>
+                <div className="rounded-xl bg-sky-500/[0.07] border border-sky-500/25 px-2.5 py-1.5 flex items-center justify-between">
+                  <span className="text-sky-600 dark:text-sky-400">💵 كاش ({pCashPct.toFixed(0)}%)</span>
+                  <b dir="ltr" className="text-sky-600 dark:text-sky-400 tabular-nums">{fmtCompact(pCash)}</b>
+                </div>
+              </div>
+
               <div dir="ltr" className="mt-3 h-14 -mx-1">
                 {series.length > 1 && (
                   <ResponsiveContainer width="100%" height="100%">

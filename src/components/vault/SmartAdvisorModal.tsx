@@ -11,6 +11,9 @@ import {
   Rocket,
   CheckCircle2,
   AlertTriangle,
+  Banknote,
+  Target,
+  Crosshair,
 } from 'lucide-react';
 import {
   Bar,
@@ -30,6 +33,7 @@ import {
   computeStats,
   windowSeries,
   comparePortfolios,
+  computeCashAmmo,
   loadCachedBenchmarks,
   fetchEgxBenchmarks,
   buildBenchmarkSeries,
@@ -63,9 +67,10 @@ export function SmartAdvisorModal({
   const [lens, setLens] = useState<Lens>(initialLens);
   const [bench, setBench] = useState<BenchmarksState>(() => loadCachedBenchmarks());
   const bankRate = useMemo(() => {
+    if (settings.bankRate && settings.bankRate > 0 && settings.bankRate <= 100) return settings.bankRate;
     const saved = Number(localStorage.getItem('egx_vault_bank_rate'));
     return !isNaN(saved) && saved > 0 && saved <= 100 ? saved : 27;
-  }, [open]);
+  }, [open, settings.bankRate]);
 
   useEffect(() => {
     if (open) {
@@ -80,6 +85,15 @@ export function SmartAdvisorModal({
   const partnerOn = settings.partner.enabled;
   const effLens: Lens = partnerOn ? lens : 'total';
   const pts = effLens === 'total' ? basePts : effLens === 'partner' ? split.partner : split.mine;
+  const baseLastNav = basePts[basePts.length - 1]?.nav ?? 0;
+  const pShareRatio = baseLastNav > 0 ? Math.min(1, (split.partner[split.partner.length - 1]?.nav ?? 0) / baseLastNav) : 0;
+  const lensFactor = effLens === 'total' ? 1 : effLens === 'partner' ? pShareRatio : 1 - pShareRatio;
+
+  // حساب رادار الكاش الهجومي المتاح والذخيرة التكتيكية
+  const cashAmmo = useMemo(
+    () => computeCashAmmo(snapshots, cashflows, activePorts, scopeIds, lensFactor),
+    [snapshots, cashflows, activePorts, scopeIds, lensFactor]
+  );
 
   // سلسلة الفترة المختارة
   const winData = useMemo(() => windowSeries(pts, period, 'ltr'), [pts, period]);
@@ -161,7 +175,7 @@ export function SmartAdvisorModal({
     return { twr, roi, diff };
   }, [fullStats]);
 
-  // التقييم الذكي الشامل للخزنة (0 - 100)
+  // التقييم الذكي الشامل للخزنة (0 - 100) مع بُعد انضباط السيولة والذخيرة الهجومية
   const healthScore = useMemo(() => {
     const retScore = Math.max(0, Math.min(100, Math.round(50 + (lastBench?.pTwr ?? 0) * 1.2)));
     const alpha30 = (lastBench?.pTwr ?? 0) - (lastBench?.egx30Pct ?? 0);
@@ -169,9 +183,149 @@ export function SmartAdvisorModal({
     const alphaScore = Math.max(0, Math.min(100, Math.round(60 + alpha30 * 1.2 + alphaBank * 0.6)));
     const safetyScore = Math.max(0, Math.min(100, Math.round(100 + fullStats.maxDD * 2.5)));
     const consistencyScore = Math.round(fullStats.winRate ?? 60);
-    const total = Math.round(retScore * 0.3 + alphaScore * 0.3 + safetyScore * 0.2 + consistencyScore * 0.2);
-    return { total, retScore, alphaScore, safetyScore, consistencyScore };
-  }, [lastBench, fullStats]);
+
+    // تقييم انضباط الذخيرة النقدية الهجومية (Cash Ammo Readiness)
+    const cp = cashAmmo.cashPct;
+    const ammoScore =
+      cp >= 12 && cp <= 30
+        ? 96
+        : cp >= 7 && cp < 12
+        ? 78
+        : cp > 30
+        ? 85
+        : cp > 0
+        ? 55
+        : 38;
+
+    const total = Math.round(
+      retScore * 0.25 +
+      alphaScore * 0.25 +
+      safetyScore * 0.2 +
+      consistencyScore * 0.15 +
+      ammoScore * 0.15
+    );
+    return { total, retScore, alphaScore, safetyScore, consistencyScore, ammoScore };
+  }, [lastBench, fullStats, cashAmmo.cashPct]);
+
+  // غرفة العمليات التكتيكية والتشخيص الذكي للسيولة والمخاطر (Smart Tactical Engine)
+  const tacticalAnalysis = useMemo(() => {
+    const peakNav = pts.reduce((m, x) => Math.max(m, x.nav), 0);
+    const curNav = lastPt?.nav ?? fullStats.nav;
+    const gapFromPeakAmt = Math.max(0, peakNav - curNav);
+    const curDrawdownPct = peakNav > 0 ? ((curNav - peakNav) / peakNav) * 100 : 0; // سالب عند الهبوط
+    const isNearPeak = curDrawdownPct > -4.5; // قريب من القمة التاريخية
+
+    const cp = cashAmmo.cashPct;
+    const cashEgp = cashAmmo.totalCash;
+    const target15Total = Math.round(curNav * 0.15);
+    const target20Total = Math.round(curNav * 0.2);
+    const neededFor15 = cashAmmo.targetCash15Amt;
+    const neededFor20 = cashAmmo.targetCash20Amt;
+
+    // دفعات القنص الشرائية الثلاثية (3-Tranche Sniper Plan: 40% / 35% / 25%)
+    const tranche1 = Math.round(cashEgp * 0.4);
+    const tranche2 = Math.round(cashEgp * 0.35);
+    const tranche3 = Math.max(0, cashEgp - tranche1 - tranche2);
+
+    // توليد التوصيات التكتيكية التنفيذية بناءً على الأرقام الحية
+    const directives: {
+      id: string;
+      badge: string;
+      title: string;
+      body: string;
+      actionMetric: string;
+      tone: 'emerald' | 'amber' | 'rose' | 'sky';
+    }[] = [];
+
+    // 1. توصية الذخيرة الهجومية مقابل موقع المحفظة من القمة
+    if (cp < 8 && isNearPeak) {
+      directives.push({
+        id: 'ammo-harvest',
+        badge: 'تنبيه تكتيكي عاجل ⚠️',
+        title: 'المحفظة قرب القمة التاريخية بدون ذخيرة كاش كافية!',
+        body: `نسبة الكاش المتاح حالياً (${cp.toFixed(1)}%) منخفضة جداً بينما المحفظة تتداول قرب قمتها (${curDrawdownPct.toFixed(1)}% عن القمة). الاحتفاظ بـ 100% أسهم عند القمم يحرمك من اقتناص أي تصحيح مفاجئ.`,
+        actionMetric: `ينصح بتخفيف مراكز لجني وتوفير ${fmt(neededFor15)} ج.م كاش لبلوغ المنطقة الذهبية (15% = ${fmt(target15Total)} ج.م)`,
+        tone: 'rose',
+      });
+    } else if (cp < 8 && !isNearPeak) {
+      directives.push({
+        id: 'ammo-rebuild',
+        badge: 'إعادة بناء الذخيرة 🛡️',
+        title: 'الذخيرة النقدية مستنفدة أثناء التراجع الحالي',
+        body: `المحفظة في تراجع (${curDrawdownPct.toFixed(1)}% عن القمة / ${fmt(gapFromPeakAmt)} ج.م) مع سيولة نقدية (${cp.toFixed(1)}%). عند أول ارتداد قوي للسوق، اجعل أولويتك تحويل جزء من الارتداد إلى كاش هجومي.`,
+        actionMetric: `الهدف المرحلي الأول: تجميع ${fmt(neededFor15)} ج.م كاش (${fmt(target15Total)} ج.م إجمالاً)`,
+        tone: 'amber',
+      });
+    } else if (cp >= 12 && !isNearPeak) {
+      directives.push({
+        id: 'ammo-deploy',
+        badge: 'فرصة قنص تكتيكية 🎯',
+        title: 'تمتلك ذخيرة كاش قوية أثناء تصحيح المحفظة!',
+        body: `لديك سيولة هجومية ممتازة (${fmt(cashEgp)} ج.م — ${cp.toFixed(1)}%) بينما المحفظة تحت قمتها بـ ${Math.abs(curDrawdownPct).toFixed(1)}%. لا تضخ الكاش دفعة واحدة؛ بل استخدم خطة القنص المتدرج على ٣ دفعات عند الدعوم.`,
+        actionMetric: `دفعة أولى (40%): ${fmt(tranche1)} ج.م · دفعة ثانية: ${fmt(tranche2)} ج.م · احتياطي: ${fmt(tranche3)} ج.م`,
+        tone: 'emerald',
+      });
+    } else {
+      directives.push({
+        id: 'ammo-optimal',
+        badge: 'توازن تكتيكي مثالي ✅',
+        title: 'جاهزية عالية للسيولة الهجومية والمراكز الاستثمارية',
+        body: `نسبة الكاش المتاح (${cp.toFixed(1)}% — ${fmt(cashEgp)} ج.م) تمنحك مرونة كاملة بين الاستفادة من صعود الأسهم (${(100 - cp).toFixed(1)}%) والجاهزية الفورية لاقتناص الفرص دون اضطرار لبيع أسهمك بخسارة.`,
+        actionMetric: `نطاق السيولة المستهدف (15% - 20%): ${fmt(target15Total)} ← ${fmt(target20Total)} ج.م`,
+        tone: 'emerald',
+      });
+    }
+
+    // 2. توصية الأداء المقارن (Alpha vs Bank & EGX30)
+    const curAlphaBank = (lastBench?.pTwr ?? 0) - (lastBench?.bankPct ?? 0);
+    const curAlpha30 = (lastBench?.pTwr ?? 0) - (lastBench?.egx30Pct ?? 0);
+    if (curAlphaBank < 0) {
+      directives.push({
+        id: 'alpha-lag',
+        badge: 'مراجعة كفاءة العائد 📊',
+        title: `العائد في هذه الفترة أقل من عائد البنك الخالي من المخاطرة بـ ${Math.abs(curAlphaBank).toFixed(1)}%`,
+        body: `خلال (${period === 'All' ? 'منذ البداية' : period}) حققت المحفظة ${fmtPct(lastBench?.pTwr ?? 0)} مقابل ${fmtPct(lastBench?.bankPct ?? 0)} للبنك. تقليص المراكز الراكدة وتحويلها لكاش هجومي يرفع كفاءة رأس المال.`,
+        actionMetric: `فارق EGX30: ${curAlpha30 >= 0 ? `متفوق +${curAlpha30.toFixed(1)}%` : `${curAlpha30.toFixed(1)}%`}`,
+        tone: 'amber',
+      });
+    } else {
+      directives.push({
+        id: 'alpha-lead',
+        badge: 'تفوق استثماري (Alpha) 🏆',
+        title: `تتفوق على عائد البنك بـ +${curAlphaBank.toFixed(1)}% وعلى EGX30 بـ ${fmtSigned(curAlpha30, 1)}%`,
+        body: `إدارتك الفعالة حققت عائداً زمنياً (${fmtPct(lastBench?.pTwr ?? 0)}) يثبت جدوى التداول النشط مقارنة بالعائد البنكي الثابت (${bankRate}%). حافظ على حماية هذه الأرباح برفع نسبة الكاش تدريجياً بعد كل موجة صعود.`,
+        actionMetric: `صافي ربح الفترة: ${fmtSigned(lastBench?.pProfit ?? 0)} ج.م`,
+        tone: 'sky',
+      });
+    }
+
+    // 3. توصية تركز المحافظ وتوزيع السيولة
+    const topPort = portRows[0];
+    if (topPort && topPort.share > 75 && portRows.length > 1) {
+      directives.push({
+        id: 'port-conc',
+        badge: 'توزيع المخاطر والسيولة ⚖️',
+        title: `تركز مرتفع في محفظة «${topPort.portfolio.name}» بنسبة ${topPort.share.toFixed(0)}%`,
+        body: `أغلب القوة الضاربة تتركز في محفظة واحدة. تأكد من أن نسبة الكاش الهجومي داخل «${topPort.portfolio.name}» لا تقل عن 15% (${fmt(Math.round(topPort.stats.nav * 0.15))} ج.م) لأنها القاطرة الرئيسية للخزنة.`,
+        actionMetric: `حصة ربح ${topPort.portfolio.name}: ${Math.max(0, topPort.profitShare).toFixed(0)}% من إجمالي الربح`,
+        tone: 'sky',
+      });
+    }
+
+    return {
+      peakNav,
+      curNav,
+      gapFromPeakAmt,
+      curDrawdownPct,
+      isNearPeak,
+      neededFor15,
+      neededFor20,
+      tranche1,
+      tranche2,
+      tranche3,
+      directives,
+    };
+  }, [pts, lastPt, fullStats, cashAmmo, lastBench, period, bankRate, portRows]);
 
   // محاكاة وإسقاط الثروة المستقبلي (6M, 1Y, 2Y, 3Y)
   const projections = useMemo(() => {
@@ -254,6 +408,22 @@ export function SmartAdvisorModal({
       )
       .join('');
 
+    const directivesHtml = tacticalAnalysis.directives
+      .map(
+        d => `
+        <div class="kpi-box" style="border-right:4px solid ${
+          d.tone === 'emerald' ? '#10b981' : d.tone === 'rose' ? '#e11d48' : d.tone === 'amber' ? '#f59e0b' : '#0284c7'
+        };margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:12px;font-weight:900;color:#0f172a;">${d.title}</span>
+            <span style="font-size:10px;font-weight:900;color:#475569;background:#e2e8f0;padding:2px 8px;border-radius:8px;">${d.badge}</span>
+          </div>
+          <div style="font-size:11px;font-weight:600;color:#475569;margin-top:4px;">${d.body}</div>
+          <div style="font-size:11px;font-weight:900;color:#059669;margin-top:4px;" dir="ltr">${d.actionMetric}</div>
+        </div>`
+      )
+      .join('');
+
     win.document.write(`
       <!DOCTYPE html>
       <html lang="ar" dir="rtl">
@@ -301,9 +471,9 @@ export function SmartAdvisorModal({
             <div class="kpi-sub" dir="ltr">صافي الإيداعات: ${fmt(lastPt?.deposits ?? 0)} ج.م</div>
           </div>
           <div class="kpi-box">
-            <div class="kpi-label">أداء الفترة (${periodLabel})</div>
-            <div class="kpi-val" dir="ltr" style="color:${curRow.myProfit >= 0 ? '#059669' : '#e11d48'};">${fmtSigned(curRow.myProfit)} ج.م</div>
-            <div class="kpi-sub" dir="ltr">نسبة النمو: ${fmtPct(curRow.myPct)}</div>
+            <div class="kpi-label">الذخيرة الهجومية (كاش متاح)</div>
+            <div class="kpi-val" dir="ltr" style="color:#059669;">${fmt(cashAmmo.totalCash)} ج.م (${cashAmmo.cashPct.toFixed(1)}%)</div>
+            <div class="kpi-sub">${cashAmmo.postureLabel} · المستثمر: ${fmt(cashAmmo.totalInvested)} ج.م</div>
           </div>
           <div class="kpi-box">
             <div class="kpi-label">مقارنة بالبنك (${bankRate}%)</div>
@@ -318,7 +488,12 @@ export function SmartAdvisorModal({
         </div>
 
         <div class="section">
-          <div class="section-title">١. مصفوفة المقارنة المرجعية عبر كل الفترات (محفظتك مقابل البنك و EGX30 و EGX70)</div>
+          <div class="section-title">١. التوصيات التكتيكية وإدارة السيولة الهجومية</div>
+          ${directivesHtml}
+        </div>
+
+        <div class="section">
+          <div class="section-title">٢. مصفوفة المقارنة المرجعية عبر كل الفترات (محفظتك مقابل البنك و EGX30 و EGX70)</div>
           <table>
             <thead>
               <tr>
@@ -335,7 +510,7 @@ export function SmartAdvisorModal({
         </div>
 
         <div class="section">
-          <div class="section-title">٢. كفاءة المحافظ وتوزيع القوة (Attribution Analysis)</div>
+          <div class="section-title">٣. كفاءة المحافظ وتوزيع القوة (Attribution Analysis)</div>
           <table>
             <thead>
               <tr>
@@ -352,7 +527,7 @@ export function SmartAdvisorModal({
         </div>
 
         <div class="section">
-          <div class="section-title">٣. إسقاط الثروة المستقبلي المتوقع (بناءً على معدل النمو السنوي المركب ${projections.cagrRate.toFixed(1)}%)</div>
+          <div class="section-title">٤. إسقاط الثروة المستقبلي المتوقع (بناءً على معدل النمو السنوي المركب ${projections.cagrRate.toFixed(1)}%)</div>
           <div class="grid-4">${projHtml}</div>
         </div>
 
@@ -451,19 +626,20 @@ export function SmartAdvisorModal({
                 </span>
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {[
                   { label: 'قوة العائد والنمو', val: healthScore.retScore, color: 'bg-emerald-500' },
                   { label: 'التفوق على السوق والبنك (Alpha)', val: healthScore.alphaScore, color: 'bg-sky-500' },
                   { label: 'حماية رأس المال والهبوط', val: healthScore.safetyScore, color: 'bg-amber-500' },
                   { label: 'الاتساق الشهري ونسبة الفوز', val: healthScore.consistencyScore, color: 'bg-purple-500' },
+                  { label: 'جاهزية الذخيرة النقدية (Cash Ammo)', val: healthScore.ammoScore, color: 'bg-teal-500' },
                 ].map(item => (
                   <div key={item.label} className="space-y-1">
                     <div className="flex justify-between text-[11px] font-black">
                       <span className="text-slate-600 dark:text-slate-300">{item.label}</span>
                       <span dir="ltr" className="text-slate-900 dark:text-white tabular-nums">{item.val}%</span>
                     </div>
-                    <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden" dir="ltr">
+                    <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden" dir="ltr">
                       <div className={cx('h-full rounded-full transition-all duration-700', item.color)} style={{ width: `${item.val}%` }} />
                     </div>
                   </div>
@@ -551,6 +727,170 @@ export function SmartAdvisorModal({
                 <b dir="ltr" className={tone(fullStats.profit)}>
                   {fullStats.days >= 15 ? `${fmtSigned(Math.round((fullStats.profit / fullStats.days) * 30))} ج.م/شهر` : '—'}
                 </b>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 1.5: Tactical Command Center & Offensive Cash Ammo Advisor */}
+          <div className="rounded-3xl border border-emerald-500/25 bg-gradient-to-br from-emerald-500/[0.05] via-white to-sky-500/[0.04] dark:from-emerald-500/[0.08] dark:via-slate-900 dark:to-sky-500/[0.06] p-4 sm:p-5 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center">
+                  <Crosshair className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                    غرفة العمليات التكتيكية وإدارة الكاش الهجومي (Tactical Cash & Action Directives)
+                  </h3>
+                  <p className="text-[10px] font-bold text-slate-400">
+                    الكاش الهجومي جزء أصيل من القيمة السوقية للمحفظة — وقودك الجاهز لاقتناص الفرص بدون بيع الأسهم بخسارة
+                  </p>
+                </div>
+              </div>
+              <span
+                className={cx(
+                  'rounded-full px-3 py-1 text-[11px] font-black border',
+                  cashAmmo.posture === 'depleted'
+                    ? 'bg-rose-500/10 text-rose-500 border-rose-500/25'
+                    : cashAmmo.posture === 'defensive'
+                    ? 'bg-amber-500/10 text-amber-500 border-amber-500/25'
+                    : cashAmmo.posture === 'optimal'
+                    ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/25'
+                    : 'bg-sky-500/10 text-sky-500 border-sky-500/25'
+                )}
+              >
+                {cashAmmo.postureLabel}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+              {/* Left 5 cols: Offensive Cash Gauge + 3-Tranche Sniper Plan */}
+              <div className="lg:col-span-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/60 p-3.5 flex flex-col justify-between gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs font-black text-slate-700 dark:text-slate-200">
+                    <Banknote className="w-4 h-4 text-emerald-500" />
+                    الذخيرة النقدية المتاحة ({lensLabel})
+                  </span>
+                  <span dir="ltr" className="text-sm font-black text-emerald-500 tabular-nums">
+                    {fmt(cashAmmo.totalCash)} ج.م ({cashAmmo.cashPct.toFixed(1)}%)
+                  </span>
+                </div>
+
+                {/* Progress Bar: Invested vs Cash with 15-20% Target Zone */}
+                <div className="space-y-1.5">
+                  <div className="relative h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex" dir="ltr">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
+                      style={{ width: `${Math.min(100, cashAmmo.cashPct)}%` }}
+                      title={`كاش هجومي: ${cashAmmo.cashPct.toFixed(1)}%`}
+                    />
+                    {/* علامة المنطقة المثالية 15% - 25% */}
+                    <div
+                      className="absolute top-0 bottom-0 border-l-2 border-dashed border-amber-400/90 pointer-events-none"
+                      style={{ left: '15%' }}
+                      title="الحد الأدنى للمنطقة الذهبية (15%)"
+                    />
+                  </div>
+                  <div className="flex justify-between text-[10px] font-bold text-slate-400">
+                    <span>💵 كاش متاح: <b dir="ltr" className="text-emerald-500">{fmtCompact(cashAmmo.totalCash)} ({cashAmmo.cashPct.toFixed(1)}%)</b></span>
+                    <span>📈 مستثمر بالأسهم: <b dir="ltr" className="text-slate-700 dark:text-slate-200">{fmtCompact(cashAmmo.totalInvested)} ({(100 - cashAmmo.cashPct).toFixed(1)}%)</b></span>
+                  </div>
+                </div>
+
+                {/* Sniper Tranches OR Cash Rebuild Target */}
+                {cashAmmo.totalCash >= 5000 ? (
+                  <div className="rounded-xl bg-emerald-500/[0.06] border border-emerald-500/20 p-2.5 space-y-2">
+                    <div className="flex items-center justify-between text-[10px] font-black text-emerald-600 dark:text-emerald-400">
+                      <span className="flex items-center gap-1">
+                        <Target className="w-3.5 h-3.5" />
+                        خطة القنص المتدرج (تقسيم الكاش لـ 3 دفعات شرائية):
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5 text-center text-[10px] font-black">
+                      <div className="rounded-lg bg-white dark:bg-slate-900 p-1.5 border border-emerald-500/20">
+                        <div className="text-slate-400">دفعة أولى (40%)</div>
+                        <div dir="ltr" className="text-emerald-500 mt-0.5">{fmtCompact(tacticalAnalysis.tranche1)}</div>
+                      </div>
+                      <div className="rounded-lg bg-white dark:bg-slate-900 p-1.5 border border-emerald-500/20">
+                        <div className="text-slate-400">دفعة ثانية (35%)</div>
+                        <div dir="ltr" className="text-sky-500 mt-0.5">{fmtCompact(tacticalAnalysis.tranche2)}</div>
+                      </div>
+                      <div className="rounded-lg bg-white dark:bg-slate-900 p-1.5 border border-emerald-500/20">
+                        <div className="text-slate-400">احتياطي (25%)</div>
+                        <div dir="ltr" className="text-amber-500 mt-0.5">{fmtCompact(tacticalAnalysis.tranche3)}</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-amber-500/10 border border-amber-500/25 p-2.5 text-[11px] font-black text-amber-700 dark:text-amber-300 space-y-1">
+                    <div>⚡ لبناء درع سيولة هجومي مثالي (15% - 20% من المحفظة):</div>
+                    <div dir="ltr" className="text-right text-xs text-slate-900 dark:text-white">
+                      ينقصك: {fmt(cashAmmo.targetCash15Amt)} ← {fmt(cashAmmo.targetCash20Amt)} ج.م كاش
+                    </div>
+                  </div>
+                )}
+
+                {/* Per-portfolio cash mini pills */}
+                {cashAmmo.byPortfolio.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/60 dark:border-slate-800">
+                    {cashAmmo.byPortfolio.map(bp => (
+                      <span
+                        key={bp.portfolioId}
+                        className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 text-[10px] font-black"
+                      >
+                        <i className="w-1.5 h-1.5 rounded-full" style={{ background: bp.color }} />
+                        <span className="text-slate-600 dark:text-slate-300">{bp.portfolioName}:</span>
+                        <b dir="ltr" className={bp.cashAmount > 0 ? 'text-emerald-500' : 'text-slate-400'}>
+                          {bp.cashAmount > 0 ? `${fmtCompact(bp.cashAmount)} (${bp.cashPct.toFixed(0)}%)` : '0 كاش'}
+                        </b>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Right 7 cols: Actionable Executive Directives */}
+              <div className="lg:col-span-7 flex flex-col justify-between gap-2.5">
+                {tacticalAnalysis.directives.map(d => (
+                  <div
+                    key={d.id}
+                    className={cx(
+                      'rounded-2xl border p-3.5 transition space-y-1.5',
+                      d.tone === 'emerald'
+                        ? 'border-emerald-500/30 bg-emerald-500/[0.04]'
+                        : d.tone === 'rose'
+                        ? 'border-rose-500/30 bg-rose-500/[0.05]'
+                        : d.tone === 'amber'
+                        ? 'border-amber-500/30 bg-amber-500/[0.05]'
+                        : 'border-sky-500/30 bg-sky-500/[0.04]'
+                    )}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                      <span className="text-xs font-black text-slate-900 dark:text-white">{d.title}</span>
+                      <span
+                        className={cx(
+                          'rounded-lg px-2 py-0.5 text-[10px] font-black',
+                          d.tone === 'emerald'
+                            ? 'bg-emerald-500/15 text-emerald-500'
+                            : d.tone === 'rose'
+                            ? 'bg-rose-500/15 text-rose-500'
+                            : d.tone === 'amber'
+                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                            : 'bg-sky-500/15 text-sky-500'
+                        )}
+                      >
+                        {d.badge}
+                      </span>
+                    </div>
+                    <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300 leading-relaxed">
+                      {d.body}
+                    </p>
+                    <div className="pt-1 flex items-center justify-between text-[11px] font-black text-emerald-600 dark:text-emerald-400">
+                      <span>📌 التوجيه الرقمي المباشر:</span>
+                      <span dir="ltr">{d.actionMetric}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

@@ -9,6 +9,7 @@ import {
   windowSeries,
   monthlyReturns,
   comparePortfolios,
+  computeCashAmmo,
   loadCachedBenchmarks,
   fetchEgxBenchmarks,
   buildBenchmarkSeries,
@@ -297,16 +298,19 @@ function Mini({ label, value, color }: { label: string; value: string; color?: s
 }
 
 export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point[]; accent?: string; dir?: 'rtl' | 'ltr' }) {
+  const { settings, saveSettings } = useVault();
   const [mode, setMode] = useState<Mode>('capital');
   const [period, setPeriod] = useState<Period>('3M');
   const [unit, setUnit] = useState<'egp' | 'pct'>('egp');
   const [bench, setBench] = useState<BenchmarksState>(() => loadCachedBenchmarks());
   const [syncingBench, setSyncingBench] = useState(false);
   const [bankRate, setBankRate] = useState<number>(() => {
+    if (settings.bankRate && settings.bankRate > 0 && settings.bankRate <= 100) return settings.bankRate;
     const saved = Number(localStorage.getItem('egx_vault_bank_rate'));
     return !isNaN(saved) && saved > 0 && saved <= 100 ? saved : 27;
   });
   const [customBankStr, setCustomBankStr] = useState<string>(() => {
+    if (settings.bankRate && settings.bankRate > 0 && settings.bankRate <= 100) return String(settings.bankRate);
     const saved = Number(localStorage.getItem('egx_vault_bank_rate'));
     return String(!isNaN(saved) && saved > 0 && saved <= 100 ? saved : 27);
   });
@@ -326,6 +330,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
     } catch {
       // ignore
     }
+    saveSettings({ ...settings, bankRate: clamped }).catch(() => {});
   };
 
   useEffect(() => {
@@ -1224,14 +1229,17 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
 /* ───────── Portfolio Distribution & Future Performance Forecast Engine (Zero Redundancy) ───────── */
 export function WealthGrowthDecomposition({
   stats,
+  scopeIds,
   factor = 1,
   onFocusPortfolio,
+  onOpenSnap,
 }: {
   stats?: Stats;
   lensLabel?: string;
   scopeIds?: string[];
   factor?: number;
   onFocusPortfolio?: (pid: string) => void;
+  onOpenSnap?: () => void;
 }) {
   const { settings, snapshots, cashflows } = useVault();
   const activePorts = useMemo(() => settings.portfolios.filter(p => p.active), [settings.portfolios]);
@@ -1240,6 +1248,12 @@ export function WealthGrowthDecomposition({
   const portRows = useMemo(
     () => comparePortfolios(snapshots, cashflows, activePorts).sort((a, b) => b.stats.nav - a.stats.nav),
     [snapshots, cashflows, activePorts]
+  );
+
+  // 1.b حساب رادار الكاش الهجومي المتاح عبر كل المحافظ (كجزء من الإجمالي)
+  const cashAmmo = useMemo(
+    () => computeCashAmmo(snapshots, cashflows, activePorts, scopeIds, factor),
+    [snapshots, cashflows, activePorts, scopeIds, factor]
   );
 
   // 2. معادلة الملكية الخالصة المدمجة (حصتي مقابل الشريك)
@@ -1394,22 +1408,31 @@ export function WealthGrowthDecomposition({
           ))}
         </div>
 
-        {/* Portfolio Compact Rows */}
+        {/* Portfolio Compact Rows with Embedded Cash Ammo Tag */}
         <div className="space-y-1.5">
           {portRows.map((r, idx) => {
             const pNav = r.stats.nav * factor;
             const pProf = r.stats.profit * factor;
+            const pCashInfo = cashAmmo.byPortfolio.find(c => c.portfolioId === r.portfolio.id);
+            const pCash = pCashInfo?.cashAmount ?? 0;
+            const pCashPct = pCashInfo?.cashPct ?? 0;
+
             return (
               <button
                 key={r.portfolio.id}
                 onClick={() => onFocusPortfolio?.(r.portfolio.id)}
                 className="w-full flex items-center justify-between rounded-xl px-2.5 py-1.5 bg-slate-50/80 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-right"
               >
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0">
                   <i className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.portfolio.color }} />
                   <span className="text-xs font-black text-slate-800 dark:text-slate-100 truncate">{r.portfolio.name}</span>
                   {idx === 0 && portRows.length > 1 && <Crown className="w-3 h-3 text-amber-400 shrink-0" />}
                   <span dir="ltr" className="text-[10px] font-black text-slate-400">{r.share.toFixed(0)}%</span>
+                  {pCash > 0 && (
+                    <span dir="ltr" className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 shrink-0" title="كاش متاح داخل هذه المحفظة">
+                      💵 {fmtCompact(pCash)} ({pCashPct.toFixed(0)}%)
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span dir="ltr" className={cx('text-[10px] font-black px-1.5 py-0.5 rounded-md', pProf >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500')}>
@@ -1422,6 +1445,63 @@ export function WealthGrowthDecomposition({
               </button>
             );
           })}
+        </div>
+
+        {/* ───────── رادار الذخيرة الهجومية (Tactical Cash Ammo Radar) ───────── */}
+        <div className="rounded-2xl bg-gradient-to-br from-sky-500/[0.08] via-cyan-500/[0.04] to-indigo-500/[0.06] border border-sky-500/25 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-[11px] font-black text-sky-600 dark:text-sky-400">
+              <Banknote className="w-3.5 h-3.5" />
+              <span>الذخيرة الهجومية (الكاش المتاح)</span>
+            </span>
+            <span className={cx('text-[9.5px] font-black px-2 py-0.5 rounded-full bg-white/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-white/5', cashAmmo.postureColor)}>
+              {cashAmmo.postureLabel}
+            </span>
+          </div>
+
+          <div className="flex items-baseline justify-between">
+            <div dir="ltr" className="text-lg font-black tabular-nums text-slate-900 dark:text-white">
+              {fmt(cashAmmo.totalCash)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
+            </div>
+            <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+              نسبة السيولة: <b dir="ltr" className="text-sky-500 font-black">{cashAmmo.cashPct.toFixed(1)}%</b> من المحفظة
+            </div>
+          </div>
+
+          {/* Ammo Readiness Gauge Bar */}
+          <div className="space-y-1">
+            <div className="h-2 w-full rounded-full bg-slate-200/70 dark:bg-slate-800 overflow-hidden flex" dir="ltr">
+              <div
+                className={cx(
+                  'h-full rounded-full transition-all duration-700',
+                  cashAmmo.cashPct < 5
+                    ? 'bg-rose-500'
+                    : cashAmmo.cashPct < 15
+                    ? 'bg-amber-500'
+                    : 'bg-gradient-to-r from-sky-500 to-emerald-500'
+                )}
+                style={{ width: `${Math.min(100, Math.max(3, (cashAmmo.cashPct / 30) * 100))}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[9px] font-bold text-slate-400">
+              <span>
+                {cashAmmo.totalCash === 0
+                  ? '💡 سجّل الكاش المتاح داخل كل محفظة لتفعيل رادار القنص'
+                  : cashAmmo.targetCash15Amt > 0
+                  ? `للوصول لـ 15% ذخيرة مثالية: +${fmtCompact(cashAmmo.targetCash15Amt)} ج.م`
+                  : '✓ تمتلك سيولة هجومية ممتازة لاقتناص الفرص'}
+              </span>
+              {onOpenSnap && (
+                <button
+                  type="button"
+                  onClick={onOpenSnap}
+                  className="text-sky-600 dark:text-sky-400 font-black hover:underline shrink-0"
+                >
+                  تحديث الكاش ◂
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Compact Partner Split Footer (Embedded without taking extra space) */}

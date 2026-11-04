@@ -338,7 +338,7 @@ export function computeStats(pts: Point[]): Stats {
     maxDD: pts.length ? Math.min(...pts.map(p => p.dd)) * 100 : 0,
     best: months.length ? months.reduce((a, b) => (b.pct > a.pct ? b : a)) : null,
     worst: months.length ? months.reduce((a, b) => (b.pct < a.pct ? b : a)) : null,
-    winRate: months.length ? (months.filter(m => m.gain >= 0).length / months.length) * 100 : null,
+    winRate: months.length ? Math.round((months.filter(m => m.gain >= 0).length / months.length) * 100) : null,
     avgMonth: avg,
     vol,
     ratio: vol && avg !== null && vol > 0 ? avg / vol : null,
@@ -346,6 +346,113 @@ export function computeStats(pts: Point[]): Stats {
     streak,
     days,
     months,
+  };
+}
+
+/* ───────── Tactical Cash Ammo & Readiness Engine (الكاش الهجومي) ───────── */
+export interface PortfolioCashBreakdown {
+  portfolioId: string;
+  portfolioName: string;
+  color: string;
+  totalNav: number;
+  cashAmount: number;
+  investedAmount: number;
+  cashPct: number;
+}
+
+export interface CashAmmoSummary {
+  totalNav: number;
+  totalCash: number;
+  totalInvested: number;
+  cashPct: number;
+  posture: 'depleted' | 'defensive' | 'optimal' | 'fortress';
+  postureLabel: string;
+  postureColor: string;
+  targetCash15Amt: number; // المبلغ المطلوب للوصول لـ 15% كاش هجومي
+  targetCash20Amt: number; // المبلغ المطلوب للوصول لـ 20% كاش هجومي
+  byPortfolio: PortfolioCashBreakdown[];
+}
+
+export function computeCashAmmo(
+  snaps: VaultSnapshot[],
+  flows: VaultCashflow[],
+  portfolios: VaultPortfolio[],
+  scopeIds?: string[],
+  factor = 1
+): CashAmmoSummary {
+  const activePorts = portfolios.filter(p => p.active && (!scopeIds || !scopeIds.length || scopeIds.includes(p.id)));
+  const byPortfolio: PortfolioCashBreakdown[] = [];
+  let totalNav = 0;
+  let totalCash = 0;
+
+  for (const p of activePorts) {
+    const ps = snaps.filter(s => s.portfolioId === p.id).sort((a, b) => a.date.localeCompare(b.date));
+    const snap = ps[ps.length - 1];
+    const afterFlow = flows.filter(f => f.portfolioId === p.id && (!snap || f.date > snap.date)).reduce((a, f) => a + signed(f), 0);
+
+    const rawNav = (snap ? snap.total : 0) + afterFlow;
+    const rawSnapCash = snap?.breakdown?.cash ?? 0;
+    // أي إيداع نقدي بعد آخر تقييم لم يتم تحديث تقييمه يُعامل كسيولة نقدية مضافة، وأي سحب يخصم من الكاش أولاً
+    const rawCash = Math.max(0, Math.min(rawNav, rawSnapCash + afterFlow));
+
+    const pNav = Math.round(rawNav * factor);
+    const pCash = Math.round(rawCash * factor);
+    const pInvested = Math.max(0, pNav - pCash);
+    const pCashPct = pNav > 0 ? (pCash / pNav) * 100 : 0;
+
+    totalNav += pNav;
+    totalCash += pCash;
+
+    byPortfolio.push({
+      portfolioId: p.id,
+      portfolioName: p.name,
+      color: p.color,
+      totalNav: pNav,
+      cashAmount: pCash,
+      investedAmount: pInvested,
+      cashPct: pCashPct,
+    });
+  }
+
+  const totalInvested = Math.max(0, totalNav - totalCash);
+  const cashPct = totalNav > 0 ? (totalCash / totalNav) * 100 : 0;
+
+  let posture: CashAmmoSummary['posture'] = 'optimal';
+  let postureLabel = 'منطقة القنص المثالية 🎯';
+  let postureColor = 'text-emerald-500';
+
+  if (cashPct < 5) {
+    posture = 'depleted';
+    postureLabel = 'ذخيرة مستنفدة (أقصى تعرض)';
+    postureColor = 'text-rose-500';
+  } else if (cashPct < 15) {
+    posture = 'defensive';
+    postureLabel = 'ذخيرة دفاعية محدودة';
+    postureColor = 'text-amber-500';
+  } else if (cashPct <= 30) {
+    posture = 'optimal';
+    postureLabel = 'وضعية القنص المثالية 🎯';
+    postureColor = 'text-emerald-500';
+  } else {
+    posture = 'fortress';
+    postureLabel = 'سيولة استراتيجية عالية 🛡️';
+    postureColor = 'text-sky-500';
+  }
+
+  const targetCash15Amt = Math.max(0, Math.round(totalNav * 0.15 - totalCash));
+  const targetCash20Amt = Math.max(0, Math.round(totalNav * 0.2 - totalCash));
+
+  return {
+    totalNav,
+    totalCash,
+    totalInvested,
+    cashPct,
+    posture,
+    postureLabel,
+    postureColor,
+    targetCash15Amt,
+    targetCash20Amt,
+    byPortfolio: byPortfolio.sort((a, b) => b.totalNav - a.totalNav),
   };
 }
 

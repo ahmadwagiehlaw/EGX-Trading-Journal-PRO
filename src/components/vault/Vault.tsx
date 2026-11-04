@@ -212,6 +212,7 @@ function VaultInner() {
                 scopeIds={scopeIds}
                 factor={factor}
                 onFocusPortfolio={pid => setScope(pid)}
+                onOpenSnap={() => setSnapOpen(true)}
               />
               <KpiGrid stats={stats} pts={pts} />
             </div>

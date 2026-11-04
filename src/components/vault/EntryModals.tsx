@@ -207,19 +207,58 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
     setTotals(prev => ({ ...prev, [portfolioId]: val }));
     const nVal = num(val);
     const chosenTag = quickAsset[portfolioId] || settings.portfolios.find(p => p.id === portfolioId)?.pinnedAsset || 'stocks';
-    const curBd = portfolioBreakdowns[portfolioId];
-    const isMultiAsset = curBd && Object.values(curBd).filter(v => num(v) > 0).length > 1;
-    // Only auto-allocate if not a custom multi-asset split
-    if (!isMultiAsset) {
-      if (nVal > 0) {
-        setPortfolioBreakdowns(prev => ({ ...prev, [portfolioId]: { [chosenTag]: val } }));
-      } else {
-        setPortfolioBreakdowns(prev => ({ ...prev, [portfolioId]: {} }));
-      }
+    const curBd = portfolioBreakdowns[portfolioId] || {};
+    const cashVal = Math.min(nVal, num(curBd.cash ?? ''));
+
+    if (nVal <= 0) {
+      setPortfolioBreakdowns(prev => ({ ...prev, [portfolioId]: {} }));
+      return;
+    }
+
+    // إذا كان هناك كاش مسجل كجزء من الإجمالي، يُخصم من الإجمالي ويذهب الباقي للأصل الأساسي (الأسهم)
+    if (cashVal > 0 && chosenTag !== 'cash') {
+      const restStocks = Math.max(0, nVal - cashVal);
+      setPortfolioBreakdowns(prev => ({
+        ...prev,
+        [portfolioId]: {
+          ...curBd,
+          [chosenTag]: restStocks > 0 ? String(restStocks) : '',
+          cash: String(cashVal),
+        },
+      }));
+    } else {
+      setPortfolioBreakdowns(prev => ({ ...prev, [portfolioId]: { [chosenTag]: val } }));
     }
   };
 
-  // Specialized handlers for Thndr's 3 smart sub-boxes (stocks - clouds - equityFunds)
+  // معالج سريع لتسجيل الكاش المتاح كجزء داخلي من إجمالي المحفظة (وليس إضافة فوقها)
+  const handleQuickCashSplitChange = (portfolioId: string, cashStr: string) => {
+    const curTotal = num(totals[portfolioId] ?? '');
+    const curBd = portfolioBreakdowns[portfolioId] || {};
+    const rawCash = num(cashStr);
+
+    if (curTotal <= 0) {
+      // إذا لم يكن الإجمالي مكتوباً بعد، نسجل الكاش فقط كقيمة مبدئية
+      setPortfolioBreakdowns(prev => ({ ...prev, [portfolioId]: { ...curBd, cash: cashStr } }));
+      return;
+    }
+
+    const clampedCash = Math.min(curTotal, Math.max(0, rawCash));
+    const chosenTag = quickAsset[portfolioId] || settings.portfolios.find(p => p.id === portfolioId)?.pinnedAsset || 'stocks';
+    const otherAssets = portfolioId === 'thndr' ? num(curBd.clouds ?? '') + num(curBd.equityFunds ?? '') : 0;
+    const remainingMain = Math.max(0, curTotal - clampedCash - otherAssets);
+
+    setPortfolioBreakdowns(prev => ({
+      ...prev,
+      [portfolioId]: {
+        ...curBd,
+        [chosenTag === 'cash' ? 'stocks' : chosenTag]: remainingMain > 0 ? String(remainingMain) : '',
+        cash: cashStr === '' ? '' : String(clampedCash),
+      },
+    }));
+  };
+
+  // Specialized handlers for Thndr's smart sub-boxes (stocks - clouds - cash)
   const handleThndrMainTotalChange = (val: string) => {
     setTotals(prev => ({ ...prev, thndr: val }));
     setTotalManuallySet(true);
@@ -227,18 +266,19 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
     const curBd = portfolioBreakdowns['thndr'] || {};
     const cloudsVal = num(curBd.clouds ?? '');
     const fundsVal = num(curBd.equityFunds ?? '');
+    const cashVal = num(curBd.cash ?? '');
 
     if (tot <= 0) {
       setPortfolioBreakdowns(prev => ({
         ...prev,
-        thndr: { stocks: '', clouds: '', equityFunds: '' },
+        thndr: { stocks: '', clouds: '', equityFunds: '', cash: '' },
       }));
       return;
     }
 
-    // إذا كانت هناك أصول فرعية مسجلة: تُحسب الأسهم كباقي الإجمالي تلقائياً
-    if (cloudsVal > 0 || fundsVal > 0) {
-      const remainingStocks = Math.max(0, tot - cloudsVal - fundsVal);
+    // إذا كانت هناك أصول فرعية أو كاش مسجل: تُحسب الأسهم كباقي الإجمالي تلقائياً (الكاش جزء من الإجمالي وليس فوقه)
+    if (cloudsVal > 0 || fundsVal > 0 || cashVal > 0) {
+      const remainingStocks = Math.max(0, tot - cloudsVal - fundsVal - cashVal);
       setPortfolioBreakdowns(prev => ({
         ...prev,
         thndr: {
@@ -249,43 +289,37 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
     } else {
       setPortfolioBreakdowns(prev => ({
         ...prev,
-        thndr: { stocks: val, clouds: '', equityFunds: '' },
+        thndr: { stocks: val, clouds: '', equityFunds: '', cash: '' },
       }));
     }
   };
 
-  const handleThndrSubChange = (field: 'stocks' | 'clouds' | 'equityFunds', subVal: string) => {
+  const handleThndrSubChange = (field: 'stocks' | 'clouds' | 'equityFunds' | 'cash', subVal: string) => {
     const curBd = portfolioBreakdowns['thndr'] || {};
     const curTotal = num(totals['thndr'] ?? '');
-    const curFunds = num(curBd.equityFunds ?? '');
     const subNum = num(subVal);
 
-    const newBd = { ...curBd, [field]: subVal };
-
-    // إذا كتب المستخدم الإجمالي أولاً (مثلاً 100 ألف) ثم أدخل الكلاودز أو الأسهم:
-    if (totalManuallySet && curTotal > 0 && subNum > 0 && subNum < curTotal) {
-      if (field === 'clouds') {
-        const remainingStocks = Math.max(0, curTotal - subNum - curFunds);
-        newBd.stocks = remainingStocks > 0 ? String(remainingStocks) : '';
-        setPortfolioBreakdowns(prev => ({ ...prev, thndr: newBd }));
-        setTotalManuallySet(false);
-        return;
-      } else if (field === 'stocks') {
-        const remainingClouds = Math.max(0, curTotal - subNum - curFunds);
-        newBd.clouds = remainingClouds > 0 ? String(remainingClouds) : '';
-        setPortfolioBreakdowns(prev => ({ ...prev, thndr: newBd }));
-        setTotalManuallySet(false);
-        return;
-      }
+    // إذا عدل المستخدم خانة الكاش أو الكلاودز وكان الإجمالي مكتوباً بالفعل: يُخصم من الأسهم ويظل الإجمالي ثابتاً!
+    if ((field === 'cash' || (totalManuallySet && field === 'clouds')) && curTotal > 0 && subNum <= curTotal) {
+      const nextBd = { ...curBd, [field]: subVal };
+      const cVal = num(nextBd.clouds ?? '');
+      const fVal = num(nextBd.equityFunds ?? '');
+      const kVal = num(nextBd.cash ?? '');
+      const remainingStocks = Math.max(0, curTotal - cVal - fVal - kVal);
+      nextBd.stocks = remainingStocks > 0 ? String(remainingStocks) : '';
+      setPortfolioBreakdowns(prev => ({ ...prev, thndr: nextBd }));
+      return;
     }
 
+    const newBd = { ...curBd, [field]: subVal };
     setTotalManuallySet(false);
 
-    // الجمع التلقائي المباشر: الإجمالي = الأسهم + الكلاودز + الصناديق
+    // الجمع التلقائي المباشر في حال إدخال الأجزاء بدون إجمالي مسبق
     const s = num(newBd.stocks ?? '');
     const c = num(newBd.clouds ?? '');
     const f = num(newBd.equityFunds ?? '');
-    const sum = s + c + f;
+    const k = num(newBd.cash ?? '');
+    const sum = s + c + f + k;
 
     setPortfolioBreakdowns(prev => ({
       ...prev,
@@ -469,16 +503,34 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
           </div>
         </div>
 
-        {/* Dedicated Full-Width Grand Total Review Bar (Never clipped, prominent & clean) */}
-        <div className="flex items-center justify-between rounded-2xl bg-gradient-to-l from-slate-900 to-slate-800 dark:from-slate-800 dark:to-slate-900 px-4 py-2.5 text-white shadow-sm">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-300">إجمالي القيمة السوقية لكل المحافظ:</span>
-            {editDate && <span className="text-[9px] font-black text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">وضع التعديل</span>}
-          </div>
-          <div dir="ltr" className="text-xl font-black text-orange-400 tabular-nums">
-            {fmt(grandTotal)} <span className="text-xs font-bold text-slate-400">ج.م</span>
-          </div>
-        </div>
+        {/* Dedicated Full-Width Grand Total + Offensive Cash Ammo Review Bar */}
+        {(() => {
+          const totalCashEntered = active.reduce((sum, p) => sum + num(portfolioBreakdowns[p.id]?.cash ?? ''), 0);
+          const cashPctOfTotal = grandTotal > 0 ? (totalCashEntered / grandTotal) * 100 : 0;
+          return (
+            <div className="rounded-2xl bg-gradient-to-l from-slate-900 to-slate-800 dark:from-slate-800 dark:to-slate-900 px-4 py-2.5 text-white shadow-sm space-y-1.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-300">إجمالي القيمة السوقية للمحافظ:</span>
+                  {editDate && <span className="text-[9px] font-black text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">وضع التعديل</span>}
+                </div>
+                <div dir="ltr" className="text-xl font-black text-orange-400 tabular-nums">
+                  {fmt(grandTotal)} <span className="text-xs font-bold text-slate-400">ج.م</span>
+                </div>
+              </div>
+              {grandTotal > 0 && (
+                <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[11px] font-bold">
+                  <span className="text-sky-300 flex items-center gap-1">
+                    <span>💵 الذخيرة الهجومية (الكاش المتاح داخلياً):</span>
+                  </span>
+                  <span dir="ltr" className="font-black text-sky-400 tabular-nums">
+                    {fmt(totalCashEntered)} ج.م ({cashPctOfTotal.toFixed(1)}% من الإجمالي)
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {mode === 'quick' ? (
           <div className="space-y-2.5">
@@ -526,103 +578,211 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
                   </div>
 
                   {p.id === 'thndr' ? (
-                    /* 3 Compact Smart Sub-boxes for Thndr */
-                    <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/60 mt-1">
-                      {/* 1. الأسهم */}
-                      <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.03] p-1.5 space-y-0.5">
-                        <div className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
-                          📈 أسهم
+                    /* 4 Compact Smart Sub-boxes for Thndr (Stocks, Cash Ammo, Clouds, Funds) */
+                    <div className="space-y-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/60 mt-1">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        {/* 1. الأسهم */}
+                        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.03] p-1.5 space-y-0.5">
+                          <div className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
+                            📈 أسهم
+                          </div>
+                          <input
+                            inputMode="decimal"
+                            dir="ltr"
+                            value={curBd?.stocks ?? ''}
+                            onChange={e => handleThndrSubChange('stocks', e.target.value)}
+                            placeholder="0"
+                            className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
+                          />
                         </div>
-                        <input
-                          inputMode="decimal"
-                          dir="ltr"
-                          value={curBd?.stocks ?? ''}
-                          onChange={e => handleThndrSubChange('stocks', e.target.value)}
-                          placeholder="0"
-                          className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
-                        />
+
+                        {/* 2. الكاش الهجومي المتاح */}
+                        <div className="rounded-xl border border-sky-500/35 bg-sky-500/[0.06] p-1.5 space-y-0.5">
+                          <div className="flex items-center justify-between text-[10px] font-black text-sky-600 dark:text-sky-400">
+                            <span>💵 كاش متاح</span>
+                            {num(totals[p.id] ?? '') > 0 && num(curBd?.cash ?? '') > 0 && (
+                              <span dir="ltr" className="text-[9px]">
+                                {((num(curBd?.cash ?? '') / num(totals[p.id] ?? '')) * 100).toFixed(0)}%
+                              </span>
+                            )}
+                          </div>
+                          <input
+                            inputMode="decimal"
+                            dir="ltr"
+                            value={curBd?.cash ?? ''}
+                            onChange={e => handleThndrSubChange('cash', e.target.value)}
+                            placeholder="من الإجمالي"
+                            className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
+                          />
+                        </div>
+
+                        {/* 3. الكلاودز */}
+                        <div className="rounded-xl border border-violet-500/25 bg-violet-500/[0.03] p-1.5 space-y-0.5">
+                          <div className="text-[10px] font-black text-violet-600 dark:text-violet-400">
+                            ☁️ كلاودز
+                          </div>
+                          <input
+                            inputMode="decimal"
+                            dir="ltr"
+                            value={curBd?.clouds ?? ''}
+                            onChange={e => handleThndrSubChange('clouds', e.target.value)}
+                            placeholder="0"
+                            className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
+                          />
+                        </div>
+
+                        {/* 4. صناديق الاستثمار */}
+                        <div className="rounded-xl border border-teal-500/25 bg-teal-500/[0.03] p-1.5 space-y-0.5">
+                          <div className="text-[10px] font-black text-teal-600 dark:text-teal-400">
+                            🧺 صناديق
+                          </div>
+                          <input
+                            inputMode="decimal"
+                            dir="ltr"
+                            value={curBd?.equityFunds ?? ''}
+                            onChange={e => handleThndrSubChange('equityFunds', e.target.value)}
+                            placeholder="0"
+                            className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
+                          />
+                        </div>
                       </div>
 
-                      {/* 2. الكلاودز */}
-                      <div className="rounded-xl border border-violet-500/25 bg-violet-500/[0.03] p-1.5 space-y-0.5">
-                        <div className="text-[10px] font-black text-violet-600 dark:text-violet-400">
-                          ☁️ كلاودز
-                        </div>
-                        <input
-                          inputMode="decimal"
-                          dir="ltr"
-                          value={curBd?.clouds ?? ''}
-                          onChange={e => handleThndrSubChange('clouds', e.target.value)}
-                          placeholder="0"
-                          className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
-                        />
-                      </div>
-
-                      {/* 3. صناديق الاستثمار */}
-                      <div className="rounded-xl border border-teal-500/25 bg-teal-500/[0.03] p-1.5 space-y-0.5">
-                        <div className="text-[10px] font-black text-teal-600 dark:text-teal-400">
-                          🧺 صناديق
-                        </div>
-                        <input
-                          inputMode="decimal"
-                          dir="ltr"
-                          value={curBd?.equityFunds ?? ''}
-                          onChange={e => handleThndrSubChange('equityFunds', e.target.value)}
-                          placeholder="0"
-                          className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    /* Quick asset allocation tags for other portfolios */
-                    <div className="flex items-center gap-1.5 pt-1 pr-5 flex-wrap">
-                      <span className="text-[10px] font-bold text-slate-400 shrink-0">تخصيص سريع:</span>
-                      {isMulti && (
-                        <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20 shrink-0">
-                          موزع تفصيلياً (تفصيلي بالأصول)
-                        </span>
-                      )}
-                      {(() => {
-                        const isExpanded = !!expandedTags[p.id];
-                        const primaryKeys: AssetKey[] = ['stocks', 'clouds'];
-                        const secondaryKeys: AssetKey[] = ['fixedIncome', 'gold', 'cash'];
-                        const visibleKeys = isExpanded
-                          ? [...primaryKeys, ...secondaryKeys]
-                          : (activeTag && secondaryKeys.includes(activeTag) ? [...primaryKeys, activeTag] : primaryKeys);
-
-                        return (
-                          <>
-                            {visibleKeys.map(k => {
-                              const meta = ASSET_META[k];
-                              const isSelected = activeTag === k;
+                      {/* أزرار سريعة لنسبة الكاش الهجومي داخل ثاندر (كجزء من الإجمالي) */}
+                      {num(totals[p.id] ?? '') > 0 && (
+                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 px-1">
+                          <span>تحديد سريع للكاش المتاح من الإجمالي:</span>
+                          <div className="flex items-center gap-1" dir="ltr">
+                            {[0, 10, 15, 20, 30].map(pct => {
+                              const totVal = num(totals[p.id] ?? '');
+                              const targetCash = Math.round((totVal * pct) / 100);
+                              const curCash = num(curBd?.cash ?? '');
+                              const isAct = totVal > 0 && Math.abs(curCash - targetCash) < 50 && (pct > 0 ? curCash > 0 : curCash === 0);
                               return (
                                 <button
-                                  key={k}
+                                  key={pct}
                                   type="button"
-                                  onClick={() => handleQuickTagClick(p.id, k)}
+                                  onClick={() => handleQuickCashSplitChange(p.id, pct === 0 ? '' : String(targetCash))}
                                   className={cx(
-                                    'text-[10px] font-black px-2 py-0.5 rounded-lg border transition-all flex items-center gap-1 shrink-0',
-                                    isSelected
-                                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-transparent shadow-xs scale-[1.03]'
-                                      : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                                    'px-1.5 py-0.5 rounded-md font-black transition',
+                                    isAct
+                                      ? 'bg-sky-500 text-white'
+                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-sky-500/15 hover:text-sky-500'
                                   )}
                                 >
-                                  <span>{meta.emoji}</span>
-                                  <span>{meta.label}</span>
-                                  {isSelected && <span className="text-[9px] opacity-75">100%</span>}
+                                  {pct}%
                                 </button>
                               );
                             })}
-                            <button
-                              type="button"
-                              onClick={() => setExpandedTags(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
-                              className="text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-2 py-0.5 rounded-lg transition shrink-0"
-                            >
-                              {isExpanded ? 'إخفاء ▴' : '+ المزيد'}
-                            </button>
-                          </>
-                        );
-                      })()}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* Quick Cash Split + Asset tags for other portfolios (Mubasher, Hermes, etc.) */
+                    <div className="space-y-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/60 mt-1">
+                      {/* سطر الكاش الهجومي السريع (جزء داخلي من إجمالي المحفظة) */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-sky-500/[0.05] border border-sky-500/20 px-2.5 py-1.5">
+                        <div className="flex items-center gap-1.5 text-[11px] font-black text-sky-600 dark:text-sky-400">
+                          <span>💵 الكاش المتاح (جزء من الإجمالي):</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-1 sm:flex-initial justify-end">
+                          <input
+                            inputMode="decimal"
+                            dir="ltr"
+                            value={curBd?.cash ?? ''}
+                            onChange={e => handleQuickCashSplitChange(p.id, e.target.value)}
+                            placeholder="0 (اختياري)"
+                            className={cx(inputCls, '!w-28 !py-1 !px-2 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
+                          />
+                          {num(totals[p.id] ?? '') > 0 && (
+                            <div className="flex items-center gap-1" dir="ltr">
+                              {[0, 10, 20].map(pct => {
+                                const totVal = num(totals[p.id] ?? '');
+                                const targetCash = Math.round((totVal * pct) / 100);
+                                const curCash = num(curBd?.cash ?? '');
+                                const isAct = totVal > 0 && Math.abs(curCash - targetCash) < 50 && (pct > 0 ? curCash > 0 : curCash === 0);
+                                return (
+                                  <button
+                                    key={pct}
+                                    type="button"
+                                    onClick={() => handleQuickCashSplitChange(p.id, pct === 0 ? '' : String(targetCash))}
+                                    className={cx(
+                                      'px-1.5 py-0.5 rounded-md text-[10px] font-black transition',
+                                      isAct
+                                        ? 'bg-sky-500 text-white'
+                                        : 'bg-white dark:bg-slate-800 text-slate-500 hover:bg-sky-500/15 hover:text-sky-500 border border-slate-200 dark:border-slate-700'
+                                    )}
+                                  >
+                                    {pct}%
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ملخص التوزيع الداخلي التلقائي (أسهم مقابل كاش) */}
+                      {num(totals[p.id] ?? '') > 0 && num(curBd?.cash ?? '') > 0 && (
+                        <div className="flex items-center justify-between px-2 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                          <span>التوزيع الداخلي لـ {fmt(num(totals[p.id] ?? ''))} ج.م:</span>
+                          <span dir="ltr" className="font-black">
+                            📈 أسهم: <b className="text-emerald-500">{fmt(Math.max(0, num(totals[p.id] ?? '') - num(curBd?.cash ?? '')))}</b>
+                            {' · '}
+                            💵 كاش: <b className="text-sky-500">{fmt(num(curBd?.cash ?? ''))} ({((num(curBd?.cash ?? '') / num(totals[p.id] ?? '')) * 100).toFixed(1)}%)</b>
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1.5 pr-2 flex-wrap">
+                        <span className="text-[10px] font-bold text-slate-400 shrink-0">الأصل الأساسي:</span>
+                        {isMulti && !curBd?.cash && (
+                          <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20 shrink-0">
+                            موزع تفصيلياً
+                          </span>
+                        )}
+                        {(() => {
+                          const isExpanded = !!expandedTags[p.id];
+                          const primaryKeys: AssetKey[] = ['stocks', 'clouds'];
+                          const secondaryKeys: AssetKey[] = ['fixedIncome', 'gold', 'cash'];
+                          const visibleKeys = isExpanded
+                            ? [...primaryKeys, ...secondaryKeys]
+                            : (activeTag && secondaryKeys.includes(activeTag) ? [...primaryKeys, activeTag] : primaryKeys);
+
+                          return (
+                            <>
+                              {visibleKeys.map(k => {
+                                const meta = ASSET_META[k];
+                                const isSelected = activeTag === k;
+                                return (
+                                  <button
+                                    key={k}
+                                    type="button"
+                                    onClick={() => handleQuickTagClick(p.id, k)}
+                                    className={cx(
+                                      'text-[10px] font-black px-2 py-0.5 rounded-lg border transition-all flex items-center gap-1 shrink-0',
+                                      isSelected
+                                        ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-transparent shadow-xs scale-[1.03]'
+                                        : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                                    )}
+                                  >
+                                    <span>{meta.emoji}</span>
+                                    <span>{meta.label}</span>
+                                    {isSelected && <span className="text-[9px] opacity-75">100%</span>}
+                                  </button>
+                                );
+                              })}
+                              <button
+                                type="button"
+                                onClick={() => setExpandedTags(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                                className="text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-2 py-0.5 rounded-lg transition shrink-0"
+                              >
+                                {isExpanded ? 'إخفاء ▴' : '+ المزيد'}
+                              </button>
+                            </>
+                          );
+                        })()}
+                      </div>
                     </div>
                   )}
                 </div>

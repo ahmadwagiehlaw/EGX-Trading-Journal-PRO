@@ -297,6 +297,32 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
         />
       </div>
 
+      {/* شريط معادلة الحصاد النقدي والتراكم الرأسمالي (Cash Harvest vs Compounded Equity) */}
+      {(summary.totalMineEarned > 0 || summary.totalDistPartner > 0) && (
+        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/90 px-4 py-3 shadow-sm flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3 text-xs font-black">
+            <span className="text-slate-700 dark:text-slate-200">⚡ معادلة الثروة وتوزيع العوائد:</span>
+            <span className="inline-flex items-center gap-1 rounded-xl bg-amber-500/10 px-2.5 py-1 text-amber-600 dark:text-amber-400">
+              <span>كاش مسحوب وموزع لـ {partnerName}:</span>
+              <b dir="ltr">{fmt(summary.totalDistPartner)} ج.م</b>
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-xl bg-emerald-500/10 px-2.5 py-1 text-emerald-600 dark:text-emerald-400">
+              <span>أرباحي المعاد استثمارها تراكمياً ({mySharePct}%):</span>
+              <b dir="ltr">{fmt(summary.totalMineEarned)} ج.م</b>
+            </span>
+            {summary.activePartnerReserve > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-xl bg-violet-500/10 px-2.5 py-1 text-violet-600 dark:text-violet-400">
+                <span>احتياطي مجنب مرحّل:</span>
+                <b dir="ltr">{fmt(summary.activePartnerReserve)} ج.م</b>
+              </span>
+            )}
+          </div>
+          <span className="text-[11px] font-black text-slate-400" dir="ltr">
+            إجمالي الثروة المفرزة: <b className="text-slate-900 dark:text-white">{fmt(summary.totalMineEarned + summary.totalDistPartner + summary.activePartnerReserve)} ج.م</b>
+          </span>
+        </div>
+      )}
+
       {/* جزآن متساويان في الارتفاع والحجم: تسجيل الشهر + الشارت التحليلي */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-stretch">
         {/* الفورم الذكي المدمج لتسجيل الشهر */}
