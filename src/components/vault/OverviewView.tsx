@@ -105,77 +105,17 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
           const atPeak = Boolean(peakPt && toPeak <= 0);
           return (
             <>
-              {/* Main Row: Right = Giant NAV + Cash chip | Left = Scope badges + Peak trophy */}
-              <div className="relative flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                    <span
-                      dir="ltr"
-                      className={cx(
-                        'text-4xl sm:text-6xl font-black tabular-nums tracking-tight transition-all',
-                        atPeak && 'bg-gradient-to-r from-white via-amber-100 to-amber-300 bg-clip-text text-transparent drop-shadow-[0_0_25px_rgba(251,191,36,0.25)]'
-                      )}
-                    >
-                      <CountUp value={stats.nav} format={n => fmt(n)} />
-                    </span>
-                    <span className="text-sm font-bold text-slate-400">ج.م</span>
-
-                    {/* Offensive Cash — plain icon + number; colour + hairline gauge hint at the 15% target */}
-                    {(() => {
-                      const cp = heroCash.cashPct;
-                      const tone =
-                        heroCash.totalCash <= 0 || cp < 5
-                          ? { txt: 'text-rose-300', ico: 'text-rose-400', bar: 'bg-rose-400', glow: 'drop-shadow-[0_0_6px_rgba(251,113,133,0.55)]' }
-                          : cp < 15
-                          ? { txt: 'text-amber-200', ico: 'text-amber-300', bar: 'bg-amber-300', glow: 'drop-shadow-[0_0_6px_rgba(252,211,77,0.45)]' }
-                          : cp <= 30
-                          ? { txt: 'text-emerald-200', ico: 'text-emerald-300', bar: 'bg-emerald-400', glow: 'drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]' }
-                          : { txt: 'text-sky-200', ico: 'text-sky-300', bar: 'bg-sky-400', glow: 'drop-shadow-[0_0_6px_rgba(56,189,248,0.45)]' };
-                      const belowTarget = cp < 15;
-                      const fill = Math.min(100, (cp / 15) * 100);
-                      return (
-                        <span
-                          dir="ltr"
-                          title={belowTarget ? `${heroCash.postureLabel} · +${fmtCompact(heroCash.targetCash15Amt)} للوصول لـ 15%` : heroCash.postureLabel}
-                          className="inline-flex flex-col gap-1"
-                        >
-                          <span className="inline-flex items-center gap-1.5">
-                            <Wallet className={cx('w-5 h-5', tone.ico, belowTarget && 'animate-pulse')} strokeWidth={2.2} />
-                            <span className={cx('text-xl font-black tabular-nums tracking-tight', tone.txt, tone.glow)}>
-                              {fmtCompact(heroCash.totalCash)}
-                            </span>
-                            <span className="text-xs font-bold tabular-nums text-slate-400">{cp.toFixed(0)}%</span>
-                          </span>
-                          <span className="relative h-[2px] w-full rounded-full bg-white/10 overflow-visible">
-                            <span className={cx('absolute inset-y-0 left-0 rounded-full transition-all duration-700', tone.bar)} style={{ width: `${fill}%` }} />
-                            {belowTarget && <span className="absolute -top-[2px] right-0 h-[6px] w-[2px] rounded-full bg-white/50" />}
-                          </span>
-                        </span>
-                      );
-                    })()}
-
-                    {/* When Current Market Value is at/above Peak -> Trophy Victory Emblem */}
-                    {atPeak && (
-                      <span
-                        title="القمة التاريخية"
-                        className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-gradient-to-br from-amber-300 via-yellow-400 to-orange-500 text-slate-950 shadow-lg shadow-amber-400/40 ring-2 ring-amber-300/40 animate-pulse"
-                      >
-                        <Trophy className="w-4 h-4" />
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Return pill — right under the market value */}
-                  <div className="mt-2.5 flex">
-                    <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 text-sm font-black', up ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300')}>
-                      {up ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                      <span dir="ltr">{fmtPct(stats.retPct)}</span>
-                    </span>
-                  </div>
+              {/* Top Row: Right = Scope badges | Left = Peak trophy (or expanded card) */}
+              <div className="flex items-start justify-between gap-4">
+                {/* Right: Scope / lens / date badges */}
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] font-black pt-1">
+                  <span className="rounded-full bg-white/10 px-2.5 sm:px-3 py-1 backdrop-blur">{scopeLabel}</span>
+                  <span className="rounded-full bg-white/10 px-2.5 sm:px-3 py-1 backdrop-blur">{lensLabel}</span>
+                  {last && <span className="text-slate-400 font-bold">آخر تحديث {fmtDate(last.date)}</span>}
                 </div>
 
-                {/* Left cluster: Peak trophy (or expanded card) + scope/date badges */}
-                <div dir="ltr" className="flex flex-wrap items-start gap-2.5">
+                {/* Left: Peak trophy (or expanded card) */}
+                <div dir="ltr" className="flex items-start">
                   {peakPt && !peakOpen && (
                     <button
                       type="button"
@@ -291,12 +231,75 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
 
-                  {/* Scope / lens / date — compact, moved to the left */}
-                  <div dir="rtl" className="flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px] font-black pt-1">
-                    <span className="rounded-full bg-white/10 px-2.5 py-1 backdrop-blur">{scopeLabel}</span>
-                    <span className="rounded-full bg-white/10 px-2.5 py-1 backdrop-blur">{lensLabel}</span>
-                    {last && <span className="text-slate-400 font-bold">{fmtDate(last.date)}</span>}
+              {/* Main Numbers Row: Giant Market Value + Cash Chip & Return Pill Right Under It */}
+              <div className="mt-4 flex flex-col sm:flex-row sm:items-baseline justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span
+                      dir="ltr"
+                      className={cx(
+                        'text-4xl sm:text-6xl font-black tabular-nums tracking-tight transition-all',
+                        atPeak && 'bg-gradient-to-r from-white via-amber-100 to-amber-300 bg-clip-text text-transparent drop-shadow-[0_0_25px_rgba(251,191,36,0.25)]'
+                      )}
+                    >
+                      <CountUp value={stats.nav} format={n => fmt(n)} />
+                    </span>
+                    <span className="text-sm font-bold text-slate-400">ج.م</span>
+
+                    {/* When Current Market Value is at/above Peak -> Trophy Victory Emblem */}
+                    {atPeak && (
+                      <span
+                        title="القمة التاريخية"
+                        className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-gradient-to-br from-amber-300 via-yellow-400 to-orange-500 text-slate-950 shadow-lg shadow-amber-400/40 ring-2 ring-amber-300/40 animate-pulse"
+                      >
+                        <Trophy className="w-4 h-4" />
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Return pill + Cash directly under the NAV number */}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs sm:text-sm font-black', up ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300')}>
+                      {up ? <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                      <span dir="ltr">{fmtPct(stats.retPct)}</span>
+                    </span>
+
+                    {/* Offensive Cash — plain icon + number; colour + hairline gauge hint at the 15% target */}
+                    {(() => {
+                      const cp = heroCash.cashPct;
+                      const tone =
+                        heroCash.totalCash <= 0 || cp < 5
+                          ? { txt: 'text-rose-300', ico: 'text-rose-400', bar: 'bg-rose-400', glow: 'drop-shadow-[0_0_6px_rgba(251,113,133,0.55)]' }
+                          : cp < 15
+                          ? { txt: 'text-amber-200', ico: 'text-amber-300', bar: 'bg-amber-300', glow: 'drop-shadow-[0_0_6px_rgba(252,211,77,0.45)]' }
+                          : cp <= 30
+                          ? { txt: 'text-emerald-200', ico: 'text-emerald-300', bar: 'bg-emerald-400', glow: 'drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]' }
+                          : { txt: 'text-sky-200', ico: 'text-sky-300', bar: 'bg-sky-400', glow: 'drop-shadow-[0_0_6px_rgba(56,189,248,0.45)]' };
+                      const belowTarget = cp < 15;
+                      const fill = Math.min(100, (cp / 15) * 100);
+                      return (
+                        <span
+                          dir="ltr"
+                          title={belowTarget ? `${heroCash.postureLabel} · +${fmtCompact(heroCash.targetCash15Amt)} للوصول لـ 15%` : heroCash.postureLabel}
+                          className="inline-flex flex-col gap-0.5"
+                        >
+                          <span className="inline-flex items-center gap-1.5">
+                            <Wallet className={cx('w-4 h-4 sm:w-5 sm:h-5', tone.ico, belowTarget && 'animate-pulse')} strokeWidth={2.2} />
+                            <span className={cx('text-lg sm:text-xl font-black tabular-nums tracking-tight', tone.txt, tone.glow)}>
+                              {fmtCompact(heroCash.totalCash)}
+                            </span>
+                            <span className="text-[11px] sm:text-xs font-bold tabular-nums text-slate-400">{cp.toFixed(0)}%</span>
+                          </span>
+                          <span className="relative h-[2px] w-full rounded-full bg-white/10 overflow-visible">
+                            <span className={cx('absolute inset-y-0 left-0 rounded-full transition-all duration-700', tone.bar)} style={{ width: `${fill}%` }} />
+                            {belowTarget && <span className="absolute -top-[2px] right-0 h-[6px] w-[2px] rounded-full bg-white/50" />}
+                          </span>
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
