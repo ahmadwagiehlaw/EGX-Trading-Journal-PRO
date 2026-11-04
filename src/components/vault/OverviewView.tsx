@@ -107,7 +107,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
             <>
               {/* Main Numbers Row: Right = Giant Market Value + Return & Cash | Left = Peak trophy & Badges */}
               <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                {/* Right: Scope pills on top of NAV + Giant NAV + Return & Cash */}
+                {/* Right: Scope pills on top of NAV + Giant NAV + Return % Pill */}
                 <div>
                   {/* Scope / lens / date — on top of NAV in small clean pills */}
                   <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] font-black pb-1.5 text-slate-400">
@@ -115,7 +115,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                     <span className="rounded-full bg-white/10 px-2.5 sm:px-3 py-0.5 text-slate-300 backdrop-blur">{lensLabel}</span>
                     {last && <span className="font-bold text-slate-400">آخر تحديث {fmtDate(last.date)}</span>}
                   </div>
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span
                       dir="ltr"
                       className={cx(
@@ -136,53 +136,24 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                         <Trophy className="w-4 h-4" />
                       </span>
                     )}
-                  </div>
 
-                  {/* Return pill + Cash directly under the NAV number */}
-                  <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
-                    <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs sm:text-sm font-black', up ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300')}>
+                    {/* Return % pill directly next to Giant NAV */}
+                    <span
+                      className={cx(
+                        'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs sm:text-sm font-black shadow-sm backdrop-blur',
+                        up
+                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20'
+                          : 'bg-rose-500/15 text-rose-300 border border-rose-500/20'
+                      )}
+                    >
                       {up ? <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                       <span dir="ltr">{fmtPct(stats.retPct)}</span>
                     </span>
-
-                    {/* Offensive Cash — plain icon + number; colour + hairline gauge hint at the 15% target */}
-                    {(() => {
-                      const cp = heroCash.cashPct;
-                      const tone =
-                        heroCash.totalCash <= 0 || cp < 5
-                          ? { txt: 'text-rose-300', ico: 'text-rose-400', bar: 'bg-rose-400', glow: 'drop-shadow-[0_0_6px_rgba(251,113,133,0.55)]' }
-                          : cp < 15
-                          ? { txt: 'text-amber-200', ico: 'text-amber-300', bar: 'bg-amber-300', glow: 'drop-shadow-[0_0_6px_rgba(252,211,77,0.45)]' }
-                          : cp <= 30
-                          ? { txt: 'text-emerald-200', ico: 'text-emerald-300', bar: 'bg-emerald-400', glow: 'drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]' }
-                          : { txt: 'text-sky-200', ico: 'text-sky-300', bar: 'bg-sky-400', glow: 'drop-shadow-[0_0_6px_rgba(56,189,248,0.45)]' };
-                      const belowTarget = cp < 15;
-                      const fill = Math.min(100, (cp / 15) * 100);
-                      return (
-                        <span
-                          dir="ltr"
-                          title={belowTarget ? `${heroCash.postureLabel} · +${fmtCompact(heroCash.targetCash15Amt)} للوصول لـ 15%` : heroCash.postureLabel}
-                          className="inline-flex flex-col gap-0.5"
-                        >
-                          <span className="inline-flex items-center gap-1.5">
-                            <Wallet className={cx('w-4 h-4 sm:w-5 sm:h-5', tone.ico, belowTarget && 'animate-pulse')} strokeWidth={2.2} />
-                            <span className={cx('text-lg sm:text-xl font-black tabular-nums tracking-tight', tone.txt, tone.glow)}>
-                              {fmtCompact(heroCash.totalCash)}
-                            </span>
-                            <span className="text-[11px] sm:text-xs font-bold tabular-nums text-slate-400">{cp.toFixed(0)}%</span>
-                          </span>
-                          <span className="relative h-[2px] w-full rounded-full bg-white/10 overflow-visible">
-                            <span className={cx('absolute inset-y-0 left-0 rounded-full transition-all duration-700', tone.bar)} style={{ width: `${fill}%` }} />
-                            {belowTarget && <span className="absolute -top-[2px] right-0 h-[6px] w-[2px] rounded-full bg-white/50" />}
-                          </span>
-                        </span>
-                      );
-                    })()}
                   </div>
                 </div>
 
-                {/* Left: Peak trophy & Expanded Card + Badges */}
-                <div dir="ltr" className="flex flex-col items-start gap-2.5">
+                {/* Left: Peak trophy & Expanded Card + Tactical Cash Ammo underneath */}
+                <div dir="ltr" className="flex flex-col items-start gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     {peakPt && !peakOpen && (
                       <button
@@ -190,47 +161,52 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                         onClick={() => setPeakOpen(true)}
                         title="اضغط للتفاصيل"
                         className={cx(
-                          'group relative shrink-0 overflow-hidden rounded-2xl border px-3.5 py-2 backdrop-blur-md transition-all duration-300 active:scale-95 shadow-lg',
+                          'group relative shrink-0 overflow-hidden rounded-2xl border px-3.5 py-2 backdrop-blur-md transition-all duration-300 active:scale-95 shadow-lg w-full sm:w-[320px]',
                           atPeak
                             ? 'border-amber-400/50 bg-gradient-to-r from-amber-500/20 via-emerald-500/15 to-amber-400/20 shadow-amber-500/15'
                             : 'border-amber-400/20 bg-white/[0.06] hover:bg-white/[0.12] hover:border-amber-400/45'
                         )}
                       >
-                        <div className="flex items-center gap-2.5">
-                          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center">
-                            <svg width={36} height={36} className="absolute inset-0 -rotate-90">
-                              <circle cx={18} cy={18} r={15.5} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={2.5} />
-                              <circle
-                                cx={18}
-                                cy={18}
-                                r={15.5}
-                                fill="none"
-                                stroke={atPeak ? '#34d399' : '#fbbf24'}
-                                strokeWidth={2.5}
-                                strokeLinecap="round"
-                                strokeDasharray={2 * Math.PI * 15.5}
-                                strokeDashoffset={2 * Math.PI * 15.5 * (1 - peakPct / 100)}
-                                style={{ transition: 'stroke-dashoffset 0.8s ease' }}
-                              />
-                            </svg>
-                            <div className={cx(
-                              'flex h-7 w-7 items-center justify-center rounded-full transition-transform group-hover:scale-110',
-                              atPeak
-                                ? 'bg-gradient-to-br from-amber-300 via-yellow-400 to-emerald-400 text-slate-950 shadow-md shadow-amber-400/40'
-                                : 'bg-gradient-to-br from-amber-400/25 to-orange-500/20 text-amber-300'
-                            )}>
-                              <Trophy className="w-3.5 h-3.5 drop-shadow" />
+                        <div className="flex items-center justify-between gap-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="relative flex h-8 w-8 shrink-0 items-center justify-center">
+                              <svg width={32} height={32} className="absolute inset-0 -rotate-90">
+                                <circle cx={16} cy={16} r={13.5} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={2.5} />
+                                <circle
+                                  cx={16}
+                                  cy={16}
+                                  r={13.5}
+                                  fill="none"
+                                  stroke={atPeak ? '#34d399' : '#fbbf24'}
+                                  strokeWidth={2.5}
+                                  strokeLinecap="round"
+                                  strokeDasharray={2 * Math.PI * 13.5}
+                                  strokeDashoffset={2 * Math.PI * 13.5 * (1 - peakPct / 100)}
+                                  style={{ transition: 'stroke-dashoffset 0.8s ease' }}
+                                />
+                              </svg>
+                              <div className={cx(
+                                'flex h-6 w-6 items-center justify-center rounded-full transition-transform group-hover:scale-110',
+                                atPeak
+                                  ? 'bg-gradient-to-br from-amber-300 via-yellow-400 to-emerald-400 text-slate-950 shadow-md shadow-amber-400/40'
+                                  : 'bg-gradient-to-br from-amber-400/25 to-orange-500/20 text-amber-300'
+                              )}>
+                                <Trophy className="w-3 h-3 drop-shadow" />
+                              </div>
                             </div>
+                            <span
+                              className={cx(
+                                'text-lg sm:text-xl font-black tabular-nums tracking-tight',
+                                atPeak
+                                  ? 'bg-gradient-to-r from-amber-200 via-yellow-300 to-emerald-200 bg-clip-text text-transparent'
+                                  : 'text-white'
+                              )}
+                            >
+                              {fmt(peakPt.nav)}
+                            </span>
                           </div>
-                          <span
-                            className={cx(
-                              'text-lg sm:text-xl font-black tabular-nums tracking-tight',
-                              atPeak
-                                ? 'bg-gradient-to-r from-amber-200 via-yellow-300 to-emerald-200 bg-clip-text text-transparent'
-                                : 'text-white'
-                            )}
-                          >
-                            {fmt(peakPt.nav)}
+                          <span className={cx('text-[10px] font-black rounded-full px-2 py-0.5', atPeak ? 'bg-emerald-400/20 text-emerald-300' : 'bg-amber-400/15 text-amber-300')}>
+                            {atPeak ? '100% 🏆' : `${peakPct.toFixed(0)}%`}
                           </span>
                         </div>
                         <div className="mt-1.5 h-1 w-full rounded-full bg-white/10 overflow-hidden">
@@ -246,8 +222,6 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                         </div>
                       </button>
                     )}
-
-
                   </div>
 
                   {peakPt && peakOpen && (
@@ -257,7 +231,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                       tabIndex={0}
                       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setPeakOpen(false); }}
                       title="اضغط لإغلاق التفاصيل"
-                      className="w-full sm:w-[340px] cursor-pointer rounded-2xl border border-amber-400/30 bg-slate-900/85 hover:bg-slate-900/95 backdrop-blur-xl p-3.5 space-y-3 shadow-2xl transition-all duration-200 animate-in fade-in zoom-in-95"
+                      className="w-full sm:w-[320px] cursor-pointer rounded-2xl border border-amber-400/30 bg-slate-900/85 hover:bg-slate-900/95 backdrop-blur-xl p-3.5 space-y-3 shadow-2xl transition-all duration-200 animate-in fade-in zoom-in-95"
                     >
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between text-xs">
@@ -302,6 +276,79 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                       </div>
                     </div>
                   )}
+
+                  {/* Tactical Cash Ammo Target Card under Peak Trophy */}
+                  {(() => {
+                    const cp = heroCash.cashPct;
+                    const belowTarget = cp < 15;
+                    const fill = Math.min(100, (cp / 15) * 100);
+                    const tone =
+                      heroCash.totalCash <= 0 || cp < 5
+                        ? {
+                            txt: 'text-rose-300',
+                            ico: 'text-rose-400',
+                            bg: 'bg-rose-500/15',
+                            pill: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+                            bar: 'bg-gradient-to-r from-rose-500 to-amber-400',
+                          }
+                        : cp < 15
+                        ? {
+                            txt: 'text-amber-200',
+                            ico: 'text-amber-300',
+                            bg: 'bg-amber-500/15',
+                            pill: 'bg-amber-500/20 text-amber-200 border-amber-500/30',
+                            bar: 'bg-gradient-to-r from-amber-400 via-yellow-300 to-emerald-400',
+                          }
+                        : {
+                            txt: 'text-emerald-200',
+                            ico: 'text-emerald-300',
+                            bg: 'bg-emerald-500/15',
+                            pill: 'bg-emerald-500/20 text-emerald-200 border-emerald-500/30',
+                            bar: 'bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-300',
+                          };
+
+                    return (
+                      <div
+                        dir="rtl"
+                        title={belowTarget ? `${heroCash.postureLabel} · ينقصك ${fmtCompact(heroCash.targetCash15Amt)} ج.م للوصول إلى هدف درع السيولة 15%` : `${heroCash.postureLabel} · درع السيولة مكتمل`}
+                        className="w-full sm:w-[320px] rounded-2xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] backdrop-blur-md px-3.5 py-2 transition-all space-y-1.5 shadow-lg group"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className={cx('flex h-6 w-6 items-center justify-center rounded-full shrink-0 transition-transform group-hover:scale-105', tone.bg, tone.ico)}>
+                              <Wallet className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className={cx('text-base sm:text-lg font-black tabular-nums tracking-tight', tone.txt)}>
+                                {fmt(heroCash.totalCash)}
+                              </span>
+                              <span className="text-[10px] font-bold text-slate-400">ج.م كاش</span>
+                              <span className={cx('rounded-full px-1.5 py-0.2 text-[10px] font-black border', tone.pill)}>
+                                {cp.toFixed(0)}%
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 text-[10px] font-black text-slate-300 shrink-0">
+                            <span>الهدف 15%</span>
+                            {belowTarget ? (
+                              <span className="text-amber-300 tabular-nums">(-{fmtCompact(heroCash.targetCash15Amt)})</span>
+                            ) : (
+                              <span className="text-emerald-300 font-black">✓ مكتمل</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Target Progress Bar towards 15% target */}
+                        <div className="relative h-1 w-full rounded-full bg-white/10 overflow-hidden">
+                          <div
+                            className={cx('h-full rounded-full transition-all duration-700', tone.bar)}
+                            style={{ width: `${fill}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </>
