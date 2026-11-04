@@ -162,7 +162,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                         onClick={() => setPeakOpen(true)}
                         title="اضغط للتفاصيل"
                         className={cx(
-                          'group relative shrink-0 overflow-hidden rounded-2xl border px-3.5 py-2 backdrop-blur-md transition-all duration-300 active:scale-95 shadow-lg w-full sm:w-[320px]',
+                          'group relative shrink-0 overflow-hidden rounded-2xl border px-3.5 py-2 backdrop-blur-md transition-all duration-300 active:scale-95 shadow-lg w-full sm:w-[220px]',
                           atPeak
                             ? 'border-amber-400/50 bg-gradient-to-r from-amber-500/20 via-emerald-500/15 to-amber-400/20 shadow-amber-500/15'
                             : 'border-amber-400/20 bg-white/[0.06] hover:bg-white/[0.12] hover:border-amber-400/45'
@@ -313,38 +313,23 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                         <button
                           type="button"
                           onClick={() => setCashOpen(true)}
-                          title="اضغط لتفاصيل السيولة النقدية"
-                          className="w-full sm:w-[320px] cursor-pointer rounded-2xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] backdrop-blur-md px-3.5 py-2 transition-all space-y-1.5 shadow-lg group active:scale-95 text-right"
-                          dir="rtl"
+                          title={belowTarget ? `${heroCash.postureLabel} · ينقصك ${fmtCompact(heroCash.targetCash15Amt)} ج.م للوصول إلى هدف درع السيولة 15% (اضغط للتفاصيل)` : `${heroCash.postureLabel} · درع السيولة مكتمل (اضغط للتفاصيل)`}
+                          className="group relative shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] hover:bg-white/[0.12] hover:border-white/20 px-3.5 py-2 backdrop-blur-md transition-all duration-300 active:scale-95 shadow-lg w-full sm:w-[220px]"
                         >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <div className={cx('flex h-6 w-6 items-center justify-center rounded-full shrink-0 transition-transform group-hover:scale-105', tone.bg, tone.ico)}>
-                                <Wallet className="w-3.5 h-3.5" />
+                          <div className="flex items-center justify-between gap-2.5">
+                            <div className="flex items-center gap-2.5">
+                              <div className={cx('flex h-8 w-8 items-center justify-center rounded-full shrink-0 transition-transform group-hover:scale-110 shadow-md', tone.bg, tone.ico)}>
+                                <Wallet className="w-4 h-4" />
                               </div>
-                              <div className="flex items-baseline gap-1.5">
-                                <span className={cx('text-base sm:text-lg font-black tabular-nums tracking-tight', tone.txt)}>
-                                  {fmt(heroCash.totalCash)}
-                                </span>
-                                <span className="text-[10px] font-bold text-slate-400">ج.م كاش</span>
-                                <span className={cx('rounded-full px-1.5 py-0.2 text-[10px] font-black border', tone.pill)}>
-                                  {cp.toFixed(0)}%
-                                </span>
-                              </div>
+                              <span className={cx('text-lg sm:text-xl font-black tabular-nums tracking-tight', tone.txt)}>
+                                {fmt(heroCash.totalCash)}
+                              </span>
                             </div>
-
-                            <div className="flex items-center gap-1 text-[10px] font-black text-slate-300 shrink-0">
-                              <span>الهدف 15%</span>
-                              {belowTarget ? (
-                                <span className="text-amber-300 tabular-nums">(-{fmtCompact(heroCash.targetCash15Amt)})</span>
-                              ) : (
-                                <span className="text-emerald-300 font-black">✓ مكتمل</span>
-                              )}
-                            </div>
+                            <span className={cx('text-[10px] font-black rounded-full px-2 py-0.5 border', tone.pill)}>
+                              {cp.toFixed(0)}%
+                            </span>
                           </div>
-
-                          {/* Target Progress Bar towards 15% target */}
-                          <div className="relative h-1 w-full rounded-full bg-white/10 overflow-hidden">
+                          <div className="mt-1.5 h-1 w-full rounded-full bg-white/10 overflow-hidden">
                             <div
                               className={cx('h-full rounded-full transition-all duration-700', tone.bar)}
                               style={{ width: `${fill}%` }}
