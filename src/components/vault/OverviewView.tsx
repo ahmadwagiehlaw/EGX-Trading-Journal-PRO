@@ -125,20 +125,39 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                       <span dir="ltr">{fmtPct(stats.retPct)}</span>
                     </span>
 
-                    {/* Offensive Cash — plain icon + number, no frame */}
-                    <span
-                      dir="ltr"
-                      title={heroCash.postureLabel}
-                      className="inline-flex items-center gap-1.5"
-                    >
-                      <Wallet className={cx('w-5 h-5', heroCash.totalCash > 0 ? 'text-amber-300' : 'text-slate-500')} strokeWidth={2.2} />
-                      <span className={cx('text-xl font-black tabular-nums tracking-tight', heroCash.totalCash > 0 ? 'text-amber-100' : 'text-slate-500')}>
-                        {fmtCompact(heroCash.totalCash)}
-                      </span>
-                      <span className="text-xs font-bold tabular-nums text-slate-400">
-                        {heroCash.cashPct.toFixed(0)}%
-                      </span>
-                    </span>
+                    {/* Offensive Cash — plain icon + number; colour + hairline gauge hint at the 15% target */}
+                    {(() => {
+                      const cp = heroCash.cashPct;
+                      const tone =
+                        heroCash.totalCash <= 0 || cp < 5
+                          ? { txt: 'text-rose-300', ico: 'text-rose-400', bar: 'bg-rose-400', glow: 'drop-shadow-[0_0_6px_rgba(251,113,133,0.55)]' }
+                          : cp < 15
+                          ? { txt: 'text-amber-200', ico: 'text-amber-300', bar: 'bg-amber-300', glow: 'drop-shadow-[0_0_6px_rgba(252,211,77,0.45)]' }
+                          : cp <= 30
+                          ? { txt: 'text-emerald-200', ico: 'text-emerald-300', bar: 'bg-emerald-400', glow: 'drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]' }
+                          : { txt: 'text-sky-200', ico: 'text-sky-300', bar: 'bg-sky-400', glow: 'drop-shadow-[0_0_6px_rgba(56,189,248,0.45)]' };
+                      const belowTarget = cp < 15;
+                      const fill = Math.min(100, (cp / 15) * 100);
+                      return (
+                        <span
+                          dir="ltr"
+                          title={belowTarget ? `${heroCash.postureLabel} · +${fmtCompact(heroCash.targetCash15Amt)} للوصول لـ 15%` : heroCash.postureLabel}
+                          className="inline-flex flex-col gap-1"
+                        >
+                          <span className="inline-flex items-center gap-1.5">
+                            <Wallet className={cx('w-5 h-5', tone.ico, belowTarget && 'animate-pulse')} strokeWidth={2.2} />
+                            <span className={cx('text-xl font-black tabular-nums tracking-tight', tone.txt, tone.glow)}>
+                              {fmtCompact(heroCash.totalCash)}
+                            </span>
+                            <span className="text-xs font-bold tabular-nums text-slate-400">{cp.toFixed(0)}%</span>
+                          </span>
+                          <span className="relative h-[2px] w-full rounded-full bg-white/10 overflow-visible">
+                            <span className={cx('absolute inset-y-0 left-0 rounded-full transition-all duration-700', tone.bar)} style={{ width: `${fill}%` }} />
+                            {belowTarget && <span className="absolute -top-[2px] right-0 h-[6px] w-[2px] rounded-full bg-white/50" />}
+                          </span>
+                        </span>
+                      );
+                    })()}
 
                     {/* When Current Market Value is at/above Peak -> Trophy Victory Emblem */}
                     {atPeak && (
