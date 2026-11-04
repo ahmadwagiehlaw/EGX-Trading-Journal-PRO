@@ -106,7 +106,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
           return (
             <>
               {/* Main Row: Right = Giant NAV + Cash chip | Left = Scope badges + Peak trophy */}
-              <div className="relative flex flex-col gap-4 lg:pt-14">
+              <div className="relative flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                 <div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                     <span
@@ -153,7 +153,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                 </div>
 
                 {/* Left cluster: Peak trophy (or expanded card) + scope/date badges */}
-                <div dir="ltr" className="z-10 flex flex-wrap items-start gap-2.5 lg:absolute lg:left-0 lg:top-0">
+                <div dir="ltr" className="flex flex-wrap items-start gap-2.5">
                   {peakPt && !peakOpen && (
                     <button
                       type="button"
@@ -283,7 +283,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
         })()}
 
         {/* Bottom 4 KPIs — Unobstructed over the Glowing Sparkline Chart */}
-        <div className="mt-7 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6">
+        <div className="mt-10 lg:mt-24 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6">
           <Mini label="صافي الإيداعات" value={fmt(stats.netDeposits)} />
           <Mini label="إجمالي العوائد" value={fmtSigned(stats.profit)} color={up ? 'text-emerald-300' : 'text-rose-300'} />
           <Mini label="العائد الزمني (TWR)" value={fmtPct(stats.twrPct)} color={stats.twrPct >= 0 ? 'text-emerald-300' : 'text-rose-300'} />
