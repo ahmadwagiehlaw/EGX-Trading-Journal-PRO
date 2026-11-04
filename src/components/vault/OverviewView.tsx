@@ -153,132 +153,9 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                   </div>
                 </div>
 
-                {/* Left: Peak trophy & Expanded Card + Tactical Cash Ammo underneath */}
+                {/* Left: Tactical Cash Ammo (Top) + Peak trophy (Bottom) */}
                 <div dir="ltr" className="flex flex-col items-start gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {peakPt && !peakOpen && (
-                      <button
-                        type="button"
-                        onClick={() => setPeakOpen(true)}
-                        title="اضغط للتفاصيل"
-                        className={cx(
-                          'group relative shrink-0 overflow-hidden rounded-2xl border px-3.5 py-2 backdrop-blur-md transition-all duration-300 active:scale-95 shadow-lg w-full sm:w-[220px]',
-                          atPeak
-                            ? 'border-amber-400/50 bg-gradient-to-r from-amber-500/20 via-emerald-500/15 to-amber-400/20 shadow-amber-500/15'
-                            : 'border-amber-400/20 bg-white/[0.06] hover:bg-white/[0.12] hover:border-amber-400/45'
-                        )}
-                      >
-                        <div className="flex items-center justify-between gap-2.5">
-                          <div className="flex items-center gap-2.5">
-                            <div className="relative flex h-8 w-8 shrink-0 items-center justify-center">
-                              <svg width={32} height={32} className="absolute inset-0 -rotate-90">
-                                <circle cx={16} cy={16} r={13.5} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={2.5} />
-                                <circle
-                                  cx={16}
-                                  cy={16}
-                                  r={13.5}
-                                  fill="none"
-                                  stroke={atPeak ? '#34d399' : '#fbbf24'}
-                                  strokeWidth={2.5}
-                                  strokeLinecap="round"
-                                  strokeDasharray={2 * Math.PI * 13.5}
-                                  strokeDashoffset={2 * Math.PI * 13.5 * (1 - peakPct / 100)}
-                                  style={{ transition: 'stroke-dashoffset 0.8s ease' }}
-                                />
-                              </svg>
-                              <div className={cx(
-                                'flex h-6 w-6 items-center justify-center rounded-full transition-transform group-hover:scale-110',
-                                atPeak
-                                  ? 'bg-gradient-to-br from-amber-300 via-yellow-400 to-emerald-400 text-slate-950 shadow-md shadow-amber-400/40'
-                                  : 'bg-gradient-to-br from-amber-400/25 to-orange-500/20 text-amber-300'
-                              )}>
-                                <Trophy className="w-3 h-3 drop-shadow" />
-                              </div>
-                            </div>
-                            <span
-                              className={cx(
-                                'text-lg sm:text-xl font-black tabular-nums tracking-tight',
-                                atPeak
-                                  ? 'bg-gradient-to-r from-amber-200 via-yellow-300 to-emerald-200 bg-clip-text text-transparent'
-                                  : 'text-white'
-                              )}
-                            >
-                              {fmt(peakPt.nav)}
-                            </span>
-                          </div>
-                          <span className={cx('text-[10px] font-black rounded-full px-2 py-0.5', atPeak ? 'bg-emerald-400/20 text-emerald-300' : 'bg-amber-400/15 text-amber-300')}>
-                            {atPeak ? '100% 🏆' : `${peakPct.toFixed(0)}%`}
-                          </span>
-                        </div>
-                        <div className="mt-1.5 h-1 w-full rounded-full bg-white/10 overflow-hidden">
-                          <div
-                            className={cx(
-                              'h-full rounded-full transition-all duration-700',
-                              atPeak
-                                ? 'bg-gradient-to-r from-amber-300 via-emerald-400 to-yellow-300'
-                                : 'bg-gradient-to-r from-indigo-400 via-emerald-400 to-amber-300'
-                            )}
-                            style={{ width: `${peakPct}%` }}
-                          />
-                        </div>
-                      </button>
-                    )}
-                  </div>
-
-                  {peakPt && peakOpen && (
-                    <div
-                      onClick={() => setPeakOpen(false)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setPeakOpen(false); }}
-                      title="اضغط لإغلاق التفاصيل"
-                      className="w-full sm:w-[320px] cursor-pointer rounded-2xl border border-amber-400/30 bg-slate-900/85 hover:bg-slate-900/95 backdrop-blur-xl p-3.5 space-y-3 shadow-2xl transition-all duration-200 animate-in fade-in zoom-in-95"
-                    >
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="flex items-center gap-1.5 font-black text-amber-300">
-                            <Trophy className="w-3.5 h-3.5 shrink-0" />
-                            <b className="text-white tabular-nums font-black text-sm">{fmt(peakPt.nav)}</b>
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <span className={cx(
-                              'rounded-full px-2 py-0.5 text-[10px] font-black',
-                              toPeak > 0 ? 'bg-amber-400/15 text-amber-300' : 'bg-emerald-400/20 text-emerald-300'
-                            )}>
-                              {toPeak > 0 ? `-${fmtCompact(toPeak)} (${diffPctFromPeak.toFixed(1)}%) · ${peakPct.toFixed(0)}%` : '100% 🏆'}
-                            </span>
-                            <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
-                          </div>
-                        </div>
-                        <div className="relative h-2 w-full rounded-full bg-white/10 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-emerald-400 to-amber-300 transition-all duration-700"
-                            style={{ width: `${peakPct}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10">
-                        <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
-                          <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
-                            <Banknote className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-                            <span>جني نقدي</span>
-                          </span>
-                          <b className="text-xs font-black tabular-nums text-emerald-300">+{fmtCompact(harvestedCash)}</b>
-                        </div>
-                        <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
-                          <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
-                            <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                            <span>شهرياً</span>
-                          </span>
-                          <b className={cx('text-xs font-black tabular-nums', (monthlyGainRate ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
-                            {monthlyGainRate !== null ? fmtCompact(monthlyGainRate) : '—'}
-                          </b>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Tactical Cash Ammo Card under Peak Trophy — Collapsed / Expandable */}
+                  {/* 1. Tactical Cash Ammo Card (Top) — Collapsed / Expandable */}
                   {(() => {
                     const cp = heroCash.cashPct;
                     const belowTarget = cp < 15;
@@ -314,7 +191,7 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                           type="button"
                           onClick={() => setCashOpen(true)}
                           title={belowTarget ? `${heroCash.postureLabel} · ينقصك ${fmtCompact(heroCash.targetCash15Amt)} ج.م للوصول إلى هدف درع السيولة 15% (اضغط للتفاصيل)` : `${heroCash.postureLabel} · درع السيولة مكتمل (اضغط للتفاصيل)`}
-                          className="group relative shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] hover:bg-white/[0.12] hover:border-white/20 px-3.5 py-2 backdrop-blur-md transition-all duration-300 active:scale-95 shadow-lg w-full sm:w-[220px]"
+                          className="group relative shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] hover:bg-white/[0.12] hover:border-white/20 px-3.5 py-2 backdrop-blur-md transition-all duration-300 active:scale-95 shadow-lg w-[220px]"
                         >
                           <div className="flex items-center justify-between gap-2.5">
                             <div className="flex items-center gap-2.5">
@@ -405,6 +282,128 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                       </div>
                     );
                   })()}
+
+                  {/* 2. Peak Trophy Card (Bottom) — Collapsed / Expandable */}
+                  {peakPt && !peakOpen && (
+                    <button
+                      type="button"
+                      onClick={() => setPeakOpen(true)}
+                      title="اضغط لتفاصيل القمة التاريخية"
+                      className={cx(
+                        'group relative shrink-0 overflow-hidden rounded-2xl border px-3.5 py-2 backdrop-blur-md transition-all duration-300 active:scale-95 shadow-lg w-[220px]',
+                        atPeak
+                          ? 'border-amber-400/50 bg-gradient-to-r from-amber-500/20 via-emerald-500/15 to-amber-400/20 shadow-amber-500/15'
+                          : 'border-amber-400/20 bg-white/[0.06] hover:bg-white/[0.12] hover:border-amber-400/45'
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="relative flex h-8 w-8 shrink-0 items-center justify-center">
+                            <svg width={32} height={32} className="absolute inset-0 -rotate-90">
+                              <circle cx={16} cy={16} r={13.5} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={2.5} />
+                              <circle
+                                cx={16}
+                                cy={16}
+                                r={13.5}
+                                fill="none"
+                                stroke={atPeak ? '#34d399' : '#fbbf24'}
+                                strokeWidth={2.5}
+                                strokeLinecap="round"
+                                strokeDasharray={2 * Math.PI * 13.5}
+                                strokeDashoffset={2 * Math.PI * 13.5 * (1 - peakPct / 100)}
+                                style={{ transition: 'stroke-dashoffset 0.8s ease' }}
+                              />
+                            </svg>
+                            <div className={cx(
+                              'flex h-6 w-6 items-center justify-center rounded-full transition-transform group-hover:scale-110',
+                              atPeak
+                                ? 'bg-gradient-to-br from-amber-300 via-yellow-400 to-emerald-400 text-slate-950 shadow-md shadow-amber-400/40'
+                                : 'bg-gradient-to-br from-amber-400/25 to-orange-500/20 text-amber-300'
+                            )}>
+                              <Trophy className="w-3 h-3 drop-shadow" />
+                            </div>
+                          </div>
+                          <span
+                            className={cx(
+                              'text-lg sm:text-xl font-black tabular-nums tracking-tight',
+                              atPeak
+                                ? 'bg-gradient-to-r from-amber-200 via-yellow-300 to-emerald-200 bg-clip-text text-transparent'
+                                : 'text-white'
+                            )}
+                          >
+                            {fmt(peakPt.nav)}
+                          </span>
+                        </div>
+                        <span className={cx('text-[10px] font-black rounded-full px-2 py-0.5', atPeak ? 'bg-emerald-400/20 text-emerald-300' : 'bg-amber-400/15 text-amber-300')}>
+                          {atPeak ? '100% 🏆' : `${peakPct.toFixed(0)}%`}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 h-1 w-full rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className={cx(
+                            'h-full rounded-full transition-all duration-700',
+                            atPeak
+                              ? 'bg-gradient-to-r from-amber-300 via-emerald-400 to-yellow-300'
+                              : 'bg-gradient-to-r from-indigo-400 via-emerald-400 to-amber-300'
+                          )}
+                          style={{ width: `${peakPct}%` }}
+                        />
+                      </div>
+                    </button>
+                  )}
+
+                  {peakPt && peakOpen && (
+                    <div
+                      onClick={() => setPeakOpen(false)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setPeakOpen(false); }}
+                      title="اضغط لإغلاق التفاصيل"
+                      className="w-full sm:w-[320px] cursor-pointer rounded-2xl border border-amber-400/30 bg-slate-900/85 hover:bg-slate-900/95 backdrop-blur-xl p-3.5 space-y-3 shadow-2xl transition-all duration-200 animate-in fade-in zoom-in-95"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1.5 font-black text-amber-300">
+                            <Trophy className="w-3.5 h-3.5 shrink-0" />
+                            <b className="text-white tabular-nums font-black text-sm">{fmt(peakPt.nav)}</b>
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <span className={cx(
+                              'rounded-full px-2 py-0.5 text-[10px] font-black',
+                              toPeak > 0 ? 'bg-amber-400/15 text-amber-300' : 'bg-emerald-400/20 text-emerald-300'
+                            )}>
+                              {toPeak > 0 ? `-${fmtCompact(toPeak)} (${diffPctFromPeak.toFixed(1)}%) · ${peakPct.toFixed(0)}%` : '100% 🏆'}
+                            </span>
+                            <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                          </div>
+                        </div>
+                        <div className="relative h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-emerald-400 to-amber-300 transition-all duration-700"
+                            style={{ width: `${peakPct}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10">
+                        <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
+                            <Banknote className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                            <span>جني نقدي</span>
+                          </span>
+                          <b className="text-xs font-black tabular-nums text-emerald-300">+{fmtCompact(harvestedCash)}</b>
+                        </div>
+                        <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
+                            <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                            <span>شهرياً</span>
+                          </span>
+                          <b className={cx('text-xs font-black tabular-nums', (monthlyGainRate ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
+                            {monthlyGainRate !== null ? fmtCompact(monthlyGainRate) : '—'}
+                          </b>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </>
@@ -465,7 +464,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
     } catch {
       // ignore
     }
-    saveSettings({ ...settings, bankRate: clamped }).catch(() => {});
+    saveSettings({ ...settings, bankRate: clamped }).catch(() => { });
   };
 
   useEffect(() => {
@@ -1100,9 +1099,9 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                     domain={
                       capZoom
                         ? [
-                            (dataMin: number) => Math.max(0, Math.floor((dataMin * 0.95) / 10000) * 10000),
-                            (dataMax: number) => Math.ceil((dataMax * 1.02) / 10000) * 10000,
-                          ]
+                          (dataMin: number) => Math.max(0, Math.floor((dataMin * 0.95) / 10000) * 10000),
+                          (dataMax: number) => Math.ceil((dataMax * 1.02) / 10000) * 10000,
+                        ]
                         : ['auto', 'auto']
                     }
                   />
@@ -1166,30 +1165,30 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                           },
                           ...(showLines.bank
                             ? [
-                                {
-                                  name: `عائد البنك (${bankRate}%)`,
-                                  value: `${fmtPct(+p.bankPct)} (${fmtSigned(+p.bankProfit)} ج.م)`,
-                                  color: '#f59e0b',
-                                },
-                              ]
+                              {
+                                name: `عائد البنك (${bankRate}%)`,
+                                value: `${fmtPct(+p.bankPct)} (${fmtSigned(+p.bankProfit)} ج.م)`,
+                                color: '#f59e0b',
+                              },
+                            ]
                             : []),
                           ...(showLines.egx30
                             ? [
-                                {
-                                  name: 'مؤشر EGX30',
-                                  value: `${fmtPct(+p.egx30Pct)} (${fmtSigned(+p.egx30Profit)} ج.م)`,
-                                  color: '#0ea5e9',
-                                },
-                              ]
+                              {
+                                name: 'مؤشر EGX30',
+                                value: `${fmtPct(+p.egx30Pct)} (${fmtSigned(+p.egx30Profit)} ج.م)`,
+                                color: '#0ea5e9',
+                              },
+                            ]
                             : []),
                           ...(showLines.egx70
                             ? [
-                                {
-                                  name: 'مؤشر EGX70',
-                                  value: `${fmtPct(+p.egx70Pct)} (${fmtSigned(+p.egx70Profit)} ج.م)`,
-                                  color: '#ec4899',
-                                },
-                              ]
+                              {
+                                name: 'مؤشر EGX70',
+                                value: `${fmtPct(+p.egx70Pct)} (${fmtSigned(+p.egx70Profit)} ج.م)`,
+                                color: '#ec4899',
+                              },
+                            ]
                             : []),
                         ]}
                       />
@@ -1320,12 +1319,12 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                         rows={p =>
                           mode === 'growth'
                             ? [
-                                { name: period === 'All' ? 'إجمالي العوائد (ج.م)' : `عوائد الفترة (${period})`, value: `${fmtSigned(+p.pProfit)} ج.م`, color: +p.pProfit >= 0 ? '#34d399' : '#fb7185' },
-                                { name: period === 'All' ? 'إجمالي النمو (%)' : `نمو الفترة (${period})`, value: fmtPct(+p.pTwr), color: +p.pTwr >= 0 ? '#10b981' : '#f43f5e' },
-                                ...(period !== 'All'
-                                  ? [{ name: 'إجمالي العوائد منذ البداية', value: `${fmtSigned(+p.profit)} ج.م (${fmtPct((+p.index - 1) * 100)})`, color: '#818cf8' }]
-                                  : []),
-                              ]
+                              { name: period === 'All' ? 'إجمالي العوائد (ج.م)' : `عوائد الفترة (${period})`, value: `${fmtSigned(+p.pProfit)} ج.م`, color: +p.pProfit >= 0 ? '#34d399' : '#fb7185' },
+                              { name: period === 'All' ? 'إجمالي النمو (%)' : `نمو الفترة (${period})`, value: fmtPct(+p.pTwr), color: +p.pTwr >= 0 ? '#10b981' : '#f43f5e' },
+                              ...(period !== 'All'
+                                ? [{ name: 'إجمالي العوائد منذ البداية', value: `${fmtSigned(+p.profit)} ج.م (${fmtPct((+p.index - 1) * 100)})`, color: '#818cf8' }]
+                                : []),
+                            ]
                             : [{ name: 'الهبوط من القمة', value: fmtPct(+p.pDd), color: '#fb7185' }]
                         }
                       />
@@ -1612,8 +1611,8 @@ export function WealthGrowthDecomposition({
                   cashAmmo.cashPct < 5
                     ? 'bg-rose-500'
                     : cashAmmo.cashPct < 15
-                    ? 'bg-amber-500'
-                    : 'bg-gradient-to-r from-sky-500 to-emerald-500'
+                      ? 'bg-amber-500'
+                      : 'bg-gradient-to-r from-sky-500 to-emerald-500'
                 )}
                 style={{ width: `${Math.min(100, Math.max(3, (cashAmmo.cashPct / 30) * 100))}%` }}
               />
@@ -1623,8 +1622,8 @@ export function WealthGrowthDecomposition({
                 {cashAmmo.totalCash === 0
                   ? '💡 سجّل الكاش المتاح داخل كل محفظة لتفعيل رادار القنص'
                   : cashAmmo.targetCash15Amt > 0
-                  ? `للوصول لـ 15% ذخيرة مثالية: +${fmtCompact(cashAmmo.targetCash15Amt)} ج.م`
-                  : '✓ تمتلك سيولة هجومية ممتازة لاقتناص الفرص'}
+                    ? `للوصول لـ 15% ذخيرة مثالية: +${fmtCompact(cashAmmo.targetCash15Amt)} ج.م`
+                    : '✓ تمتلك سيولة هجومية ممتازة لاقتناص الفرص'}
               </span>
               {onOpenSnap && (
                 <button
@@ -1932,10 +1931,10 @@ export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
   const ddStatus = absCurrentDD < 1
     ? { text: 'عند القمة التاريخية 🏆', color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
     : absCurrentDD <= 10
-    ? { text: 'مخاطر منخفضة', color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
-    : absCurrentDD <= 20
-    ? { text: 'تصحيح معتاد', color: 'text-amber-500', bg: 'bg-amber-500/10' }
-    : { text: 'تراجع حاد', color: 'text-rose-500', bg: 'bg-rose-500/10' };
+      ? { text: 'مخاطر منخفضة', color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
+      : absCurrentDD <= 20
+        ? { text: 'تصحيح معتاد', color: 'text-amber-500', bg: 'bg-amber-500/10' }
+        : { text: 'تراجع حاد', color: 'text-rose-500', bg: 'bg-rose-500/10' };
 
   // وسادة الأمان لرأس المال (Capital Cushion فوق الإيداعات)
   const cushionPct = s.netDeposits > 0 ? (s.profit / s.netDeposits) * 100 : 0;
