@@ -12,7 +12,7 @@ import {
   Target
 ,
   Trash2
-, X, Pencil, Sparkles, Pin, TrendingUp, TrendingDown, Zap, Wallet, Landmark, Banknote, Clock
+, RotateCcw, X, Pencil, Sparkles, Pin, TrendingUp, TrendingDown, Zap, Wallet, Landmark, Banknote, Clock
 } from 'lucide-react';
 
 // Compact Arabic number format: 371,505 -> ["371.5", "ألف"], 2,400,000 -> ["2.40", "مليون"]
@@ -38,9 +38,9 @@ import { useTheme } from '../context/ThemeContext';
 import { computePositionMetrics, computeOpenLotsLowestPriceFirst, computeStopAnalytics, computePositionCycles, formatEGP, type TrailingStopState } from '../utils/calculations';
 import TransactionFormModal from './TransactionFormModal';
 
-export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: () => void }) {
+export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; onClose?: () => void }) {
 
-  const { positions, updateTrailingStop, updatePosition, deleteTransaction, coreStats, capitalInvestment, capitalSpeculation, commissionRate, activeCapital } = useTrades();
+  const { positions, updateTrailingStop, updatePosition, deletePosition, deleteTransaction, coreStats, capitalInvestment, capitalSpeculation, commissionRate, activeCapital } = useTrades();
   const { theme } = useTheme();
   
   const position = positions.find(p => p.id === tradeId);
@@ -289,6 +289,39 @@ export default function ActiveTrades({ tradeId }: { tradeId: string; onClose?: (
   };
 
   const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+
+  const handleResetTransactions = async () => {
+    if (!position) return;
+    setIsResetting(true);
+    try {
+      await updatePosition(position.id, {
+        transactions: [],
+        coreShares: 0,
+        status: 'active'
+      });
+      setIsResetModalOpen(false);
+      // Automatically open the buy transaction modal so the user can immediately enter their clean open lot
+      setTxModalType('buy');
+    } catch (err) {
+      console.error('Failed to reset transactions:', err);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleDeletePosition = async () => {
+    if (!position) return;
+    try {
+      await deletePosition(position.id);
+      setIsDeleteModalOpen(false);
+      onClose?.();
+    } catch (err) {
+      console.error('Failed to delete position:', err);
+    }
+  };
   const [isEditingCoreShares, setIsEditingCoreShares] = useState(false);
   const [coreSharesInput, setCoreSharesInput] = useState(position?.coreShares?.toString() || '');
   const [mountTime] = useState(() => Date.now());
@@ -530,13 +563,24 @@ if (!position || !metrics) return null;
             <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-900/50 mt-14">
               
               {/* Action Buttons */}
-              <div className="flex flex-wrap gap-2 mb-6">
-                <button onClick={() => setTxModalType('buy')} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-2 mb-6">
+                <button onClick={() => setTxModalType('buy')} className="flex-1 min-w-[140px] py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
                   + {metrics!.isOpen ? 'تمركز إضافي (شراء)' : 'بدء دورة جديدة (شراء)'}
                 </button>
                 {metrics!.isOpen && (
-                  <button onClick={() => setTxModalType('sell')} className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
+                  <button onClick={() => setTxModalType('sell')} className="flex-1 min-w-[140px] py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
                     ↙ بيع جزئي (جني ربح)
+                  </button>
+                )}
+                {position?.transactions && position.transactions.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsResetModalOpen(true)}
+                    title="تصفير ومسح المعاملات المتشابكة للبدء على نظيف"
+                    className="py-2.5 px-3 bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:hover:bg-amber-900/40 dark:text-amber-400 rounded-xl font-black text-xs transition-colors border border-amber-200 dark:border-amber-800/40 shadow-xs flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>تصفير المعاملات</span>
                   </button>
                 )}
               </div>
@@ -1445,17 +1489,38 @@ if (!position || !metrics) return null;
           )}
 
           
-          {/* Close Position (Full Exit) Section */}
-          <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800">
+          {/* Close Position & Reset / Delete Section */}
+          <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
             {metrics!.isOpen && (
               <button 
                 onClick={() => setTxModalType('sellAll')}
-                className="w-full bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white font-black py-3.5 rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 text-xs"
+                className="w-full bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white font-black py-3 rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 text-xs"
               >
                 <CheckCircle className="w-4 h-4" />
                 إغلاق وتصفية كامل المركز المالي
               </button>
             )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setIsResetModalOpen(true)}
+                className="w-full py-2.5 px-3 rounded-xl border border-amber-300/80 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-black text-xs flex items-center justify-center gap-1.5 transition"
+                title="مسح المعاملات المتشابكة وبدء السهم من جديد"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>تصفير المعاملات</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(true)}
+                className="w-full py-2.5 px-3 rounded-xl border border-rose-300/80 dark:border-rose-800/50 bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 dark:hover:bg-rose-900/40 text-rose-700 dark:text-rose-400 font-black text-xs flex items-center justify-center gap-1.5 transition"
+                title="حذف السهم وسجله نهائياً من المحفظة"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>حذف السهم نهائياً</span>
+              </button>
+            </div>
           </div>
 
         </div>
@@ -1484,6 +1549,28 @@ if (!position || !metrics) return null;
           }
         }}
         onCancel={() => setConfirmTxId(null)}
+      />
+
+      <ConfirmModal
+        isOpen={isResetModalOpen}
+        title={`تصفير معاملات سهم ${position?.symbol || ''}`}
+        message={`هل أنت متأكد من مسح جميع المعاملات والدورات المسجلة لهذا السهم؟ سيتم تصفير السجل تماماً لتتمكن من إضافة مركزك الحالي الفعلي على نظيف.`}
+        type="warning"
+        confirmText={isResetting ? "جاري التصفير..." : "تصفير وبدء مركز جديد"}
+        cancelText="إلغاء"
+        onConfirm={handleResetTransactions}
+        onCancel={() => setIsResetModalOpen(false)}
+      />
+
+      <ConfirmModal
+        isOpen={isDeleteModalOpen}
+        title={`حذف سهم ${position?.symbol || ''} نهائياً`}
+        message={`هل أنت متأكد من حذف هذا السهم بجميع معاملاته وخطة تداوله بشكل نهائي من المحفظة؟ لا يمكن التراجع عن هذا الإجراء.`}
+        type="danger"
+        confirmText="حذف نهائي"
+        cancelText="إلغاء"
+        onConfirm={handleDeletePosition}
+        onCancel={() => setIsDeleteModalOpen(false)}
       />
 
     </div>
