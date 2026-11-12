@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, Cell, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
-import { Activity, Flame, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Trophy, Calendar, Zap, Crown, Banknote, Users, Layers, ChevronUp, RefreshCw, Landmark, Sparkles, Target, CheckCircle2, Wallet, RotateCcw } from 'lucide-react';
+import { Activity, Flame, ShieldAlert, TrendingDown, TrendingUp, Trophy, Calendar, Crown, Banknote, Users, Layers, ChevronUp, RefreshCw, Landmark, Sparkles, Target, Wallet, RotateCcw } from 'lucide-react';
 import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone } from './ui';
 import { useVault } from './VaultContext';
 import type { Point, Stats, Period, PeriodRet, BenchmarksState } from './calc';
@@ -598,64 +598,62 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
         <Empty icon={<Activity className="w-10 h-10" />} text="سجّل أول قيمة سوقية لتظهر الرسوم" />
       ) : (
         <>
-          {/* Header Area — Rich Dual Metrics without Redundancy */}
-          <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+          {/* Header Area — Clean Institutional Ticker Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             {mode === 'capital' && last && first && capPeriodMeta && (
-              <div className="w-full flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-slate-200/60 dark:border-white/[0.06]">
-                {/* Right side: Non-Redundant Period Attribution Pills (No repeat of Total NAV / Total Deposits / Total Profit) */}
-                <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
-                  {/* 1. صافي تغير الفترة وتفكيك مصدره (سوق أم إيداعات) */}
-                  <div className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100/90 dark:bg-white/[0.04] border border-slate-200/70 dark:border-white/[0.07] px-2.5 py-1">
-                    <span className="text-slate-400">تغير ({period === 'All' ? 'الكل' : period}):</span>
+              <div className="w-full flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/60 dark:border-white/[0.06]">
+                {/* Right side: Institutional Compact Stats Strip */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <span>التغير ({period === 'All' ? 'الكل' : period}):</span>
                     <b dir="ltr" className={cx('tabular-nums font-black', tone(capPeriodMeta.navDelta))}>
-                      {fmtSigned(capPeriodMeta.navDelta)} ج.م
+                      {fmtSigned(capPeriodMeta.navDelta)}
                     </b>
-                    <span className="text-slate-300 dark:text-slate-700">|</span>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                      سوق:{' '}
-                      <b dir="ltr" className={tone(capPeriodMeta.marketGainInPeriod)}>
-                        {fmtSigned(capPeriodMeta.marketGainInPeriod)}
-                      </b>
-                    </span>
-                    {Math.abs(capPeriodMeta.netFlow) >= 1 && (
-                      <>
-                        <span className="text-slate-300 dark:text-slate-700">·</span>
-                        <span className="text-[10px] text-indigo-500">
-                          ضخ صافي: <b dir="ltr">{fmtSigned(capPeriodMeta.netFlow)}</b>
-                        </span>
-                      </>
-                    )}
                   </div>
 
-                  {/* 2. نطاق الفترة (القاع ⬅️ القمة مع تاريخ القمة) */}
-                  <div className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500/[0.07] border border-amber-500/25 px-2.5 py-1">
-                    <span className="text-amber-600 dark:text-amber-400">نطاق الفترة:</span>
-                    <span dir="ltr" className="text-slate-500 dark:text-slate-300 font-black tabular-nums">
-                      {fmtCompact(capPeriodMeta.minNav)} ➔ {fmtCompact(peakNavInWin)}
-                    </span>
-                    {capPeriodMeta.maxNavDate && (
-                      <span className="text-[10px] text-amber-600/80 dark:text-amber-400/80">
-                        (قمة {shortDate(capPeriodMeta.maxNavDate)})
-                      </span>
-                    )}
+                  <span className="text-slate-200 dark:text-slate-800">|</span>
+
+                  <div className="flex items-center gap-1.5">
+                    <span>صافي السوق:</span>
+                    <b dir="ltr" className={cx('tabular-nums font-black', tone(capPeriodMeta.marketGainInPeriod))}>
+                      {fmtSigned(capPeriodMeta.marketGainInPeriod)}
+                    </b>
                   </div>
 
-                  {/* 3. مضاعف رأس المال + نسبة البقاء في المنطقة الرابحة فوق الإيداعات */}
-                  <div className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/[0.07] border border-emerald-500/20 px-2.5 py-1">
-                    <span className="text-slate-400">مضاعف الإيداع:</span>
-                    <b dir="ltr" className="text-emerald-600 dark:text-emerald-400 font-black tabular-nums">
+                  {Math.abs(capPeriodMeta.netFlow) >= 1 && (
+                    <>
+                      <span className="text-slate-200 dark:text-slate-800">|</span>
+                      <div className="flex items-center gap-1.5">
+                        <span>صافي التدفق:</span>
+                        <b dir="ltr" className="tabular-nums font-black text-indigo-500">
+                          {fmtSigned(capPeriodMeta.netFlow)}
+                        </b>
+                      </div>
+                    </>
+                  )}
+
+                  <span className="text-slate-200 dark:text-slate-800">|</span>
+
+                  <div className="flex items-center gap-1.5">
+                    <span>النطاق:</span>
+                    <b dir="ltr" className="tabular-nums font-black text-slate-700 dark:text-slate-200">
+                      {fmtCompact(capPeriodMeta.minNav)} – {fmtCompact(peakNavInWin)}
+                    </b>
+                  </div>
+
+                  <span className="text-slate-200 dark:text-slate-800">|</span>
+
+                  <div className="flex items-center gap-1.5">
+                    <span>المضاعف:</span>
+                    <b dir="ltr" className="tabular-nums font-black text-emerald-600 dark:text-emerald-400">
                       {capPeriodMeta.capMultiple.toFixed(2)}x
                     </b>
-                    <span className="text-slate-300 dark:text-slate-700">|</span>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                      فوق الإيداعات: <b dir="ltr" className="text-emerald-500">{capPeriodMeta.abovePct}%</b> من الفترة
-                    </span>
                   </div>
                 </div>
 
-                {/* Left side: Legend + Smart Auto-Zoom Toggle in same compact bar */}
+                {/* Left side: Legend + View Mode Toggle */}
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="hidden xl:flex items-center gap-2.5 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                  <div className="hidden xl:flex items-center gap-3 text-[10px] font-bold text-slate-500 dark:text-slate-400">
                     <span className="flex items-center gap-1">
                       <i className="w-2 h-2 rounded-full" style={{ background: accent }} />
                       السوقية
@@ -664,9 +662,15 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                       <i className="w-2 h-2 rounded-full bg-indigo-400" />
                       الإيداعات
                     </span>
+                    {!capZoom && (
+                      <span className="flex items-center gap-1 text-emerald-500">
+                        <i className="w-2 h-2 rounded-full bg-emerald-400" />
+                        العوائد
+                      </span>
+                    )}
                     <span className="flex items-center gap-1 text-amber-500">
-                      <i className="w-3.5 h-0 border-t-2 border-dashed border-amber-500 inline-block" />
-                      القمة
+                      <i className="w-3 h-0 border-t-2 border-dashed border-amber-500 inline-block" />
+                      القمة ({fmtCompact(peakNavInWin)})
                     </span>
                   </div>
 
@@ -679,7 +683,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                         capZoom ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'
                       )}
                     >
-                      مُركّز (Zoom)
+                      رأس المال
                     </button>
                     <button
                       type="button"
@@ -689,7 +693,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                         !capZoom ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'
                       )}
                     >
-                      شامل + العوائد
+                      + العوائد
                     </button>
                   </div>
                 </div>
@@ -1086,57 +1090,65 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
           <div dir="ltr" className="h-72 sm:h-80 -mx-2">
             <ResponsiveContainer width="100%" height="100%">
               {mode === 'capital' ? (
-                <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <ComposedChart data={data} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="gNav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={accent} stopOpacity={0.35} /><stop offset="100%" stopColor={accent} stopOpacity={0} /></linearGradient>
-                    <linearGradient id="gDep" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#818cf8" stopOpacity={0.22} /><stop offset="100%" stopColor="#818cf8" stopOpacity={0} /></linearGradient>
-                    <linearGradient id="gProfCap" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#34d399" stopOpacity={0.18} /><stop offset="100%" stopColor="#34d399" stopOpacity={0} /></linearGradient>
+                    <linearGradient id="gNav" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={accent} stopOpacity={0.32} /><stop offset="100%" stopColor={accent} stopOpacity={0} /></linearGradient>
+                    <linearGradient id="gDep" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#818cf8" stopOpacity={0.18} /><stop offset="100%" stopColor="#818cf8" stopOpacity={0} /></linearGradient>
+                    <linearGradient id="gProfCap" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity={0.22} /><stop offset="100%" stopColor="#10b981" stopOpacity={0} /></linearGradient>
                   </defs>
-                  <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
+                  <CartesianGrid stroke="currentColor" strokeOpacity={0.06} vertical={false} />
                   <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
+                  {/* Primary Right Y-Axis: Market Value & Net Deposits (Always Auto-Zoomed to eliminate dead space) */}
                   <YAxis
+                    yAxisId="nav"
                     orientation="right"
                     tickFormatter={fmtCompact}
                     tick={{ fontSize: 10, fill: '#94a3b8' }}
                     axisLine={false}
                     tickLine={false}
                     width={48}
-                    domain={
-                      capZoom
-                        ? [
-                          (dataMin: number) => Math.max(0, Math.floor((dataMin * 0.95) / 10000) * 10000),
-                          (dataMax: number) => Math.ceil((dataMax * 1.02) / 10000) * 10000,
-                        ]
-                        : ['auto', 'auto']
-                    }
+                    domain={[
+                      (dataMin: number) => Math.max(0, Math.floor((dataMin * 0.96) / 10000) * 10000),
+                      (dataMax: number) => Math.ceil((dataMax * 1.02) / 10000) * 10000,
+                    ]}
                   />
+                  {/* Secondary Left Y-Axis: Cumulative Returns (Dedicated Scale so it never flattens at the bottom) */}
+                  {!capZoom && (
+                    <YAxis
+                      yAxisId="profit"
+                      orientation="left"
+                      tickFormatter={fmtCompact}
+                      tick={{ fontSize: 10, fill: '#10b981' }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={44}
+                      domain={[
+                        (dataMin: number) => Math.floor((dataMin * 0.85) / 5000) * 5000,
+                        (dataMax: number) => Math.ceil((dataMax * 1.15) / 5000) * 5000,
+                      ]}
+                    />
+                  )}
                   {peakNavInWin > 0 && (
                     <ReferenceLine
+                      yAxisId="nav"
                       y={peakNavInWin}
                       stroke="#f59e0b"
-                      strokeWidth={2}
-                      strokeDasharray="6 4"
-                      strokeOpacity={0.95}
-                      label={{
-                        value: `قمة الفترة: ${fmt(peakNavInWin)}`,
-                        position: 'insideTopLeft',
-                        fill: '#d97706',
-                        fontSize: 10,
-                        fontWeight: 900,
-                      }}
+                      strokeWidth={1.5}
+                      strokeDasharray="5 4"
+                      strokeOpacity={0.85}
                     />
                   )}
                   <Tooltip cursor={{ stroke: '#94a3b8', strokeDasharray: '4 4' }} content={<ChartTip labelFmt={fmtDate} rows={p => [
                     { name: 'القيمة السوقية', value: `${fmt(+p.nav)} ج.م`, color: accent },
                     { name: 'صافي الإيداعات', value: `${fmt(+p.deposits)} ج.م (${+p.nav > 0 ? ((+p.deposits / +p.nav) * 100).toFixed(0) : 100}%)`, color: '#818cf8' },
-                    { name: 'الفائض الربحي التراكمي', value: `${fmtSigned(+p.profit)} ج.م (${fmtPct((+p.index - 1) * 100, 1)})`, color: +p.profit >= 0 ? '#34d399' : '#fb7185' },
-                    { name: 'الفارق عن قمة الفترة', value: +p.nav >= peakNavInWin ? 'قمة الفترة 🏆' : `${fmtSigned(+p.nav - peakNavInWin)} ج.م (${peakNavInWin > 0 ? (((+p.nav - peakNavInWin) / peakNavInWin) * 100).toFixed(1) : 0}%)`, color: '#fbbf24' },
+                    { name: 'الفائض الربحي', value: `${fmtSigned(+p.profit)} ج.م (${fmtPct((+p.index - 1) * 100, 1)})`, color: +p.profit >= 0 ? '#10b981' : '#fb7185' },
+                    { name: 'عن قمة الفترة', value: +p.nav >= peakNavInWin ? 'قمة الفترة 🏆' : `${fmtSigned(+p.nav - peakNavInWin)} ج.م (${peakNavInWin > 0 ? (((+p.nav - peakNavInWin) / peakNavInWin) * 100).toFixed(1) : 0}%)`, color: '#fbbf24' },
                   ]} />} />
-                  <Area type="stepAfter" dataKey="deposits" stroke="#818cf8" strokeWidth={2} fill="url(#gDep)" dot={false} />
+                  <Area yAxisId="nav" type="stepAfter" dataKey="deposits" stroke="#818cf8" strokeWidth={1.75} fill="url(#gDep)" dot={false} />
                   {!capZoom && (
-                    <Area type="monotone" dataKey="profit" stroke="#34d399" strokeWidth={1.5} strokeDasharray="3 3" fill="url(#gProfCap)" dot={false} />
+                    <Area yAxisId="profit" type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={2} strokeDasharray="4 3" fill="url(#gProfCap)" dot={false} />
                   )}
-                  <Area type="monotone" dataKey="nav" stroke={accent} strokeWidth={2.5} fill="url(#gNav)" dot={data.length < 25 ? { r: 3, fill: accent } : false} activeDot={{ r: 5 }} />
+                  <Area yAxisId="nav" type="monotone" dataKey="nav" stroke={accent} strokeWidth={2.5} fill="url(#gNav)" dot={data.length < 25 ? { r: 3, fill: accent } : false} activeDot={{ r: 5 }} />
                 </ComposedChart>
               ) : mode === 'benchmark' ? (
                 <ComposedChart data={benchData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -1523,7 +1535,7 @@ export function WealthGrowthDecomposition({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
-      {/* ───────── 1. توزيع المحافظ + الشراكة المدمجة (1/3) ───────── */}
+      {/* ───────── 1. توزيع المحافظ + السيولة + الملكية (1/3) ───────── */}
       <div className="lg:col-span-1 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/80 p-4 shadow-sm flex flex-col justify-between gap-3">
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-2 text-xs font-black text-slate-800 dark:text-slate-100">
@@ -1532,11 +1544,11 @@ export function WealthGrowthDecomposition({
             </span>
             <span>توزيع المحافظ</span>
           </span>
-          <span className="text-[10px] font-black text-slate-400">{portRows.length} محافظ نشطة</span>
+          <span className="text-[10px] font-black text-slate-400">{portRows.length} محافظ</span>
         </div>
 
         {/* Stacked Portfolio Bar */}
-        <div className="h-2.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex gap-0.5" dir="ltr">
+        <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex gap-0.5" dir="ltr">
           {portRows.map(r => (
             <div
               key={r.portfolio.id}
@@ -1547,7 +1559,7 @@ export function WealthGrowthDecomposition({
           ))}
         </div>
 
-        {/* Portfolio Compact Rows with Embedded Cash Ammo Tag */}
+        {/* Portfolio Compact Rows */}
         <div className="space-y-1.5">
           {portRows.map((r, idx) => {
             const pNav = r.stats.nav * factor;
@@ -1563,13 +1575,13 @@ export function WealthGrowthDecomposition({
                 className="w-full flex items-center justify-between rounded-xl px-2.5 py-1.5 bg-slate-50/80 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-right"
               >
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <i className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.portfolio.color }} />
+                  <i className="w-2 h-2 rounded-full shrink-0" style={{ background: r.portfolio.color }} />
                   <span className="text-xs font-black text-slate-800 dark:text-slate-100 truncate">{r.portfolio.name}</span>
                   {idx === 0 && portRows.length > 1 && <Crown className="w-3 h-3 text-amber-400 shrink-0" />}
                   <span dir="ltr" className="text-[10px] font-black text-slate-400">{r.share.toFixed(0)}%</span>
                   {pCash > 0 && (
-                    <span dir="ltr" className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 shrink-0" title="كاش متاح داخل هذه المحفظة">
-                      💵 {fmtCompact(pCash)} ({pCashPct.toFixed(0)}%)
+                    <span dir="ltr" className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 shrink-0">
+                      {fmtCompact(pCash)} ({pCashPct.toFixed(0)}%)
                     </span>
                   )}
                 </div>
@@ -1586,86 +1598,74 @@ export function WealthGrowthDecomposition({
           })}
         </div>
 
-        {/* ───────── رادار الذخيرة الهجومية (Tactical Cash Ammo Radar) ───────── */}
-        <div className="rounded-2xl bg-gradient-to-br from-sky-500/[0.08] via-cyan-500/[0.04] to-indigo-500/[0.06] border border-sky-500/25 p-3 space-y-2">
+        {/* ───────── السيولة النقدية (Cash Allocation) ───────── */}
+        <div className="rounded-2xl bg-slate-50/90 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-800 p-3 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-[11px] font-black text-sky-600 dark:text-sky-400">
-              <Banknote className="w-3.5 h-3.5" />
-              <span>الذخيرة الهجومية (الكاش المتاح)</span>
+            <span className="flex items-center gap-1.5 text-[11px] font-black text-slate-700 dark:text-slate-200">
+              <Wallet className="w-3.5 h-3.5 text-sky-500" />
+              <span>السيولة النقدية (Cash)</span>
             </span>
-            <span className={cx('text-[9.5px] font-black px-2 py-0.5 rounded-full bg-white/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-white/5', cashAmmo.postureColor)}>
-              {cashAmmo.postureLabel}
-            </span>
+            <div className="flex items-center gap-2">
+              <span dir="ltr" className="text-[10px] font-black px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                {cashAmmo.cashPct.toFixed(1)}%
+              </span>
+              {onOpenSnap && (
+                <button
+                  type="button"
+                  onClick={onOpenSnap}
+                  className="text-[10px] text-slate-400 hover:text-sky-500 font-black transition"
+                >
+                  تحديث ◂
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex items-baseline justify-between">
             <div dir="ltr" className="text-lg font-black tabular-nums text-slate-900 dark:text-white">
               {fmt(cashAmmo.totalCash)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
             </div>
-            <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-              نسبة السيولة: <b dir="ltr" className="text-sky-500 font-black">{cashAmmo.cashPct.toFixed(1)}%</b> من المحفظة
-            </div>
+            {cashAmmo.targetCash15Amt > 0 && (
+              <span dir="ltr" className="text-[10px] font-bold text-slate-400">
+                هدف 15%: +{fmtCompact(cashAmmo.targetCash15Amt)}
+              </span>
+            )}
           </div>
 
-          {/* Ammo Readiness Gauge Bar */}
-          <div className="space-y-1">
-            <div className="h-2 w-full rounded-full bg-slate-200/70 dark:bg-slate-800 overflow-hidden flex" dir="ltr">
-              <div
-                className={cx(
-                  'h-full rounded-full transition-all duration-700',
-                  cashAmmo.cashPct < 5
-                    ? 'bg-rose-500'
-                    : cashAmmo.cashPct < 15
-                      ? 'bg-amber-500'
-                      : 'bg-gradient-to-r from-sky-500 to-emerald-500'
-                )}
-                style={{ width: `${Math.min(100, Math.max(3, (cashAmmo.cashPct / 30) * 100))}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between text-[9px] font-bold text-slate-400">
-              <span>
-                {cashAmmo.totalCash === 0
-                  ? '💡 سجّل الكاش المتاح داخل كل محفظة لتفعيل رادار القنص'
-                  : cashAmmo.targetCash15Amt > 0
-                    ? `للوصول لـ 15% ذخيرة مثالية: +${fmtCompact(cashAmmo.targetCash15Amt)} ج.م`
-                    : '✓ تمتلك سيولة هجومية ممتازة لاقتناص الفرص'}
-              </span>
-              {onOpenSnap && (
-                <button
-                  type="button"
-                  onClick={onOpenSnap}
-                  className="text-sky-600 dark:text-sky-400 font-black hover:underline shrink-0"
-                >
-                  تحديث الكاش ◂
-                </button>
+          <div className="h-1.5 w-full rounded-full bg-slate-200/70 dark:bg-slate-700/60 overflow-hidden flex" dir="ltr">
+            <div
+              className={cx(
+                'h-full rounded-full transition-all duration-700',
+                cashAmmo.cashPct < 5 ? 'bg-rose-500' : cashAmmo.cashPct < 15 ? 'bg-amber-500' : 'bg-sky-500'
               )}
-            </div>
+              style={{ width: `${Math.min(100, Math.max(3, (cashAmmo.cashPct / 30) * 100))}%` }}
+            />
           </div>
         </div>
 
-        {/* Compact Partner Split Footer (Embedded without taking extra space) */}
+        {/* ───────── هيكل الملكية (Partner Split) ───────── */}
         {settings.partner.enabled && (
-          <div className="rounded-2xl bg-purple-500/[0.05] border border-purple-500/20 p-2.5 space-y-1.5">
-            <div className="flex items-center justify-between text-[11px] font-black">
+          <div className="rounded-2xl bg-purple-500/[0.04] border border-purple-500/15 p-2.5 space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] font-black">
               <span className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400">
                 <Users className="w-3 h-3" />
-                <span>ميزان الشراكة</span>
+                <span>هيكل الملكية</span>
               </span>
-              <span dir="ltr" className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+              <span dir="ltr" className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                 تغطية {ownership.coveragePct.toFixed(0)}%
               </span>
             </div>
             <div className="grid grid-cols-2 gap-2 text-right">
-              <div className="bg-white/80 dark:bg-slate-800/60 rounded-xl p-1.5 border border-purple-500/10">
-                <div className="text-[9px] font-bold text-slate-400">حصتي الخالصة ({ownership.mySharePct.toFixed(0)}%)</div>
+              <div className="bg-white/80 dark:bg-slate-800/60 rounded-xl p-1.5 border border-slate-200/50 dark:border-white/5">
+                <div className="text-[9px] font-bold text-slate-400">حصتي ({ownership.mySharePct.toFixed(0)}%)</div>
                 <div dir="ltr" className="text-xs font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
-                  {fmt(ownership.myNav)} ج.م
+                  {fmt(ownership.myNav)}
                 </div>
               </div>
-              <div className="bg-white/80 dark:bg-slate-800/60 rounded-xl p-1.5 border border-purple-500/10">
+              <div className="bg-white/80 dark:bg-slate-800/60 rounded-xl p-1.5 border border-slate-200/50 dark:border-white/5">
                 <div className="text-[9px] font-bold text-slate-400">{settings.partner.name} ({ownership.partnerSharePct.toFixed(0)}%)</div>
                 <div dir="ltr" className="text-xs font-black text-purple-600 dark:text-purple-400 tabular-nums">
-                  {fmt(ownership.partnerCap)} ج.م
+                  {fmt(ownership.partnerCap)}
                 </div>
               </div>
             </div>
@@ -1673,34 +1673,24 @@ export function WealthGrowthDecomposition({
         )}
       </div>
 
-      {/* ───────── 2. محرك الأداء والتوقعات المستقبلية (2/3) ───────── */}
+      {/* ───────── 2. معدلات النمو ومحاكاة السيناريوهات (2/3) ───────── */}
       <div className="lg:col-span-2 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/80 p-4 sm:p-5 shadow-sm flex flex-col justify-between gap-4">
-        {/* Top Header: Title & Horizon Selector */}
-        <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2 border-b border-slate-100 dark:border-slate-800">
+        {/* Top Header: Clean Title & Horizon Selector */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/10 text-emerald-500 flex items-center justify-center">
-              <Sparkles className="w-4 h-4" />
+            <span className="w-7 h-7 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+              <Sparkles className="w-3.5 h-3.5" />
             </span>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-black text-slate-900 dark:text-white">محرك الأداء والتوقعات المستقبلية</span>
-                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                  تفاعلي حي
-                </span>
-              </div>
-              <p className="text-[10px] font-bold text-slate-400">
-                محاكاة تراكم الثروة والعوائد وفق سيناريوهات النمو ومعدل الأداء الفعلي
-              </p>
-            </div>
+            <span className="text-xs font-black text-slate-900 dark:text-white">معدلات النمو ومحاكاة العوائد</span>
           </div>
 
           {/* Time Horizon Segmented Buttons */}
           <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[11px] font-black">
             {[
-              { id: '6M', label: '6 شهور' },
-              { id: '1Y', label: 'سنة' },
-              { id: '2Y', label: 'سنتين' },
-              { id: '3Y', label: '3 سنوات' },
+              { id: '6M', label: '6M' },
+              { id: '1Y', label: '1Y' },
+              { id: '2Y', label: '2Y' },
+              { id: '3Y', label: '3Y' },
             ].map(h => (
               <button
                 key={h.id}
@@ -1719,136 +1709,119 @@ export function WealthGrowthDecomposition({
           </div>
         </div>
 
-        {/* Dual Core Grid: Realized Performance Run-Rate VS Future Simulation */}
+        {/* Dual Core Grid: Realized Metrics VS Scenario Projection */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-          {/* Column A: Realized Velocity (الأداء الفعلي المسجل) */}
+          {/* Column A: Realized Performance Metrics */}
           <div className="rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/60 p-3.5 flex flex-col justify-between gap-3">
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-400">
-              <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+            <div className="flex items-center justify-between text-[11px] font-black text-slate-600 dark:text-slate-300">
+              <span className="flex items-center gap-1.5">
                 <Activity className="w-3.5 h-3.5 text-indigo-500" />
-                <span>وتيرة الأداء الحقيقية (الواقعية)</span>
+                <span>الأداء المحقق</span>
               </span>
-              <span dir="ltr" className="text-[10px] font-black text-indigo-500">
-                {stats?.days ?? 365} يوماً نشاطاً
+              <span dir="ltr" className="text-[10px] font-black text-slate-400">
+                {stats?.days ?? 365} يوم
               </span>
             </div>
 
             {/* Metric 1: Monthly Realized Run-rate */}
-            <div className="rounded-xl bg-white dark:bg-slate-800/80 p-2.5 border border-slate-200/50 dark:border-white/5">
-              <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
-                <span>متوسط الربح الشهري المحقق</span>
-                <span dir="ltr" className={cx('font-black text-[10px]', (stats?.avgMonth ?? 0) >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
-                  {fmtPct(stats?.avgMonth ?? 0, 2)} شهرياً
-                </span>
+            <div className="rounded-xl bg-white dark:bg-slate-800/80 p-2.5 border border-slate-200/50 dark:border-white/5 flex items-baseline justify-between">
+              <div>
+                <div className="text-[10px] font-bold text-slate-400">المتوسط الشهري</div>
+                <div dir="ltr" className={cx('text-lg font-black tabular-nums mt-0.5', avgMonthlyGainEgp >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500')}>
+                  {fmtSigned(avgMonthlyGainEgp)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
+                </div>
               </div>
-              <div dir="ltr" className={cx('text-lg sm:text-xl font-black tabular-nums text-right mt-0.5', avgMonthlyGainEgp >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500')}>
-                {fmtSigned(avgMonthlyGainEgp)} <span className="text-[11px] font-bold text-slate-400">ج.م/شهر</span>
-              </div>
+              <span dir="ltr" className={cx('font-black text-xs px-2 py-0.5 rounded-lg', (stats?.avgMonth ?? 0) >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500')}>
+                {fmtPct(stats?.avgMonth ?? 0, 2)}
+              </span>
             </div>
 
-            {/* Metric 2: Realized CAGR & Doubling Speed */}
+            {/* Metric 2: Realized CAGR & Doubling Time */}
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-xl bg-white dark:bg-slate-800/80 p-2 border border-slate-200/50 dark:border-white/5">
-                <div className="text-[10px] font-bold text-slate-400 truncate">النمو السنوي المركب (CAGR)</div>
-                <div dir="ltr" className="text-base font-black tabular-nums text-slate-900 dark:text-white mt-0.5">
+              <div className="rounded-xl bg-white dark:bg-slate-800/80 p-2.5 border border-slate-200/50 dark:border-white/5">
+                <div className="text-[10px] font-bold text-slate-400">معدل النمو (CAGR)</div>
+                <div dir="ltr" className="text-base font-black tabular-nums text-slate-900 dark:text-white mt-0.5 text-right">
                   +{effectiveCagr.toFixed(1)}%
                 </div>
-                <div className="text-[9px] font-bold text-slate-400">الوتيرة الفعلية</div>
               </div>
 
-              <div className="rounded-xl bg-white dark:bg-slate-800/80 p-2 border border-slate-200/50 dark:border-white/5">
-                <div className="text-[10px] font-bold text-slate-400 truncate">مضاعفة رأس المال</div>
-                <div dir="ltr" className="text-base font-black tabular-nums text-amber-500 mt-0.5">
-                  ~{yearsToDouble.toFixed(1)} سنة
+              <div className="rounded-xl bg-white dark:bg-slate-800/80 p-2.5 border border-slate-200/50 dark:border-white/5">
+                <div className="text-[10px] font-bold text-slate-400">دورة المضاعفة (2x)</div>
+                <div className="text-base font-black tabular-nums text-amber-500 mt-0.5 flex items-baseline gap-1">
+                  <span dir="ltr">{yearsToDouble.toFixed(1)}</span>
+                  <span className="text-xs font-bold text-slate-400">سنوات</span>
                 </div>
-                <div className="text-[9px] font-bold text-slate-400">بحساب وتيرة الـ 72</div>
               </div>
             </div>
 
-            {/* Consistency & Year Distinction Block (Rounded Values & 12M Track) */}
-            <div className="rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200/60 dark:border-white/5 p-3 space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold">
-                <span className="flex items-center gap-1.5 text-slate-800 dark:text-slate-100">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>اتساق الأداء العام:</span>
-                  <b dir="ltr" className="font-black text-emerald-600 dark:text-emerald-400">
-                    {overallWinRate}%
-                  </b>
-                  <span className="text-[10px] text-slate-400">({allWinningMonths} من {totalMonthsCount} شهر)</span>
+            {/* Consistency Strip */}
+            <div className="rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200/60 dark:border-white/5 p-2.5 space-y-2">
+              <div className="flex items-center justify-between text-[10px] font-black">
+                <span className="text-slate-600 dark:text-slate-300">
+                  الاتساق الكلي: <b dir="ltr" className="text-emerald-500">{overallWinRate}%</b> <span className="text-slate-400 font-bold">({allWinningMonths}/{totalMonthsCount})</span>
                 </span>
-
                 {yearMonths.length > 0 && (
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                    حصاد {currentYear}: <b dir="ltr">{yearWinningMonths}/{yearMonths.length}</b> رابح ({yearWinRate}%)
+                  <span className="text-slate-500 dark:text-slate-400">
+                    {currentYear}: <b dir="ltr" className="text-emerald-500">{yearWinRate}%</b> <span className="text-slate-400 font-bold">({yearWinningMonths}/{yearMonths.length})</span>
                   </span>
                 )}
               </div>
 
-              {/* Visual Strip of Year Months with Tooltips */}
               {yearMonths.length > 0 && (
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1 w-full" dir="ltr">
-                    {yearMonths.map(m => {
-                      const win = m.gain >= 0;
-                      const monthIdx = Number(m.key.slice(5, 7)) - 1;
-                      const mName = MONTHS_EN[monthIdx] || m.key;
-                      return (
-                        <div
-                          key={m.key}
-                          className={cx(
-                            'flex-1 h-2 rounded-full transition-all duration-300 relative group cursor-pointer hover:scale-y-125',
-                            win ? 'bg-emerald-500' : 'bg-rose-500/80'
-                          )}
-                          title={`${mName} ${currentYear}: ${win ? '+' : ''}${fmtPct(m.pct)} (${fmtSigned(m.gain)} ج.م)`}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div className="flex items-center justify-between text-[9px] font-bold text-slate-400">
-                    <span>يناير {currentYear}</span>
-                    <span className="text-emerald-500">🟢 رابح ({yearWinningMonths})</span>
-                    <span className="text-rose-400">🔴 تصحيح ({yearMonths.length - yearWinningMonths})</span>
-                    <span>نوفمبر {currentYear}</span>
-                  </div>
+                <div className="flex items-center gap-1 w-full" dir="ltr">
+                  {yearMonths.map(m => {
+                    const win = m.gain >= 0;
+                    const monthIdx = Number(m.key.slice(5, 7)) - 1;
+                    const mName = MONTHS_EN[monthIdx] || m.key;
+                    return (
+                      <div
+                        key={m.key}
+                        className={cx(
+                          'flex-1 h-1.5 rounded-full transition-all duration-300',
+                          win ? 'bg-emerald-500' : 'bg-rose-500/80'
+                        )}
+                        title={`${mName} ${currentYear}: ${fmtPct(m.pct)} (${fmtSigned(m.gain)} ج.م)`}
+                      />
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Column B: Interactive Target Simulator (محاكي القيمة المستقبلية التفاعلي) */}
-          <div className="rounded-2xl bg-gradient-to-br from-emerald-500/[0.05] via-teal-500/[0.02] to-cyan-500/[0.05] border border-emerald-500/25 p-3.5 flex flex-col justify-between gap-3">
-            {/* Top Selector: Presets & Custom Slider */}
+          {/* Column B: Scenario Simulator */}
+          <div className="rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/60 p-3.5 flex flex-col justify-between gap-3">
             <div>
-              <div className="flex items-center justify-between text-[11px] font-bold mb-1.5">
-                <span className="flex items-center gap-1 text-slate-700 dark:text-slate-200 font-black">
+              <div className="flex items-center justify-between text-[11px] font-black mb-2">
+                <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
                   <Target className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>العائد السنوي المتوقع للسيناريو:</span>
+                  <span>سيناريو العائد السنوي</span>
                 </span>
                 <span dir="ltr" className="text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
-                  {customRate}% سنوياً
+                  {customRate}%
                 </span>
               </div>
 
-              {/* Preset Buttons */}
-              <div className="flex items-center gap-1.5 mb-2">
+              {/* Clean Rate Presets */}
+              <div className="grid grid-cols-4 gap-1.5 mb-2.5" dir="ltr">
                 {[
-                  { label: 'تحفظي', rate: 15 },
-                  { label: 'الوتيرة الحالية', rate: Math.round(effectiveCagr > 0 ? effectiveCagr : 22) },
-                  { label: 'متفائل', rate: 32 },
-                  { label: 'زخم قوي', rate: 45 },
+                  { label: '15%', rate: 15 },
+                  { label: `${Math.round(effectiveCagr > 0 ? effectiveCagr : 22)}% (الفعلي)`, rate: Math.round(effectiveCagr > 0 ? effectiveCagr : 22) },
+                  { label: '32%', rate: 32 },
+                  { label: '45%', rate: 45 },
                 ].map(p => (
                   <button
                     key={p.label}
                     type="button"
                     onClick={() => setCustomRate(p.rate)}
                     className={cx(
-                      'flex-1 py-1 px-1 rounded-lg text-[10px] font-black transition-all truncate text-center',
+                      'py-1 px-1.5 rounded-lg text-[10px] font-black transition-all text-center tabular-nums',
                       customRate === p.rate
-                        ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
-                        : 'bg-white/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-emerald-500/10'
+                        ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-white/5 hover:border-emerald-500/40'
                     )}
                   >
-                    {p.label} ({p.rate}%)
+                    {p.label}
                   </button>
                 ))}
               </div>
@@ -1867,41 +1840,39 @@ export function WealthGrowthDecomposition({
               </div>
             </div>
 
-            {/* Glowing Projection Results Showcase Card */}
-            <div className="rounded-xl bg-white/90 dark:bg-slate-900/90 border border-emerald-500/30 p-3 shadow-inner">
+            {/* Projection Output Card */}
+            <div className="rounded-xl bg-white dark:bg-slate-900/90 border border-slate-200/70 dark:border-white/5 p-3">
               <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
-                <span>القيمة السوقية المتوقعة بعد ({horizonLabel})</span>
+                <span>القيمة المتوقعة ({horizonLabel})</span>
                 <span dir="ltr" className="text-emerald-500 font-black">
-                  +{projectedGainPct.toFixed(1)}% نمو
+                  +{projectedGainPct.toFixed(1)}%
                 </span>
               </div>
 
-              <div dir="ltr" className="text-2xl sm:text-3xl font-black tabular-nums text-slate-900 dark:text-white mt-0.5 text-right">
+              <div dir="ltr" className="text-2xl font-black tabular-nums text-slate-900 dark:text-white mt-0.5 text-right">
                 {fmt(futureNav)} <span className="text-xs font-bold text-slate-400">ج.م</span>
               </div>
 
-              {/* Secondary Gain Breakdown */}
               <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t border-slate-100 dark:border-white/5 text-[10px] font-bold">
                 <div>
-                  <span className="text-slate-400 block">صافي الأرباح المتوقعة:</span>
+                  <span className="text-slate-400 block">العائد المتوقع</span>
                   <b dir="ltr" className="text-emerald-500 font-black tabular-nums text-xs">
-                    +{fmt(projectedGain)} ج.م
+                    +{fmt(projectedGain)}
                   </b>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">التدفق الشهري المتوقع:</span>
+                  <span className="text-slate-400 block">المتوسط الشهري</span>
                   <b dir="ltr" className="text-teal-600 dark:text-teal-400 font-black tabular-nums text-xs">
-                    +{fmt(projectedMonthlyGain)} ج.م/شهر
+                    +{fmt(projectedMonthlyGain)}
                   </b>
                 </div>
               </div>
 
-              {/* Motivating Partner Share Insight if Partner Enabled */}
               {settings.partner.enabled && (
-                <div className="mt-2 pt-1.5 border-t border-purple-500/15 text-[9.5px] font-bold text-purple-700 dark:text-purple-300 flex items-center justify-between">
-                  <span>حصتك الخالصة المتوقعة:</span>
-                  <b dir="ltr" className="font-black text-purple-600 dark:text-purple-300">
-                    {fmt(projectedOwnership.myFutureNav)} ج.م (ترتفع لـ {projectedOwnership.myFutureSharePct.toFixed(0)}%)
+                <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-white/5 text-[10px] font-bold text-slate-500 flex items-center justify-between">
+                  <span>حصتي الصافية:</span>
+                  <b dir="ltr" className="font-black text-purple-600 dark:text-purple-400 tabular-nums">
+                    {fmt(projectedOwnership.myFutureNav)} ({projectedOwnership.myFutureSharePct.toFixed(0)}%)
                   </b>
                 </div>
               )}
@@ -1933,303 +1904,256 @@ export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
   const absCurrentDD = Math.abs(currentDdPct);
   const absMaxDD = Math.abs(s.maxDD);
 
-  // حالة المخاطر اللحظية الدقيقة
+  // حالة المخاطر المختصرة
   const ddStatus = absCurrentDD < 1
-    ? { text: 'عند القمة التاريخية 🏆', color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
+    ? { text: 'القمة 🏆', color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
     : absCurrentDD <= 10
-      ? { text: 'مخاطر منخفضة', color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
+      ? { text: 'آمن', color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
       : absCurrentDD <= 20
-        ? { text: 'تصحيح معتاد', color: 'text-amber-500', bg: 'bg-amber-500/10' }
+        ? { text: 'تصحيح', color: 'text-amber-500', bg: 'bg-amber-500/10' }
         : { text: 'تراجع حاد', color: 'text-rose-500', bg: 'bg-rose-500/10' };
 
-  // وسادة الأمان لرأس المال (Capital Cushion فوق الإيداعات)
   const cushionPct = s.netDeposits > 0 ? (s.profit / s.netDeposits) * 100 : 0;
 
-  // كفاءة العائد مقابل التذبذب
   const riskEfficiency = useMemo(() => {
     if (!s.vol || s.vol <= 0 || s.avgMonth === null) return null;
     return s.avgMonth / s.vol;
   }, [s.vol, s.avgMonth]);
 
-  // مؤشرات الأرباح المسحوبة ومعدل إعادة الاستثمار
   const withdrawn = useMemo(() => {
     return computeWithdrawnProfits(cashflows, s.profit);
   }, [cashflows, s.profit]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {/* 1. Risk & Capital Defense Cockpit */}
-      <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900/90 dark:via-slate-900/40 dark:to-slate-900/90 p-5 shadow-sm flex flex-col justify-between gap-4">
+      {/* 1. Risk & Drawdown Cockpit */}
+      <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/80 p-5 shadow-sm flex flex-col justify-between gap-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center">
-              <ShieldAlert className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center">
+              <ShieldAlert className="w-3.5 h-3.5" />
             </div>
-            <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">حماية رأس المال والمخاطر</h3>
+            <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">المخاطر والهبوط</h3>
           </div>
-          <span className={cx('text-[10px] font-black px-2.5 py-1 rounded-full', ddStatus.bg, ddStatus.color)}>
+          <span className={cx('text-[10px] font-black px-2 py-0.5 rounded-lg', ddStatus.bg, ddStatus.color)}>
             {ddStatus.text}
           </span>
         </div>
 
-        {/* Drawdown & Recovery Dual Gauge */}
-        <div className="bg-slate-100/80 dark:bg-slate-800/60 rounded-2xl p-4 space-y-3 border border-slate-200/50 dark:border-slate-800/40">
+        {/* Drawdown & Recovery Gauge */}
+        <div className="bg-slate-50/90 dark:bg-slate-800/50 rounded-2xl p-3.5 space-y-2.5 border border-slate-200/60 dark:border-slate-800">
           <div className="flex items-baseline justify-between">
             <div>
-              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">الهبوط اللحظي من القمة</span>
-              <div dir="ltr" className="text-xl font-black text-rose-500 tabular-nums">
+              <span className="text-[10px] font-bold text-slate-400">الهبوط الحالي (Drawdown)</span>
+              <div dir="ltr" className="text-xl font-black text-rose-500 tabular-nums mt-0.5">
                 {currentDdPct === 0 ? '0.0%' : `${currentDdPct.toFixed(1)}%`}
                 {currentDdAmt > 0 && (
-                  <span className="text-xs font-bold text-slate-400 mr-1.5">
-                    ({fmtSigned(-currentDdAmt)} ج.م)
+                  <span className="text-[11px] font-bold text-slate-400 ml-1.5">
+                    ({fmtSigned(-currentDdAmt)})
                   </span>
                 )}
               </div>
             </div>
             <div className="text-left">
-              <span className="text-[10px] font-bold text-slate-400">أقصى قاع مسجل</span>
-              <div dir="ltr" className="text-sm font-black text-slate-700 dark:text-slate-300 tabular-nums">
+              <span className="text-[10px] font-bold text-slate-400">أقصى هبوط (Max DD)</span>
+              <div dir="ltr" className="text-sm font-black text-slate-700 dark:text-slate-300 tabular-nums mt-0.5">
                 {s.maxDD === 0 ? '0.0%' : `${s.maxDD.toFixed(1)}%`}
               </div>
             </div>
           </div>
 
-          {/* Visual Track */}
-          <div className="space-y-1">
-            <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700/60 overflow-hidden flex relative" dir="ltr">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 transition-all duration-700"
-                style={{ width: `${Math.min(100, Math.max(3, (absCurrentDD / Math.max(absMaxDD, 25)) * 100))}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between text-[9px] font-black text-slate-400" dir="ltr">
-              <span>0% (القمة 🏆)</span>
-              <span>الآن ({currentDdPct.toFixed(1)}%)</span>
-              <span>القاع ({s.maxDD.toFixed(1)}%)</span>
-            </div>
+          <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700/60 overflow-hidden flex" dir="ltr">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 transition-all duration-700"
+              style={{ width: `${Math.min(100, Math.max(3, (absCurrentDD / Math.max(absMaxDD, 25)) * 100))}%` }}
+            />
           </div>
 
-          {/* Recovery Target */}
-          {currentDdAmt > 0 ? (
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-200/60 dark:border-slate-700/40">
-              <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
-                <Zap className="w-3.5 h-3.5 shrink-0" />
-                <span>مستهدف القمة:</span>
-              </span>
-              <div className="flex items-center gap-1.5">
-                <b dir="ltr" className="font-black text-orange-500">
-                  +{fmt(recoveryAmt)} ج.م (+{recoveryPct.toFixed(1)}%)
-                </b>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-500 pt-1 border-t border-slate-200/60 dark:border-slate-700/40">
-              <ShieldCheck className="w-4 h-4" />
-              <span>المحفظة تتداول عند أعلى قمة مسجلة</span>
+          {currentDdAmt > 0 && (
+            <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/40">
+              <span>للقمة ({fmtCompact(peakNav)}):</span>
+              <b dir="ltr" className="font-black text-amber-500 tabular-nums">
+                +{fmt(recoveryAmt)} (+{recoveryPct.toFixed(1)}%)
+              </b>
             </div>
           )}
         </div>
 
-        {/* 3 Professional Risk Metrics */}
-        <div className="grid grid-cols-3 gap-2.5">
-          {/* 1. وسادة الأمان لرأس المال (Capital Cushion) */}
-          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-2.5 text-center flex flex-col justify-between">
-            <div>
-              <div className="text-[10px] font-bold text-slate-400 truncate">وسادة الأمان</div>
-              <div dir="ltr" className={cx('text-sm sm:text-base font-black tabular-nums mt-0.5', s.profit >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
-                {s.profit >= 0 ? `+${fmtCompact(s.profit)}` : fmtCompact(s.profit)}
-              </div>
+        {/* 3 Institutional Risk Metrics (Zero 3rd-line fluff) */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-xl border border-slate-200/60 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 p-2.5 text-center">
+            <div className="text-[10px] font-bold text-slate-400 truncate">هامش الأمان</div>
+            <div dir="ltr" className={cx('text-sm font-black tabular-nums mt-1', s.profit >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
+              {s.profit >= 0 ? `+${fmtCompact(s.profit)}` : fmtCompact(s.profit)}
             </div>
-            <div className="text-[9px] font-black text-slate-400 mt-1">
-              {s.profit >= 0 ? `+${cushionPct.toFixed(0)}% فوق التكلفة` : `${cushionPct.toFixed(0)}%`}
+            <div dir="ltr" className="text-[9px] font-bold text-slate-400 mt-0.5 tabular-nums">
+              {s.profit >= 0 ? `+${cushionPct.toFixed(0)}%` : `${cushionPct.toFixed(0)}%`}
             </div>
           </div>
 
-          {/* 2. عامل الربحية (Profit Factor) */}
-          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-2.5 text-center flex flex-col justify-between">
-            <div>
-              <div className="text-[10px] font-bold text-slate-400 truncate">عامل الربحية (PF)</div>
-              <div dir="ltr" className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 tabular-nums mt-0.5">
-                {s.profitFactor === null ? '—' : s.profitFactor === Infinity ? '∞' : s.profitFactor.toFixed(2)}
-              </div>
+          <div className="rounded-xl border border-slate-200/60 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 p-2.5 text-center">
+            <div className="text-[10px] font-bold text-slate-400 truncate">Profit Factor</div>
+            <div dir="ltr" className="text-sm font-black text-slate-800 dark:text-slate-100 tabular-nums mt-1">
+              {s.profitFactor === null ? '—' : s.profitFactor === Infinity ? '∞' : s.profitFactor.toFixed(2)}
             </div>
-            <div className="text-[9px] font-black text-slate-400 mt-1">
-              {s.profitFactor === null ? '—' : s.profitFactor >= 1.5 ? 'أرباح تفوق الخسائر' : 'متوازن'}
+            <div dir="ltr" className="text-[9px] font-bold text-slate-400 mt-0.5">
+              PF Ratio
             </div>
           </div>
 
-          {/* 3. التذبذب الشهري وكفاءة العائد */}
-          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-2.5 text-center flex flex-col justify-between">
-            <div>
-              <div className="text-[10px] font-bold text-slate-400 truncate">التذبذب الشهري</div>
-              <div dir="ltr" className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 tabular-nums mt-0.5">
-                {s.vol === null ? '—' : `±${s.vol.toFixed(1)}%`}
-              </div>
+          <div className="rounded-xl border border-slate-200/60 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 p-2.5 text-center">
+            <div className="text-[10px] font-bold text-slate-400 truncate">التذبذب (Vol)</div>
+            <div dir="ltr" className="text-sm font-black text-slate-800 dark:text-slate-100 tabular-nums mt-1">
+              {s.vol === null ? '—' : `±${s.vol.toFixed(1)}%`}
             </div>
-            <div className="text-[9px] font-black text-slate-400 mt-1">
-              {riskEfficiency !== null ? `كفاءة ${riskEfficiency.toFixed(1)}x` : 'نشط'}
+            <div dir="ltr" className="text-[9px] font-bold text-slate-400 mt-0.5 tabular-nums">
+              {riskEfficiency !== null ? `${riskEfficiency.toFixed(1)}x Sharpe` : 'Monthly'}
             </div>
           </div>
         </div>
       </div>
 
       {/* 2. Withdrawn Profits & Reinvestment Cockpit */}
-      <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900/90 dark:via-slate-900/40 dark:to-slate-900/90 p-5 shadow-sm flex flex-col justify-between gap-4">
+      <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/80 p-5 shadow-sm flex flex-col justify-between gap-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
-              <RotateCcw className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+              <RotateCcw className="w-3.5 h-3.5" />
             </div>
-            <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">الأرباح المسحوبة وإعادة الاستثمار</h3>
+            <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">الأرباح المسحوبة والتراكم</h3>
           </div>
-          <span className={cx(
-            'text-[10px] font-black px-2.5 py-1 rounded-full',
+          <span dir="ltr" className={cx(
+            'text-[10px] font-black px-2 py-0.5 rounded-lg tabular-nums',
             withdrawn.reinvestmentRatePct >= 70
               ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
               : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
           )}>
-            {withdrawn.reinvestmentRatePct.toFixed(0)}% تدوير مركب 🔄
+            {withdrawn.reinvestmentRatePct.toFixed(0)}% Reinvested
           </span>
         </div>
 
         {/* Main Dual Gauge: Reinvested vs Withdrawn */}
-        <div className="bg-slate-100/80 dark:bg-slate-800/60 rounded-2xl p-4 space-y-3 border border-slate-200/50 dark:border-slate-800/40">
+        <div className="bg-slate-50/90 dark:bg-slate-800/50 rounded-2xl p-3.5 space-y-2.5 border border-slate-200/60 dark:border-slate-800">
           <div className="flex items-baseline justify-between">
             <div>
-              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">إجمالي الأرباح المسحوبة</span>
-              <div dir="ltr" className="text-xl font-black text-purple-600 dark:text-purple-400 tabular-nums">
-                {fmt(withdrawn.totalWithdrawn)} <span className="text-xs font-bold text-slate-400">ج.م</span>
+              <span className="text-[10px] font-bold text-slate-400">الأرباح المسحوبة</span>
+              <div dir="ltr" className="text-xl font-black text-purple-600 dark:text-purple-400 tabular-nums mt-0.5">
+                {fmt(withdrawn.totalWithdrawn)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
               </div>
             </div>
             <div className="text-left">
-              <span className="text-[10px] font-bold text-slate-400">المعاد استثماره بالمحفظة</span>
-              <div dir="ltr" className="text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
-                {fmt(withdrawn.reinvestedProfit)} ج.م
+              <span className="text-[10px] font-bold text-slate-400">المعاد استثماره</span>
+              <div dir="ltr" className="text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums mt-0.5">
+                {fmt(withdrawn.reinvestedProfit)}
               </div>
             </div>
           </div>
 
-          {/* Visual Compounding Track */}
           <div className="space-y-1">
-            <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700/60 overflow-hidden flex" dir="ltr">
+            <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700/60 overflow-hidden flex" dir="ltr">
               <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-700"
+                className="h-full bg-emerald-500 transition-all duration-700"
                 style={{ width: `${withdrawn.reinvestmentRatePct}%` }}
-                title={`معاد استثماره: ${withdrawn.reinvestmentRatePct.toFixed(1)}%`}
               />
               <div
-                className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-700"
+                className="h-full bg-purple-500 transition-all duration-700"
                 style={{ width: `${100 - withdrawn.reinvestmentRatePct}%` }}
-                title={`مسحوب: ${(100 - withdrawn.reinvestmentRatePct).toFixed(1)}%`}
               />
             </div>
-            <div className="flex items-center justify-between text-[9px] font-black text-slate-400" dir="ltr">
-              <span>🔄 {withdrawn.reinvestmentRatePct.toFixed(0)}% مستمر للتراكم</span>
-              <span>🚪 {withdrawn.withdrawnRatePct.toFixed(0)}% مسحوب كأرباح</span>
+            <div className="flex items-center justify-between text-[9px] font-bold text-slate-400" dir="ltr">
+              <span>{withdrawn.reinvestmentRatePct.toFixed(0)}% تراكم</span>
+              <span>{withdrawn.withdrawnRatePct.toFixed(0)}% مسحوب</span>
             </div>
           </div>
 
-          {/* Sub Obligations Note */}
           {withdrawn.visaObligations > 0 && (
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-200/60 dark:border-slate-700/40">
-              <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
-                <Banknote className="w-3.5 h-3.5 shrink-0" />
-                <span>سداد فيزا (تدوير التزامات):</span>
-              </span>
-              <b dir="ltr" className="font-black text-blue-600 dark:text-blue-400 tabular-nums">
-                {fmt(withdrawn.visaObligations)} ج.م
+            <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/40">
+              <span>التزامات مسددة (فيزا):</span>
+              <b dir="ltr" className="font-black text-slate-700 dark:text-slate-300 tabular-nums">
+                {fmt(withdrawn.visaObligations)}
               </b>
             </div>
           )}
         </div>
 
-        {/* 3 Breakdown Metrics: My Withdrawn, Partner Withdrawn, Capital Additions */}
-        <div className="grid grid-cols-3 gap-2.5">
-          {/* 1. أرباحي المسحوبة */}
-          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-2.5 text-center flex flex-col justify-between">
-            <div>
-              <div className="text-[10px] font-bold text-slate-400 truncate">أرباحي المسحوبة</div>
-              <div dir="ltr" className="text-sm sm:text-base font-black text-indigo-600 dark:text-indigo-400 tabular-nums mt-0.5">
-                {fmtCompact(withdrawn.myWithdrawn)}
-              </div>
+        {/* 3 Breakdown Metrics (Zero 3rd-line fluff) */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-xl border border-slate-200/60 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 p-2.5 text-center">
+            <div className="text-[10px] font-bold text-slate-400 truncate">مسحوباتي</div>
+            <div dir="ltr" className="text-sm font-black text-indigo-600 dark:text-indigo-400 tabular-nums mt-1">
+              {fmtCompact(withdrawn.myWithdrawn)}
             </div>
-            <div className="text-[9px] font-black text-slate-400 mt-1">
-              جني نقدي لي
+            <div dir="ltr" className="text-[9px] font-bold text-slate-400 mt-0.5 tabular-nums">
+              {withdrawn.totalWithdrawn > 0 ? `${Math.round((withdrawn.myWithdrawn / withdrawn.totalWithdrawn) * 100)}%` : '0%'}
             </div>
           </div>
 
-          {/* 2. أرباح الشريك */}
-          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-2.5 text-center flex flex-col justify-between">
-            <div>
-              <div className="text-[10px] font-bold text-slate-400 truncate">أرباح {settings.partner?.name || 'الشريك'}</div>
-              <div dir="ltr" className="text-sm sm:text-base font-black text-purple-600 dark:text-purple-400 tabular-nums mt-0.5">
-                {fmtCompact(withdrawn.partnerWithdrawn)}
-              </div>
+          <div className="rounded-xl border border-slate-200/60 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 p-2.5 text-center">
+            <div className="text-[10px] font-bold text-slate-400 truncate">مسحوبات {settings.partner?.name || 'الشريك'}</div>
+            <div dir="ltr" className="text-sm font-black text-purple-600 dark:text-purple-400 tabular-nums mt-1">
+              {fmtCompact(withdrawn.partnerWithdrawn)}
             </div>
-            <div className="text-[9px] font-black text-slate-400 mt-1">
-              مسحوبات الشريك
+            <div dir="ltr" className="text-[9px] font-bold text-slate-400 mt-0.5 tabular-nums">
+              {withdrawn.totalWithdrawn > 0 ? `${Math.round((withdrawn.partnerWithdrawn / withdrawn.totalWithdrawn) * 100)}%` : '0%'}
             </div>
           </div>
 
-          {/* 3. صافي زيادة رأس المال */}
-          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-2.5 text-center flex flex-col justify-between">
-            <div>
-              <div className="text-[10px] font-bold text-slate-400 truncate">زيادات رأس المال</div>
-              <div dir="ltr" className="text-sm sm:text-base font-black text-teal-600 dark:text-teal-400 tabular-nums mt-0.5">
-                +{fmtCompact(withdrawn.capitalAdditionsMine + withdrawn.capitalAdditionsPartner)}
-              </div>
+          <div className="rounded-xl border border-slate-200/60 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 p-2.5 text-center">
+            <div className="text-[10px] font-bold text-slate-400 truncate">إضافات الرأسمال</div>
+            <div dir="ltr" className="text-sm font-black text-teal-600 dark:text-teal-400 tabular-nums mt-1">
+              +{fmtCompact(withdrawn.capitalAdditionsMine + withdrawn.capitalAdditionsPartner)}
             </div>
-            <div className="text-[9px] font-black text-slate-400 mt-1">
-              حقن سيولة معتمد
+            <div dir="ltr" className="text-[9px] font-bold text-slate-400 mt-0.5">
+              Capital In
             </div>
           </div>
         </div>
       </div>
 
-      {/* 2. Monthly Rhythm & Consistency Cockpit */}
-      <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900/90 dark:via-slate-900/40 dark:to-slate-900/90 p-5 shadow-sm flex flex-col justify-between gap-3.5">
+      {/* 3. Monthly Performance Cockpit */}
+      <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/80 p-5 shadow-sm flex flex-col justify-between gap-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
-              <Calendar className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+              <Calendar className="w-3.5 h-3.5" />
             </div>
-            <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">نبض الأداء الشهري</h3>
+            <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">الأداء الشهري</h3>
           </div>
 
           {s.streak !== 0 && (
-            <span className={cx('text-[10px] font-black px-2.5 py-1 rounded-full flex items-center gap-1', s.streak > 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500')}>
+            <span className={cx('text-[10px] font-black px-2 py-0.5 rounded-lg flex items-center gap-1', s.streak > 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500')}>
               <Flame className="w-3 h-3" />
-              {s.streak > 0 ? `${s.streak} شهور رابحة` : `${Math.abs(s.streak)} شهور تصحيح`}
+              <span dir="ltr">{s.streak > 0 ? `+${s.streak}M` : `${s.streak}M`}</span>
             </span>
           )}
         </div>
 
         {/* Win Rate & Monthly Summary */}
-        <div className="flex items-center justify-between gap-4 bg-slate-100/80 dark:bg-slate-800/60 rounded-2xl px-4 py-3 border border-slate-200/50 dark:border-slate-800/40">
-          <div className="flex items-center gap-3">
-            <Ring value={s.winRate ?? 0} color={s.winRate && s.winRate >= 50 ? '#10b981' : '#f43f5e'} size={46}>
+        <div className="flex items-center justify-between gap-4 bg-slate-50/90 dark:bg-slate-800/50 rounded-2xl px-3.5 py-2.5 border border-slate-200/60 dark:border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <Ring value={s.winRate ?? 0} color={s.winRate && s.winRate >= 50 ? '#10b981' : '#f43f5e'} size={42}>
               {s.winRate === null ? '—' : `${s.winRate.toFixed(0)}%`}
             </Ring>
             <div>
-              <div className="text-xs font-black text-slate-800 dark:text-slate-100">الشهور الرابحة</div>
-              <div className="text-[10px] font-bold text-slate-400 mt-0.5">
-                {s.months.filter(m => m.gain >= 0).length} من {s.months.length} شهر
+              <div className="text-xs font-black text-slate-800 dark:text-slate-100">نسبة الفوز</div>
+              <div dir="ltr" className="text-[10px] font-bold text-slate-400 tabular-nums">
+                {s.months.filter(m => m.gain >= 0).length} / {s.months.length} M
               </div>
             </div>
           </div>
 
-          <div className="text-left border-r border-slate-200 dark:border-slate-700 pr-4">
-            <div className="text-[10px] font-bold text-slate-400">متوسط الشهر</div>
-            <div dir="ltr" className={cx('text-lg font-black tabular-nums', s.avgMonth !== null && tone(s.avgMonth))}>
+          <div className="text-left border-r border-slate-200 dark:border-slate-700 pr-3.5">
+            <div className="text-[10px] font-bold text-slate-400">المتوسط</div>
+            <div dir="ltr" className={cx('text-base font-black tabular-nums', s.avgMonth !== null && tone(s.avgMonth))}>
               {s.avgMonth === null ? '—' : fmtPct(s.avgMonth)}
             </div>
           </div>
         </div>
 
-        {/* Monthly Heatmap Compact Grid (No Cramped Scrollbar) */}
+        {/* Monthly Heatmap Compact Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
           {s.months.length === 0 ? (
-            <p className="col-span-3 text-center text-xs font-bold text-slate-400 py-3">لا توجد أشهر مكتملة بعد</p>
+            <p className="col-span-3 text-center text-xs font-bold text-slate-400 py-3">لا توجد أشهر مكتملة</p>
           ) : (
             s.months.slice(-9).map(m => {
               const isGain = m.gain >= 0;
@@ -2237,16 +2161,16 @@ export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
                 <div
                   key={m.key}
                   className={cx(
-                    'flex items-center justify-between px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all',
+                    'flex items-center justify-between px-2 py-1.5 rounded-xl border text-xs font-bold transition-all',
                     isGain
-                      ? 'border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-600 dark:text-emerald-400'
-                      : 'border-rose-500/25 bg-rose-500/[0.06] text-rose-600 dark:text-rose-400'
+                      ? 'border-emerald-500/20 bg-emerald-500/[0.05] text-emerald-600 dark:text-emerald-400'
+                      : 'border-rose-500/20 bg-rose-500/[0.05] text-rose-600 dark:text-rose-400'
                   )}
                 >
-                  <span className="text-[10px] font-black text-slate-700 dark:text-slate-200 truncate">{monthLabel(m.key)}</span>
+                  <span className="text-[10px] font-black text-slate-700 dark:text-slate-200 truncate">{monthLabel(m.key).split(' ')[0]}</span>
                   <div className="text-left shrink-0">
                     <span dir="ltr" className="font-black tabular-nums block text-[10px] leading-tight">{fmtPct(m.pct, 1)}</span>
-                    <span dir="ltr" className="text-[9px] font-bold opacity-80 block leading-tight">{fmtCompact(m.gain)}</span>
+                    <span dir="ltr" className="text-[9px] font-bold opacity-75 block leading-tight tabular-nums">{fmtCompact(m.gain)}</span>
                   </div>
                 </div>
               );
@@ -2256,24 +2180,18 @@ export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
 
         {/* Best vs Worst Comparison */}
         <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/60">
-          <div className="flex items-center gap-2">
-            <Trophy className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-            <div className="min-w-0">
-              <span className="text-[9px] font-bold text-slate-400 block">أفضل شهر</span>
-              <span className="text-[11px] font-black text-slate-800 dark:text-slate-200 truncate block">
-                {s.best ? `${monthLabel(s.best.key)} (${fmtPct(s.best.pct, 1)})` : '—'}
-              </span>
-            </div>
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="font-bold text-slate-400">الأفضل:</span>
+            <b dir="ltr" className="font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+              {s.best ? `${MONTHS_EN[+s.best.key.slice(5, 7) - 1]} (${fmtPct(s.best.pct, 1)})` : '—'}
+            </b>
           </div>
 
-          <div className="flex items-center gap-2">
-            <TrendingDown className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-            <div className="min-w-0">
-              <span className="text-[9px] font-bold text-slate-400 block">أضعف شهر</span>
-              <span className="text-[11px] font-black text-slate-800 dark:text-slate-200 truncate block">
-                {s.worst ? `${monthLabel(s.worst.key)} (${fmtPct(s.worst.pct, 1)})` : '—'}
-              </span>
-            </div>
+          <div className="flex items-center justify-between text-[10px] border-r border-slate-100 dark:border-slate-800 pr-2">
+            <span className="font-bold text-slate-400">الأضعف:</span>
+            <b dir="ltr" className="font-black text-rose-500 tabular-nums">
+              {s.worst ? `${MONTHS_EN[+s.worst.key.slice(5, 7) - 1]} (${fmtPct(s.worst.pct, 1)})` : '—'}
+            </b>
           </div>
         </div>
       </div>
