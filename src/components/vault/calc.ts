@@ -170,6 +170,7 @@ export interface ChartPoint extends Point {
   pProfit: number; // profit rebased to window start
   pTwr: number; // % growth rebased to window start
   pDd: number; // drawdown % inside window
+  workingCap: number; // time-weighted working capital for the window
 }
 
 export function windowSeries(pts: Point[], period: Period, dir: 'rtl' | 'ltr' = 'rtl'): ChartPoint[] {
@@ -179,17 +180,57 @@ export function windowSeries(pts: Point[], period: Period, dir: 'rtl' | 'ltr' = 
   let win = pts.filter(p => dayNum(p.date) >= cutoff);
   if (!win.length) win = [pts[pts.length - 1]];
   // عند اختيار "الكل" (All) تكون العوائد والنمو التراكمي منذ البداية بالكامل،
-  // وعند اختيار فترة زمنية محددة (1M/3M/6M/1Y/2Y) تقاس العوائد والنمو من أول نقطة داخل الفترة المختارة بدقة (تبدأ من 0 عند win[0])
+  // وعند اختيار فترة زمنية محددة (1M/3M/6M/1Y/2Y) تقاس العوائد والنمو برأس المال العامل الفعلي داخل الفترة (Modified Dietz)
   const base = win[0];
-  let peak = 0;
-  const mapped = win.map(p => {
-    const rel = base.index > 0 ? p.index / base.index : 1;
+  const startD = dayNum(base.date);
+  const baseCap = Math.max(1, period === 'All' ? (base.deposits || base.nav) : base.nav);
+  let peak = 1;
+  const flows: { day: number; delta: number }[] = [];
+
+  const mapped = win.map((p, idx) => {
+    if (idx > 0) {
+      const delta = p.deposits - win[idx - 1].deposits;
+      if (Math.abs(delta) > 0.01) {
+        flows.push({ day: dayNum(p.date), delta });
+      }
+    }
+
+    if (period === 'All') {
+      const pProfit = p.profit;
+      const pTwr = (p.index - 1) * 100;
+      const workingCap =
+        Math.abs(pTwr) > 0.05 && Math.abs(pProfit) > 10
+          ? Math.abs(pProfit / (pTwr / 100))
+          : Math.max(1, p.deposits || p.nav);
+      return {
+        ...p,
+        pProfit,
+        pTwr,
+        pDd: p.dd * 100,
+        workingCap,
+      };
+    }
+
+    const curD = dayNum(p.date);
+    const totalDays = Math.max(1, curD - startD);
+    let wFlow = 0;
+    for (const f of flows) {
+      const weight = Math.min(1, Math.max(0, (curD - f.day + 0.5) / totalDays));
+      wFlow += f.delta * weight;
+    }
+    const workingCap = Math.max(1, baseCap + wFlow);
+    const pProfit = idx === 0 ? 0 : p.profit - base.profit;
+    const pTwr = idx === 0 ? 0 : (pProfit / workingCap) * 100;
+    const rel = Math.max(0.01, 1 + pTwr / 100);
     peak = Math.max(peak, rel);
+    const pDd = (rel / peak - 1) * 100;
+
     return {
       ...p,
-      pProfit: period === 'All' ? p.profit : p.profit - base.profit,
-      pTwr: period === 'All' ? (p.index - 1) * 100 : (rel - 1) * 100,
-      pDd: period === 'All' ? p.dd * 100 : (rel / peak - 1) * 100,
+      pProfit,
+      pTwr,
+      pDd,
+      workingCap,
     };
   });
 
@@ -925,30 +966,13 @@ export function buildBenchmarkSeries(
   const base30 = indexLevelAtDaysAgo(bench.egx30, startDaysAgo);
   const base70 = indexLevelAtDaysAgo(bench.egx70, startDaysAgo);
 
-  // رأس المال المرجعي العامل في بداية الفترة لحساب المكافئ بالجنيه المصري بدقة متطابقة مع النسب المئوية
-  let weightedCapSum = 0;
-  let totalDaysAcc = 0;
-
-  const out: BenchmarkPoint[] = chronological.map((p, idx) => {
+  const out: BenchmarkPoint[] = chronological.map(p => {
     const curD = dayNum(p.date);
     const daysElapsed = Math.max(0, curD - startD);
     const daysAgo = Math.max(0, endD - curD);
 
-    if (idx > 0) {
-      const prev = chronological[idx - 1];
-      const dt = Math.max(1, curD - dayNum(prev.date));
-      weightedCapSum += Math.max(0, prev.deposits) * dt;
-      totalDaysAcc += dt;
-    }
-
-    // متوسط رأس المال المستثمر خلال الفترة حتى هذه النقطة
-    // وإذا كانت للمحفظة نسبة pTwr وعائد pProfit معروفين، نستخدم رأس المال الفعلي الضمني لتتطابق الفروق بالجنيه 100% مع الفروق بالنسبة المئوية
-    const avgInvestedCap =
-      Math.abs(p.pTwr) > 0.25 && Math.abs(p.pProfit) > 100
-        ? Math.abs(p.pProfit / (p.pTwr / 100))
-        : totalDaysAcc > 0
-        ? weightedCapSum / totalDaysAcc
-        : Math.max(0, first.deposits || first.nav);
+    // رأس المال العامل الفعلي للفترة (Modified Dietz Working Capital) لضمان تطابق عوائد الجنيه والنسب المئوية 100%
+    const avgInvestedCap = Math.max(1, p.workingCap || first.nav || first.deposits);
 
     const lvl30 = indexLevelAtDaysAgo(bench.egx30, daysAgo);
     const lvl70 = indexLevelAtDaysAgo(bench.egx70, daysAgo);

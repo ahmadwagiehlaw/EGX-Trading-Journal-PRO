@@ -443,16 +443,24 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
   const [unit, setUnit] = useState<'egp' | 'pct'>('egp');
   const [bench, setBench] = useState<BenchmarksState>(() => loadCachedBenchmarks());
   const [syncingBench, setSyncingBench] = useState(false);
-  const [bankRate, setBankRate] = useState<number>(() => {
-    if (settings.bankRate && settings.bankRate > 0 && settings.bankRate <= 100) return settings.bankRate;
-    const saved = Number(localStorage.getItem('egx_vault_bank_rate'));
-    return !isNaN(saved) && saved > 0 && saved <= 100 ? saved : 27;
-  });
-  const [customBankStr, setCustomBankStr] = useState<string>(() => {
-    if (settings.bankRate && settings.bankRate > 0 && settings.bankRate <= 100) return String(settings.bankRate);
-    const saved = Number(localStorage.getItem('egx_vault_bank_rate'));
-    return String(!isNaN(saved) && saved > 0 && saved <= 100 ? saved : 27);
-  });
+  const getInitialBankRate = (): number => {
+    try {
+      const savedV2 = localStorage.getItem('egx_vault_bank_rate_v2');
+      if (savedV2 !== null && savedV2 !== '') {
+        const parsed = Number(savedV2);
+        if (!isNaN(parsed) && parsed > 0 && parsed <= 100) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    if (settings.bankRate && settings.bankRate > 0 && settings.bankRate <= 100 && settings.bankRate !== 27) {
+      return settings.bankRate;
+    }
+    return 20;
+  };
+
+  const [bankRate, setBankRate] = useState<number>(getInitialBankRate);
+  const [customBankStr, setCustomBankStr] = useState<string>(() => String(getInitialBankRate()));
   const [showLines, setShowLines] = useState<{ bank: boolean; egx30: boolean; egx70: boolean }>({
     bank: true,
     egx30: true,
@@ -460,11 +468,12 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
   });
   const [capZoom, setCapZoom] = useState<boolean>(true);
 
-  const applyBankRate = (r: number) => {
+  const applyBankRate = (r: number, syncInput = true) => {
     const clamped = Math.max(0, Math.min(100, r));
     setBankRate(clamped);
-    setCustomBankStr(String(clamped));
+    if (syncInput) setCustomBankStr(String(clamped));
     try {
+      localStorage.setItem('egx_vault_bank_rate_v2', String(clamped));
       localStorage.setItem('egx_vault_bank_rate', String(clamped));
     } catch {
       // ignore
@@ -749,291 +758,307 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
               </>
             )}
 
-            {mode === 'benchmark' && lastBench && (
-              <div className="w-full space-y-3">
-                {/* Top Controls Row: Series Toggles + Bank Rate (Presets + Manual Input) + Unit Switch + Live Sync */}
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/35 px-2.5 py-1 text-[11px] font-black text-emerald-600 dark:text-emerald-400">
-                      <i className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                      محفظتي
-                    </span>
+            {mode === 'benchmark' && lastBench && (() => {
+              const allScores = [lastBench.pTwr, lastBench.bankPct, lastBench.egx30Pct, lastBench.egx70Pct].sort((a, b) => b - a);
+              const myRank = allScores.findIndex(v => Math.abs(v - lastBench.pTwr) < 1e-6) + 1;
 
-                    <button
-                      type="button"
-                      onClick={() => setShowLines(s => ({ ...s, bank: !s.bank }))}
-                      className={cx(
-                        'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-black transition',
-                        showLines.bank
-                          ? 'bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400'
-                          : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-50'
-                      )}
-                    >
-                      <i className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                      عائد البنك ({bankRate}%)
-                    </button>
+              return (
+                <div className="w-full space-y-3">
+                  {/* Top Controls Row: Series Toggles + Bank Rate (Presets + Manual Input) + Unit Switch + Live Sync */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-500/15 border-2 border-emerald-500/45 px-2.5 py-1 text-[11px] font-black text-emerald-600 dark:text-emerald-400 shadow-sm shadow-emerald-500/10">
+                        <i className="w-4 h-1 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.85)]" />
+                        محفظتي
+                      </span>
 
-                    <button
-                      type="button"
-                      onClick={() => setShowLines(s => ({ ...s, egx30: !s.egx30 }))}
-                      className={cx(
-                        'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-black transition',
-                        showLines.egx30
-                          ? 'bg-sky-500/15 border-sky-500/40 text-sky-600 dark:text-sky-400'
-                          : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-50'
-                      )}
-                    >
-                      <i className="w-2.5 h-2.5 rounded-full bg-sky-500" />
-                      EGX30 ({fmt(bench.egx30.close, 0)})
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowLines(s => ({ ...s, bank: !s.bank }))}
+                        className={cx(
+                          'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-black transition',
+                          showLines.bank
+                            ? 'bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400'
+                            : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-50'
+                        )}
+                      >
+                        <i className="w-3.5 h-0.5 border-t-2 border-dashed border-amber-500" />
+                        عائد البنك ({bankRate}%)
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setShowLines(s => ({ ...s, egx70: !s.egx70 }))}
-                      className={cx(
-                        'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-black transition',
-                        showLines.egx70
-                          ? 'bg-pink-500/15 border-pink-500/40 text-pink-600 dark:text-pink-400'
-                          : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-50'
-                      )}
-                    >
-                      <i className="w-2.5 h-2.5 rounded-full bg-pink-500" />
-                      EGX70 ({fmt(bench.egx70.close, 0)})
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowLines(s => ({ ...s, egx30: !s.egx30 }))}
+                        className={cx(
+                          'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-black transition',
+                          showLines.egx30
+                            ? 'bg-sky-500/15 border-sky-500/40 text-sky-600 dark:text-sky-400'
+                            : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-50'
+                        )}
+                      >
+                        <i className="w-3.5 h-0.5 rounded-full bg-sky-500" />
+                        EGX30 ({fmt(bench.egx30.close, 0)})
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={refreshBench}
-                      title="تحديث المؤشرات مباشرة من البورصة المصرية"
-                      className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[10px] font-black text-slate-500 hover:text-slate-900 dark:hover:text-white transition"
-                    >
-                      <RefreshCw className={cx('w-3 h-3', syncingBench && 'animate-spin text-emerald-500')} />
-                      <span>{bench.live ? 'مباشر' : 'تحديث'}</span>
-                    </button>
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowLines(s => ({ ...s, egx70: !s.egx70 }))}
+                        className={cx(
+                          'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-black transition',
+                          showLines.egx70
+                            ? 'bg-pink-500/15 border-pink-500/40 text-pink-600 dark:text-pink-400'
+                            : 'border-slate-200 dark:border-slate-800 text-slate-400 opacity-50'
+                        )}
+                      >
+                        <i className="w-3.5 h-0.5 rounded-full bg-pink-500" />
+                        EGX70 ({fmt(bench.egx70.close, 0)})
+                      </button>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Bank Annual Rate Pills + Manual Input */}
-                    <div className="inline-flex items-center gap-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[10px] font-black">
-                      <Landmark className="w-3 h-3 text-amber-500 mx-1" />
-                      {[20, 24, 27].map(r => (
-                        <button
-                          key={r}
-                          type="button"
-                          onClick={() => applyBankRate(r)}
-                          className={cx(
-                            'rounded-lg px-2 py-1 transition',
-                            bankRate === r ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-slate-600'
-                          )}
-                        >
-                          {r}%
-                        </button>
-                      ))}
-                      <div className="flex items-center bg-white dark:bg-slate-900 rounded-lg px-1.5 py-0.5 border border-slate-200/80 dark:border-slate-700 ml-0.5">
-                        <input
-                          type="number"
-                          dir="ltr"
-                          min={0}
-                          max={100}
-                          step={0.5}
-                          value={customBankStr}
-                          onChange={e => {
-                            setCustomBankStr(e.target.value);
-                            const v = parseFloat(e.target.value);
-                            if (!isNaN(v) && v >= 0 && v <= 100) {
-                              setBankRate(v);
-                              try {
-                                localStorage.setItem('egx_vault_bank_rate', String(v));
-                              } catch {
-                                // ignore
+                      <button
+                        type="button"
+                        onClick={refreshBench}
+                        title="تحديث المؤشرات مباشرة من البورصة المصرية"
+                        className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[10px] font-black text-slate-500 hover:text-slate-900 dark:hover:text-white transition"
+                      >
+                        <RefreshCw className={cx('w-3 h-3', syncingBench && 'animate-spin text-emerald-500')} />
+                        <span>{bench.live ? 'مباشر' : 'تحديث'}</span>
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Bank Annual Rate Pills + Manual Input */}
+                      <div className="inline-flex items-center gap-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[10px] font-black">
+                        <Landmark className="w-3 h-3 text-amber-500 mx-1" />
+                        {[15, 20, 24, 27].map(r => (
+                          <button
+                            key={r}
+                            type="button"
+                            onClick={() => applyBankRate(r)}
+                            className={cx(
+                              'rounded-lg px-2 py-1 transition',
+                              bankRate === r ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                            )}
+                          >
+                            {r}%
+                          </button>
+                        ))}
+                        <div className="flex items-center bg-white dark:bg-slate-900 rounded-lg px-1.5 py-0.5 border border-slate-200/80 dark:border-slate-700 ml-0.5">
+                          <input
+                            type="number"
+                            dir="ltr"
+                            min={0}
+                            max={100}
+                            step={0.5}
+                            value={customBankStr}
+                            onChange={e => {
+                              setCustomBankStr(e.target.value);
+                              const v = parseFloat(e.target.value);
+                              if (!isNaN(v) && v >= 0 && v <= 100) {
+                                applyBankRate(v, false);
                               }
-                            }
-                          }}
-                          title="أدخل نسبة فائدة البنك يدوياً"
-                          className="w-10 bg-transparent text-center text-[11px] font-black text-amber-600 dark:text-amber-400 focus:outline-none tabular-nums"
-                        />
-                        <span className="text-[9px] text-slate-400">%</span>
+                            }}
+                            onBlur={() => {
+                              const v = parseFloat(customBankStr);
+                              if (isNaN(v) || v < 0 || v > 100) {
+                                setCustomBankStr(String(bankRate));
+                              } else {
+                                applyBankRate(v, true);
+                              }
+                            }}
+                            title="أدخل نسبة فائدة البنك يدوياً (تُحفظ تلقائياً)"
+                            className="w-10 bg-transparent text-center text-[11px] font-black text-amber-600 dark:text-amber-400 focus:outline-none tabular-nums"
+                          />
+                          <span className="text-[9px] text-slate-400">%</span>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Unit Toggle (% vs EGP) */}
-                    <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[11px] font-black">
-                      <button
-                        type="button"
-                        onClick={() => setUnit('pct')}
-                        className={cx(
-                          'rounded-lg px-2.5 py-1 transition',
-                          unit === 'pct' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400'
-                        )}
-                      >
-                        بالنسبة (%)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setUnit('egp')}
-                        className={cx(
-                          'rounded-lg px-2.5 py-1 transition',
-                          unit === 'egp' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400'
-                        )}
-                      >
-                        بالجنيه (ج.م)
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4 Crystal-Clear Comparison Cards: Actual Return as Big Number + Explicit Winner Badge */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-                  {/* 1. My Portfolio */}
-                  <div className="rounded-2xl border border-emerald-500/35 bg-emerald-500/[0.06] p-3 flex flex-col justify-between gap-1.5">
-                    <div className="flex items-center justify-between text-[11px] font-black text-emerald-600 dark:text-emerald-400">
-                      <span className="flex items-center gap-1.5">
-                        <i className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                        أداء محفظتي
-                      </span>
-                      <span dir="ltr" className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px]">
-                        {period === 'All' ? 'الكل' : period}
-                      </span>
-                    </div>
-                    <div>
-                      <div dir="ltr" className={cx('text-xl font-black tabular-nums text-right', tone(lastBench.pTwr))}>
-                        {unit === 'pct' ? fmtPct(lastBench.pTwr) : `${fmtSigned(lastBench.pProfit)} ج.م`}
+                      {/* Unit Toggle (% vs EGP) */}
+                      <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[11px] font-black">
+                        <button
+                          type="button"
+                          onClick={() => setUnit('pct')}
+                          className={cx(
+                            'rounded-lg px-2.5 py-1 transition',
+                            unit === 'pct' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400'
+                          )}
+                        >
+                          بالنسبة (%)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUnit('egp')}
+                          className={cx(
+                            'rounded-lg px-2.5 py-1 transition',
+                            unit === 'egp' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400'
+                          )}
+                        >
+                          بالجنيه (ج.م)
+                        </button>
                       </div>
-                      <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right">
-                        {unit === 'pct' ? `${fmtSigned(lastBench.pProfit)} ج.م` : fmtPct(lastBench.pTwr)}
-                      </div>
-                    </div>
-                    <div className="rounded-xl bg-slate-900/5 dark:bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-500 dark:text-slate-300 flex items-center justify-between">
-                      <span>المرجع الأساسي</span>
-                      <span dir="ltr">{fmt(lastBench.nav)} ج.م</span>
                     </div>
                   </div>
 
-                  {/* 2. Bank Benchmark */}
-                  {(() => {
-                    const diffPct = lastBench.pTwr - lastBench.bankPct;
-                    const diffEgp = lastBench.pProfit - lastBench.bankProfit;
-                    const iWin = diffPct >= 0;
-                    return (
-                      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.05] p-3 flex flex-col justify-between gap-1.5">
-                        <div className="flex items-center justify-between text-[11px] font-black text-amber-600 dark:text-amber-400">
-                          <span className="flex items-center gap-1.5">
-                            <i className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                            لو في البنك ({bankRate}%)
-                          </span>
-                          <span className="text-[9px] text-slate-400">عائد الفترة</span>
+                  {/* 4 Institutional Comparison Cards: Actual Return + Working Capital + Alpha (α) */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    {/* 1. My Portfolio (Dominant Card) */}
+                    <div className="rounded-2xl border-2 border-emerald-500/45 bg-emerald-500/[0.08] p-3 flex flex-col justify-between gap-1.5 shadow-sm shadow-emerald-500/5">
+                      <div className="flex items-center justify-between text-[11px] font-black text-emerald-600 dark:text-emerald-400">
+                        <span className="flex items-center gap-1.5">
+                          <i className="w-3.5 h-1 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
+                          أداء محفظتي
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px]">
+                          <span>المركز #{myRank} {myRank === 1 ? '🏆' : ''}</span>
+                          <span className="opacity-50">|</span>
+                          <span dir="ltr">{period === 'All' ? 'الكل' : period}</span>
+                        </span>
+                      </div>
+                      <div>
+                        <div dir="ltr" className={cx('text-xl font-black tabular-nums text-right', tone(lastBench.pTwr))}>
+                          {unit === 'pct' ? fmtPct(lastBench.pTwr) : `${fmtSigned(lastBench.pProfit)} ج.م`}
                         </div>
-                        <div>
-                          <div dir="ltr" className="text-xl font-black tabular-nums text-right text-amber-600 dark:text-amber-400">
-                            {unit === 'pct' ? fmtPct(lastBench.bankPct) : `${fmtSigned(lastBench.bankProfit)} ج.م`}
-                          </div>
-                          <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right">
-                            {unit === 'pct' ? `${fmtSigned(lastBench.bankProfit)} ج.م` : fmtPct(lastBench.bankPct)}
-                          </div>
-                        </div>
-                        <div
-                          className={cx(
-                            'rounded-xl px-2.5 py-1 text-[10px] font-black flex items-center justify-between',
-                            iWin
-                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                              : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
-                          )}
-                        >
-                          <span>{iWin ? '✓ أنت متفوق بـ' : 'البنك متفوق بـ'}</span>
-                          <b dir="ltr">
-                            {unit === 'pct'
-                              ? `+${Math.abs(diffPct).toFixed(1)}% (${fmtCompact(Math.abs(diffEgp))})`
-                              : `+${fmt(Math.abs(diffEgp))} (${Math.abs(diffPct).toFixed(1)}%)`}
-                          </b>
+                        <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right tabular-nums">
+                          {unit === 'pct' ? `${fmtSigned(lastBench.pProfit)} ج.م` : fmtPct(lastBench.pTwr)}
                         </div>
                       </div>
-                    );
-                  })()}
+                      <div className="rounded-xl bg-slate-900/5 dark:bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-500 dark:text-slate-300 flex items-center justify-between">
+                        <span>رأس المال العامل</span>
+                        <span dir="ltr" className="tabular-nums">{fmt(lastBench.workingCap || lastBench.nav)} ج.م</span>
+                      </div>
+                    </div>
 
-                  {/* 3. EGX30 Benchmark */}
-                  {(() => {
-                    const diffPct = lastBench.pTwr - lastBench.egx30Pct;
-                    const diffEgp = lastBench.pProfit - lastBench.egx30Profit;
-                    const iWin = diffPct >= 0;
-                    return (
-                      <div className="rounded-2xl border border-sky-500/30 bg-sky-500/[0.05] p-3 flex flex-col justify-between gap-1.5">
-                        <div className="flex items-center justify-between text-[11px] font-black text-sky-600 dark:text-sky-400">
-                          <span className="flex items-center gap-1.5">
-                            <i className="w-2.5 h-2.5 rounded-full bg-sky-500" />
-                            مؤشر EGX30
-                          </span>
-                          <span className="text-[9px] text-slate-400">أداء المؤشر</span>
-                        </div>
-                        <div>
-                          <div dir="ltr" className={cx('text-xl font-black tabular-nums text-right', tone(lastBench.egx30Pct))}>
-                            {unit === 'pct' ? fmtPct(lastBench.egx30Pct) : `${fmtSigned(lastBench.egx30Profit)} ج.م`}
+                    {/* 2. Bank Benchmark */}
+                    {(() => {
+                      const diffPct = lastBench.pTwr - lastBench.bankPct;
+                      const diffEgp = lastBench.pProfit - lastBench.bankProfit;
+                      const iWin = diffPct >= 0;
+                      return (
+                        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.04] p-3 flex flex-col justify-between gap-1.5">
+                          <div className="flex items-center justify-between text-[11px] font-black text-amber-600 dark:text-amber-400">
+                            <span className="flex items-center gap-1.5">
+                              <i className="w-3 h-0.5 border-t-2 border-dashed border-amber-500" />
+                              عائد البنك
+                            </span>
+                            <span dir="ltr" className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] tabular-nums">
+                              {bankRate}% سنوياً
+                            </span>
                           </div>
-                          <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right">
-                            {unit === 'pct' ? `${fmtSigned(lastBench.egx30Profit)} ج.م` : fmtPct(lastBench.egx30Pct)}
+                          <div>
+                            <div dir="ltr" className="text-xl font-black tabular-nums text-right text-amber-600 dark:text-amber-400">
+                              {unit === 'pct' ? fmtPct(lastBench.bankPct) : `${fmtSigned(lastBench.bankProfit)} ج.م`}
+                            </div>
+                            <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right tabular-nums">
+                              {unit === 'pct' ? `${fmtSigned(lastBench.bankProfit)} ج.م` : fmtPct(lastBench.bankPct)}
+                            </div>
+                          </div>
+                          <div
+                            className={cx(
+                              'rounded-xl px-2.5 py-1 text-[10px] font-black flex items-center justify-between',
+                              iWin
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                            )}
+                          >
+                            <span>الفارق (α)</span>
+                            <b dir="ltr" className="tabular-nums">
+                              {unit === 'pct'
+                                ? `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}% (${fmtSigned(diffEgp, 0)})`
+                                : `${fmtSigned(diffEgp)} (${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}%)`}
+                            </b>
                           </div>
                         </div>
-                        <div
-                          className={cx(
-                            'rounded-xl px-2.5 py-1 text-[10px] font-black flex items-center justify-between',
-                            iWin
-                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                              : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
-                          )}
-                        >
-                          <span>{iWin ? '✓ أنت متفوق بـ' : 'EGX30 متفوق بـ'}</span>
-                          <b dir="ltr">
-                            {unit === 'pct'
-                              ? `+${Math.abs(diffPct).toFixed(1)}% (${fmtCompact(Math.abs(diffEgp))})`
-                              : `+${fmt(Math.abs(diffEgp))} (${Math.abs(diffPct).toFixed(1)}%)`}
-                          </b>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                      );
+                    })()}
 
-                  {/* 4. EGX70 Benchmark */}
-                  {(() => {
-                    const diffPct = lastBench.pTwr - lastBench.egx70Pct;
-                    const diffEgp = lastBench.pProfit - lastBench.egx70Profit;
-                    const iWin = diffPct >= 0;
-                    return (
-                      <div className="rounded-2xl border border-pink-500/30 bg-pink-500/[0.05] p-3 flex flex-col justify-between gap-1.5">
-                        <div className="flex items-center justify-between text-[11px] font-black text-pink-600 dark:text-pink-400">
-                          <span className="flex items-center gap-1.5">
-                            <i className="w-2.5 h-2.5 rounded-full bg-pink-500" />
-                            مؤشر EGX70
-                          </span>
-                          <span className="text-[9px] text-slate-400">أداء المؤشر</span>
-                        </div>
-                        <div>
-                          <div dir="ltr" className={cx('text-xl font-black tabular-nums text-right', tone(lastBench.egx70Pct))}>
-                            {unit === 'pct' ? fmtPct(lastBench.egx70Pct) : `${fmtSigned(lastBench.egx70Profit)} ج.م`}
+                    {/* 3. EGX30 Benchmark */}
+                    {(() => {
+                      const diffPct = lastBench.pTwr - lastBench.egx30Pct;
+                      const diffEgp = lastBench.pProfit - lastBench.egx30Profit;
+                      const iWin = diffPct >= 0;
+                      return (
+                        <div className="rounded-2xl border border-sky-500/30 bg-sky-500/[0.04] p-3 flex flex-col justify-between gap-1.5">
+                          <div className="flex items-center justify-between text-[11px] font-black text-sky-600 dark:text-sky-400">
+                            <span className="flex items-center gap-1.5">
+                              <i className="w-3 h-0.5 rounded-full bg-sky-500" />
+                              مؤشر EGX30
+                            </span>
+                            <span dir="ltr" className="rounded-md bg-sky-500/15 px-1.5 py-0.5 text-[10px] tabular-nums">
+                              {fmt(bench.egx30.close, 0)} نقطة
+                            </span>
                           </div>
-                          <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right">
-                            {unit === 'pct' ? `${fmtSigned(lastBench.egx70Profit)} ج.م` : fmtPct(lastBench.egx70Pct)}
+                          <div>
+                            <div dir="ltr" className={cx('text-xl font-black tabular-nums text-right', tone(lastBench.egx30Pct))}>
+                              {unit === 'pct' ? fmtPct(lastBench.egx30Pct) : `${fmtSigned(lastBench.egx30Profit)} ج.م`}
+                            </div>
+                            <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right tabular-nums">
+                              {unit === 'pct' ? `${fmtSigned(lastBench.egx30Profit)} ج.م` : fmtPct(lastBench.egx30Pct)}
+                            </div>
+                          </div>
+                          <div
+                            className={cx(
+                              'rounded-xl px-2.5 py-1 text-[10px] font-black flex items-center justify-between',
+                              iWin
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                            )}
+                          >
+                            <span>الفارق (α)</span>
+                            <b dir="ltr" className="tabular-nums">
+                              {unit === 'pct'
+                                ? `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}% (${fmtSigned(diffEgp, 0)})`
+                                : `${fmtSigned(diffEgp)} (${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}%)`}
+                            </b>
                           </div>
                         </div>
-                        <div
-                          className={cx(
-                            'rounded-xl px-2.5 py-1 text-[10px] font-black flex items-center justify-between',
-                            iWin
-                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                              : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
-                          )}
-                        >
-                          <span>{iWin ? '✓ أنت متفوق بـ' : 'EGX70 متفوق بـ'}</span>
-                          <b dir="ltr">
-                            {unit === 'pct'
-                              ? `+${Math.abs(diffPct).toFixed(1)}% (${fmtCompact(Math.abs(diffEgp))})`
-                              : `+${fmt(Math.abs(diffEgp))} (${Math.abs(diffPct).toFixed(1)}%)`}
-                          </b>
+                      );
+                    })()}
+
+                    {/* 4. EGX70 Benchmark */}
+                    {(() => {
+                      const diffPct = lastBench.pTwr - lastBench.egx70Pct;
+                      const diffEgp = lastBench.pProfit - lastBench.egx70Profit;
+                      const iWin = diffPct >= 0;
+                      return (
+                        <div className="rounded-2xl border border-pink-500/30 bg-pink-500/[0.04] p-3 flex flex-col justify-between gap-1.5">
+                          <div className="flex items-center justify-between text-[11px] font-black text-pink-600 dark:text-pink-400">
+                            <span className="flex items-center gap-1.5">
+                              <i className="w-3 h-0.5 rounded-full bg-pink-500" />
+                              مؤشر EGX70
+                            </span>
+                            <span dir="ltr" className="rounded-md bg-pink-500/15 px-1.5 py-0.5 text-[10px] tabular-nums">
+                              {fmt(bench.egx70.close, 0)} نقطة
+                            </span>
+                          </div>
+                          <div>
+                            <div dir="ltr" className={cx('text-xl font-black tabular-nums text-right', tone(lastBench.egx70Pct))}>
+                              {unit === 'pct' ? fmtPct(lastBench.egx70Pct) : `${fmtSigned(lastBench.egx70Profit)} ج.م`}
+                            </div>
+                            <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right tabular-nums">
+                              {unit === 'pct' ? `${fmtSigned(lastBench.egx70Profit)} ج.م` : fmtPct(lastBench.egx70Pct)}
+                            </div>
+                          </div>
+                          <div
+                            className={cx(
+                              'rounded-xl px-2.5 py-1 text-[10px] font-black flex items-center justify-between',
+                              iWin
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                            )}
+                          >
+                            <span>الفارق (α)</span>
+                            <b dir="ltr" className="tabular-nums">
+                              {unit === 'pct'
+                                ? `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}% (${fmtSigned(diffEgp, 0)})`
+                                : `${fmtSigned(diffEgp)} (${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}%)`}
+                            </b>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })()}
+                      );
+                    })()}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {mode === 'monthly' && (
               <>
@@ -1151,12 +1176,16 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                   <Area yAxisId="nav" type="monotone" dataKey="nav" stroke={accent} strokeWidth={2.5} fill="url(#gNav)" dot={data.length < 25 ? { r: 3, fill: accent } : false} activeDot={{ r: 5 }} />
                 </ComposedChart>
               ) : mode === 'benchmark' ? (
-                <ComposedChart data={benchData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <ComposedChart data={benchData} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gBenchMine" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
+                      <stop offset="55%" stopColor="#10b981" stopOpacity={0.12} />
                       <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
                     </linearGradient>
+                    <filter id="benchHeroGlow" x="-10%" y="-25%" width="120%" height="150%">
+                      <feDropShadow dx="0" dy="2" stdDeviation="3.5" floodColor="#10b981" floodOpacity="0.45" />
+                    </filter>
                   </defs>
                   <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
                   <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
@@ -1168,7 +1197,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                     tickLine={false}
                     width={46}
                   />
-                  <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.45} />
+                  <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.45} strokeDasharray="3 3" />
                   <Tooltip
                     cursor={{ stroke: '#94a3b8', strokeDasharray: '4 4' }}
                     content={
@@ -1176,7 +1205,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                         labelFmt={fmtDate}
                         rows={p => [
                           {
-                            name: 'أداء محفظتي',
+                            name: 'أداء محفظتي ★',
                             value: `${fmtPct(+p.pTwr)} (${fmtSigned(+p.pProfit)} ج.م)`,
                             color: '#10b981',
                           },
@@ -1184,7 +1213,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                             ? [
                               {
                                 name: `عائد البنك (${bankRate}%)`,
-                                value: `${fmtPct(+p.bankPct)} (${fmtSigned(+p.bankProfit)} ج.م)`,
+                                value: `${fmtPct(+p.bankPct)} (${fmtSigned(+p.bankProfit)} ج.م) | α: ${fmtPct(+p.pTwr - +p.bankPct, 1)}`,
                                 color: '#f59e0b',
                               },
                             ]
@@ -1193,7 +1222,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                             ? [
                               {
                                 name: 'مؤشر EGX30',
-                                value: `${fmtPct(+p.egx30Pct)} (${fmtSigned(+p.egx30Profit)} ج.م)`,
+                                value: `${fmtPct(+p.egx30Pct)} (${fmtSigned(+p.egx30Profit)} ج.م) | α: ${fmtPct(+p.pTwr - +p.egx30Pct, 1)}`,
                                 color: '#0ea5e9',
                               },
                             ]
@@ -1202,7 +1231,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                             ? [
                               {
                                 name: 'مؤشر EGX70',
-                                value: `${fmtPct(+p.egx70Pct)} (${fmtSigned(+p.egx70Profit)} ج.م)`,
+                                value: `${fmtPct(+p.egx70Pct)} (${fmtSigned(+p.egx70Profit)} ج.م) | α: ${fmtPct(+p.pTwr - +p.egx70Pct, 1)}`,
                                 color: '#ec4899',
                               },
                             ]
@@ -1211,21 +1240,14 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                       />
                     }
                   />
-                  <Area
-                    type="monotone"
-                    dataKey={unit === 'egp' ? 'pProfit' : 'pTwr'}
-                    stroke="#10b981"
-                    strokeWidth={2.5}
-                    fill="url(#gBenchMine)"
-                    dot={false}
-                    activeDot={{ r: 5 }}
-                  />
+                  {/* Secondary Benchmark Lines Rendered First (Underneath) with Thinner Stroke */}
                   {showLines.bank && (
                     <Line
                       type="monotone"
                       dataKey={unit === 'egp' ? 'bankProfit' : 'bankPct'}
                       stroke="#f59e0b"
-                      strokeWidth={2}
+                      strokeWidth={1.65}
+                      strokeOpacity={0.85}
                       strokeDasharray="5 4"
                       dot={false}
                     />
@@ -1235,7 +1257,8 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                       type="monotone"
                       dataKey={unit === 'egp' ? 'egx30Profit' : 'egx30Pct'}
                       stroke="#0ea5e9"
-                      strokeWidth={2.2}
+                      strokeWidth={1.65}
+                      strokeOpacity={0.78}
                       dot={false}
                     />
                   )}
@@ -1244,10 +1267,22 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                       type="monotone"
                       dataKey={unit === 'egp' ? 'egx70Profit' : 'egx70Pct'}
                       stroke="#ec4899"
-                      strokeWidth={2.2}
+                      strokeWidth={1.65}
+                      strokeOpacity={0.78}
                       dot={false}
                     />
                   )}
+                  {/* Hero Portfolio Series Rendered LAST (Top Z-Layer) with Bold Stroke, Glow, and Active Markers */}
+                  <Area
+                    type="monotone"
+                    dataKey={unit === 'egp' ? 'pProfit' : 'pTwr'}
+                    stroke="#10b981"
+                    strokeWidth={3.8}
+                    filter="url(#benchHeroGlow)"
+                    fill="url(#gBenchMine)"
+                    dot={benchData.length <= 28 ? { r: 2.8, fill: '#10b981', stroke: '#0f172a', strokeWidth: 1.5 } : false}
+                    activeDot={{ r: 6.5, fill: '#10b981', stroke: '#ffffff', strokeWidth: 2.5 }}
+                  />
                 </ComposedChart>
               ) : mode === 'monthly' ? (
                 <BarChart data={monthBars} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
