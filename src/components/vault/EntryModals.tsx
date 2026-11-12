@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Check, Plus, AlertTriangle, Pin, Zap, CheckCircle2, Calendar, Trash2 } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Check, Plus, AlertTriangle, Pin, Zap, CheckCircle2, Calendar, Trash2, Users, Sparkles } from 'lucide-react';
 import { Modal, Field, inputCls, Segmented, cx } from './ui';
 import { useVault } from './VaultContext';
 import { ASSET_KEYS, ASSET_META } from './types';
@@ -934,6 +934,7 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
   const [type, setType] = useState<'deposit' | 'withdrawal'>(initialType);
   const [pid, setPid] = useState(active[0]?.id ?? '');
   const [amount, setAmount] = useState('');
+  const [party, setParty] = useState<'me' | 'partner'>(editing?.partner ? 'partner' : 'me');
 
   const getLatestDbDate = (t: 'deposit' | 'withdrawal') => {
     const list = cashflows.filter(c => c.type === t).sort((a, b) => b.date.localeCompare(a.date));
@@ -956,11 +957,13 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
       setAmount(String(editing.amount));
       setDate(editing.date);
       setTag(editing.tag);
+      setParty(editing.partner ? 'partner' : 'me');
       setCustom('');
       setNote(editing.note ?? '');
     } else if (open) {
       setType(initialType);
       setTag('');
+      setParty('me');
       setAmount('');
       setNote('');
       setCustom('');
@@ -978,8 +981,21 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
     }
   };
 
+  const handleSelectTag = (selectedLabel: string) => {
+    setTag(selectedLabel);
+    setCustom('');
+    if (selectedLabel === 'أرباح الشريك') {
+      setParty('partner');
+    }
+  };
+
   const tags = settings.tags[type];
   const isDep = type === 'deposit';
+  const partnerName = settings.partner?.name || 'الشريك';
+  const currentPartnerCap = settings.partner?.partnerCapital ?? 570000;
+  const currentMyCap = settings.partner?.myCapital ?? 330000;
+  const numAmount = Math.abs(num(amount));
+  const isCapChange = (tag === 'زيادة رأس المال') || (tag === 'تخفيض رأس المال');
 
   const submit = async () => {
     const label = custom.trim() || tag;
@@ -987,20 +1003,69 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
     setBusy(true);
     try {
       let emoji = tags.find(t => t.label === label)?.emoji ?? '🏷️';
+      let nextTags = settings.tags;
       if (custom.trim() && !tags.some(t => t.label === label)) {
         emoji = '🏷️';
-        await saveSettings({ ...settings, tags: { ...settings.tags, [type]: [...tags, { label, emoji }] } });
+        nextTags = { ...settings.tags, [type]: [...tags, { label, emoji }] };
       }
       const finalTag = label || (isDep ? 'إيداع' : 'سحب');
-      if (editing) await updateCashflow(editing.id, { portfolioId: pid, type, amount: Math.abs(num(amount)), date, tag: finalTag, emoji, note: note || '' });
-      else await addCashflow({ portfolioId: pid, type, amount: Math.abs(num(amount)), date, tag: finalTag, emoji, note: note || undefined });
+      const isPartner = party === 'partner';
+
+      // إذا كانت الحركة تخص زيادة أو تخفيض رأس المال، نقوم بتحديث رأس المال المرجعي المحفوظ للشريك أو المستخدم
+      let nextPartnerSettings = settings.partner;
+      if (label === 'زيادة رأس المال') {
+        if (isPartner) {
+          nextPartnerSettings = { ...settings.partner, partnerCapital: currentPartnerCap + numAmount };
+        } else {
+          nextPartnerSettings = { ...settings.partner, myCapital: currentMyCap + numAmount };
+        }
+      } else if (label === 'تخفيض رأس المال') {
+        if (isPartner) {
+          nextPartnerSettings = { ...settings.partner, partnerCapital: Math.max(0, currentPartnerCap - numAmount) };
+        } else {
+          nextPartnerSettings = { ...settings.partner, myCapital: Math.max(0, currentMyCap - numAmount) };
+        }
+      }
+
+      if (nextPartnerSettings !== settings.partner || nextTags !== settings.tags) {
+        await saveSettings({
+          ...settings,
+          tags: nextTags,
+          partner: nextPartnerSettings,
+        });
+      }
+
+      if (editing) {
+        await updateCashflow(editing.id, {
+          portfolioId: pid,
+          type,
+          amount: numAmount,
+          date,
+          tag: finalTag,
+          emoji,
+          partner: isPartner,
+          note: note || '',
+        });
+      } else {
+        await addCashflow({
+          portfolioId: pid,
+          type,
+          amount: numAmount,
+          date,
+          tag: finalTag,
+          emoji,
+          partner: isPartner,
+          note: note || undefined,
+        });
+      }
       onClose();
     } finally { setBusy(false); }
   };
 
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'تعديل حركة' : 'حركة نقدية'}>
-      <div className="space-y-5">
+      <div className="space-y-4">
+        {/* نوع الحركة: إيداع / سحب */}
         <div className="grid grid-cols-2 gap-2">
           {(['deposit', 'withdrawal'] as const).map(t => (
             <button key={t} type="button" onClick={() => handleTypeChange(t)}
@@ -1011,6 +1076,37 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
             </button>
           ))}
         </div>
+
+        {/* عائد الحركة: أنا vs الشريك */}
+        <Field label="عائد الحركة النقدية">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setParty('me')}
+              className={cx(
+                'flex items-center justify-center gap-2 rounded-2xl border-2 py-2.5 text-xs font-black transition-all',
+                party === 'me'
+                  ? 'border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300'
+              )}
+            >
+              <span>👤 لي (أنا)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setParty('partner')}
+              className={cx(
+                'flex items-center justify-center gap-2 rounded-2xl border-2 py-2.5 text-xs font-black transition-all',
+                party === 'partner'
+                  ? 'border-purple-500 bg-purple-500/10 text-purple-600 dark:text-purple-400 shadow-sm'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300'
+              )}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>👥 للشريك ({partnerName})</span>
+            </button>
+          </div>
+        </Field>
 
         <Field label="المحفظة"><PortfolioPills value={pid} onChange={setPid} /></Field>
 
@@ -1045,7 +1141,7 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
         <Field label="التصنيف">
           <div className="flex flex-wrap gap-2">
             {tags.map(t => (
-              <button key={t.label} type="button" onClick={() => { setTag(t.label); setCustom(''); }}
+              <button key={t.label} type="button" onClick={() => handleSelectTag(t.label)}
                 className={cx('rounded-xl border px-3 py-1.5 text-xs font-black transition-all',
                   tag === t.label && !custom ? (isDep ? 'bg-emerald-500 border-emerald-500 text-white shadow' : 'bg-rose-500 border-rose-500 text-white shadow') : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-400')}>
                 <span className="ml-1">{t.emoji}</span>{t.label}
@@ -1058,9 +1154,35 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
           </div>
         </Field>
 
+        {/* تنبيه ذكي عند زيادة أو تخفيض رأس المال */}
+        {isCapChange && numAmount > 0 && (
+          <div className="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3 text-xs font-bold text-amber-800 dark:text-amber-200 flex items-start gap-2.5 animate-fadeIn">
+            <Sparkles className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <div className="font-black">
+                {tag === 'زيادة رأس المال' ? '🚀 تحديث تلقائي لزيادة رأس المال المسجل:' : '🔻 تحديث تلقائي لتخفيض رأس المال المسجل:'}
+              </div>
+              <p className="text-[11px] font-medium leading-relaxed opacity-95">
+                سيتم تعديل رأس مال <b className="font-black underline">{party === 'partner' ? partnerName : 'أنا'}</b> المسجل في إعدادات الشراكة من{' '}
+                <span dir="ltr" className="font-bold tabular-nums">
+                  {fmt(party === 'partner' ? currentPartnerCap : currentMyCap)}
+                </span>{' '}
+                إلى{' '}
+                <span dir="ltr" className="font-black text-amber-900 dark:text-amber-100 tabular-nums">
+                  {fmt(
+                    tag === 'زيادة رأس المال'
+                      ? (party === 'partner' ? currentPartnerCap : currentMyCap) + numAmount
+                      : Math.max(0, (party === 'partner' ? currentPartnerCap : currentMyCap) - numAmount)
+                  )}
+                </span> ج.م
+              </p>
+            </div>
+          </div>
+        )}
+
         <Field label="ملاحظة"><input value={note} onChange={e => setNote(e.target.value)} className={inputCls} /></Field>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 pt-1">
           {editing && (
             <button
               type="button"

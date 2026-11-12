@@ -10,11 +10,12 @@ type Filter = 'all' | 'deposit' | 'withdrawal' | 'nav';
 export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: string[]; onEditFlow: (c: import('./types').VaultCashflow) => void; onEditSnap: (pid: string, date: string) => void }) {
   const { settings, cashflows, snapshots, deleteCashflow, deleteSnapshot } = useVault();
   const [filter, setFilter] = useState<Filter>('all');
+  const [partyFilter, setPartyFilter] = useState<'all' | 'me' | 'partner'>('all');
   const [tagFilter, setTagFilter] = useState<string>('');
   const [confirm, setConfirm] = useState<string | null>(null);
   const pname = (id: string) => settings.portfolios.find(p => p.id === id);
 
-  const flows = useMemo(() => cashflows.filter(c => scopeIds.includes(c.portfolioId) && !c.opening && !c.partner), [cashflows, scopeIds]);
+  const flows = useMemo(() => cashflows.filter(c => scopeIds.includes(c.portfolioId) && !c.opening), [cashflows, scopeIds]);
   const portfolioFlows = flows;
   const dep = portfolioFlows.filter(f => f.type === 'deposit').reduce((a, f) => a + f.amount, 0);
   const wd = portfolioFlows.filter(f => f.type === 'withdrawal').reduce((a, f) => a + f.amount, 0);
@@ -72,7 +73,7 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
   const maxTag = Math.max(...byTag.map(t => Math.max(t.deposit, t.withdrawal)), 1);
 
   type Row =
-    | { id: string; kind: 'deposit' | 'withdrawal'; date: string; ts: number; pid: string; label: string; emoji: string; amount: number; note?: string }
+    | { id: string; kind: 'deposit' | 'withdrawal'; date: string; ts: number; pid: string; label: string; emoji: string; amount: number; note?: string; partner?: boolean }
     | { id: string; kind: 'nav'; date: string; ts: number; label: string; emoji: string; amount: number; note?: string; items: { pid: string; total: number; note?: string }[] };
 
   const rows: Row[] = useMemo(() => {
@@ -87,6 +88,7 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
       emoji: f.emoji ?? '',
       amount: f.amount,
       note: f.note,
+      partner: f.partner,
     }));
 
     // 2. Group Snapshots by date
@@ -116,6 +118,12 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
 
     return [...a, ...b]
       .filter(r => filter === 'all' || r.kind === filter)
+      .filter(r => {
+        if (partyFilter === 'all') return true;
+        if (r.kind === 'nav') return true;
+        if (partyFilter === 'partner') return Boolean(r.partner);
+        return !r.partner;
+      })
       .filter(r => !tagFilter || r.label === tagFilter)
       .sort((x, y) => {
         const dx = dayNum(x.date) || 0;
@@ -123,7 +131,7 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
         if (dy !== dx) return dy - dx;
         return (y.ts || 0) - (x.ts || 0);
       });
-  }, [flows, snapshots, scopeIds, filter, tagFilter]);
+  }, [flows, snapshots, scopeIds, filter, partyFilter, tagFilter]);
 
   const exportPdf = () => {
     const printWindow = window.open('', '_blank');
@@ -375,7 +383,28 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
       <Card
         title="السجل"
         right={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800/80 p-0.5 text-[11px] font-black">
+              {[
+                { v: 'all', label: 'الكل' },
+                { v: 'me', label: '👤 أنا' },
+                { v: 'partner', label: `👥 ${settings.partner?.name || 'الشريك'}` },
+              ].map(opt => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setPartyFilter(opt.v as any)}
+                  className={cx(
+                    'rounded-lg px-2.5 py-1 transition-all',
+                    partyFilter === opt.v
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
             <Segmented size="sm" value={filter} onChange={setFilter} options={[{ v: 'all', label: 'الكل' }, { v: 'deposit', label: 'إيداع' }, { v: 'withdrawal', label: 'سحب' }, { v: 'nav', label: 'قيم سوقية' }]} />
             <button onClick={exportPdf} title="طباعة / تصدير PDF" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"><Printer className="w-4 h-4" /></button>
             <button onClick={exportCsv} title="تصدير CSV" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"><Download className="w-4 h-4" /></button>
@@ -406,10 +435,45 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
                     {r.kind === 'deposit' ? <ArrowDownLeft className="w-4 h-4" /> : r.kind === 'withdrawal' ? <ArrowUpRight className="w-4 h-4" /> : <LineIcon className="w-4 h-4" />}
                   </div>
                   <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2 text-sm font-black text-slate-800 dark:text-slate-100">
+                    <div className="flex flex-wrap items-center gap-1.5 text-sm font-black text-slate-800 dark:text-slate-100">
                       <span>{r.emoji} {r.label}</span>
                       {p && <span className="rounded-full px-2 py-0.5 text-[10px] font-black text-white" style={{ background: p.color }}>{p.name}</span>}
-                      {flows.find(x => x.id === r.id)?.partner && <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-black text-violet-500">شريك</span>}
+                      
+                      {/* الطرف: أنا vs الشريك */}
+                      {!isNav && (
+                        r.partner ? (
+                          <span className="rounded-full bg-purple-500/15 border border-purple-500/25 px-2 py-0.5 text-[10px] font-black text-purple-600 dark:text-purple-400">
+                            👥 {settings.partner?.name || 'الشريك'}
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 px-2 py-0.5 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                            👤 أنا
+                          </span>
+                        )
+                      )}
+
+                      {/* شارات وظيفية ذكية */}
+                      {!isNav && (r.label === 'جني أرباح' || r.label === 'أرباح الشريك' || (r.kind === 'withdrawal' && r.label.includes('أرباح'))) && (
+                        <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-black text-emerald-600 dark:text-emerald-400">
+                          🎯 ربح مسحوب
+                        </span>
+                      )}
+                      {!isNav && (r.label === 'سداد الفيزا' || r.label.includes('فيزا')) && (
+                        <span className="rounded-full bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 text-[10px] font-black text-blue-600 dark:text-blue-400">
+                          💳 سداد التزامات
+                        </span>
+                      )}
+                      {!isNav && r.label === 'زيادة رأس المال' && (
+                        <span className="rounded-full bg-teal-500/15 border border-teal-500/30 px-2 py-0.5 text-[10px] font-black text-teal-600 dark:text-teal-400">
+                          🚀 زيادة رأسمال
+                        </span>
+                      )}
+                      {!isNav && r.label === 'تخفيض رأس المال' && (
+                        <span className="rounded-full bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 text-[10px] font-black text-rose-600 dark:text-rose-400">
+                          🔻 تخفيض رأسمال
+                        </span>
+                      )}
+
                       {isNav && <span className="text-[10px] font-bold text-slate-400">({fmtDate(r.date)})</span>}
                     </div>
 

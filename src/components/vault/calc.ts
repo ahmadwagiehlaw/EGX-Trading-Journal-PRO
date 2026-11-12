@@ -63,7 +63,7 @@ const signed = (f: VaultCashflow) => (f.type === 'deposit' ? f.amount : -f.amoun
 export function buildSeries(snaps: VaultSnapshot[], flows: VaultCashflow[], ids: string[]): Point[] {
   const sel = new Set(ids);
   const S = snaps.filter(s => sel.has(s.portfolioId)).sort((a, b) => a.date.localeCompare(b.date));
-  const F = flows.filter(f => sel.has(f.portfolioId) && !f.opening && !f.partner);
+  const F = flows.filter(f => sel.has(f.portfolioId) && !f.opening);
   const minSnapDate = S[0]?.date;
   const dates = Array.from(new Set([...S.map(s => s.date), ...F.map(f => f.date)]))
     .filter(d => !minSnapDate || d >= minSnapDate)
@@ -556,6 +556,84 @@ export function profitTotals(rows: VaultMonthProfit[]) {
     }),
     { retainedMine: 0, retainedPartner: 0, distributedMine: 0, distributedPartner: 0 },
   );
+}
+
+/* ───────── Withdrawn Profits & Reinvestment Metrics ───────── */
+export interface WithdrawnProfitsSummary {
+  myWithdrawn: number;            // أرباحي المسحوبة (جني أرباح، أرباح شخصية)
+  partnerWithdrawn: number;       // أرباح الشريك المسحوبة (أرباح الشريك)
+  totalWithdrawn: number;         // إجمالي الأرباح المسحوبة الخالصة من المحفظة
+  visaObligations: number;        // سداد الفيزا (التزامات وتدوير سيولة - لا تُحسب كأرباح مسحوبة)
+  otherWithdrawals: number;       // مسحوبات أخرى (سلفة، إلخ)
+  capitalAdditionsMine: number;   // زيادة رأس المال (أنا)
+  capitalAdditionsPartner: number;// زيادة رأس المال (الشريك)
+  capitalReductionsMine: number;  // تخفيض رأس المال (أنا)
+  capitalReductionsPartner: number;// تخفيض رأس المال (الشريك)
+  reinvestedProfit: number;       // الأرباح التراكمية المعاد استثمارها داخل المحفظة
+  reinvestmentRatePct: number;    // معدل إعادة الاستثمار %
+  withdrawnRatePct: number;       // نسبة الأرباح المسحوبة من إجمالي الأرباح المحققة %
+}
+
+export function computeWithdrawnProfits(
+  flows: VaultCashflow[],
+  totalProfit: number
+): WithdrawnProfitsSummary {
+  let myWithdrawn = 0;
+  let partnerWithdrawn = 0;
+  let visaObligations = 0;
+  let otherWithdrawals = 0;
+  let capitalAdditionsMine = 0;
+  let capitalAdditionsPartner = 0;
+  let capitalReductionsMine = 0;
+  let capitalReductionsPartner = 0;
+
+  for (const f of flows) {
+    if (f.opening) continue;
+    const tag = (f.tag || '').trim();
+
+    if (f.type === 'withdrawal') {
+      if (tag === 'سداد الفيزا' || tag.includes('فيزا')) {
+        visaObligations += f.amount;
+      } else if (tag === 'تخفيض رأس المال') {
+        if (f.partner) capitalReductionsPartner += f.amount;
+        else capitalReductionsMine += f.amount;
+      } else if (tag === 'أرباح الشريك' || (f.partner && tag.includes('أرباح'))) {
+        partnerWithdrawn += f.amount;
+      } else if (tag === 'جني أرباح' || tag.includes('أرباح')) {
+        if (f.partner) partnerWithdrawn += f.amount;
+        else myWithdrawn += f.amount;
+      } else {
+        otherWithdrawals += f.amount;
+      }
+    } else if (f.type === 'deposit') {
+      if (tag === 'زيادة رأس المال') {
+        if (f.partner) capitalAdditionsPartner += f.amount;
+        else capitalAdditionsMine += f.amount;
+      }
+    }
+  }
+
+  const totalWithdrawn = myWithdrawn + partnerWithdrawn;
+  const safeTotalProfit = Math.max(0, totalProfit);
+  const allTimeProfit = safeTotalProfit > 0 ? safeTotalProfit : totalWithdrawn;
+  const reinvestedProfit = Math.max(0, safeTotalProfit - totalWithdrawn);
+  const reinvestmentRatePct = allTimeProfit > 0 ? Math.min(100, Math.max(0, ((allTimeProfit - totalWithdrawn) / allTimeProfit) * 100)) : 100;
+  const withdrawnRatePct = allTimeProfit > 0 ? Math.min(100, Math.max(0, (totalWithdrawn / allTimeProfit) * 100)) : 0;
+
+  return {
+    myWithdrawn,
+    partnerWithdrawn,
+    totalWithdrawn,
+    visaObligations,
+    otherWithdrawals,
+    capitalAdditionsMine,
+    capitalAdditionsPartner,
+    capitalReductionsMine,
+    capitalReductionsPartner,
+    reinvestedProfit,
+    reinvestmentRatePct,
+    withdrawnRatePct,
+  };
 }
 
 /* ───────── Partner split (Total Ownership - Partner Capital) ─────────

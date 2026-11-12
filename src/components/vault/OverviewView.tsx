@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, Cell, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
-import { Activity, Flame, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Trophy, Calendar, Zap, Crown, Banknote, Users, Layers, ChevronUp, RefreshCw, Landmark, Sparkles, Target, CheckCircle2, Wallet } from 'lucide-react';
+import { Activity, Flame, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Trophy, Calendar, Zap, Crown, Banknote, Users, Layers, ChevronUp, RefreshCw, Landmark, Sparkles, Target, CheckCircle2, Wallet, RotateCcw } from 'lucide-react';
 import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone } from './ui';
 import { useVault } from './VaultContext';
 import type { Point, Stats, Period, PeriodRet, BenchmarksState } from './calc';
@@ -10,6 +10,7 @@ import {
   monthlyReturns,
   comparePortfolios,
   computeCashAmmo,
+  computeWithdrawnProfits,
   loadCachedBenchmarks,
   fetchEgxBenchmarks,
   buildBenchmarkSeries,
@@ -70,15 +71,10 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
   const peakPct = peakPt && peakPt.nav > 0 ? Math.min(100, Math.max(0, (stats.nav / peakPt.nav) * 100)) : 100;
   const diffPctFromPeak = peakPt && peakPt.nav > 0 ? ((stats.nav - peakPt.nav) / peakPt.nav) * 100 : 0;
 
-  // إجمالي الأرباح المجنية نقداً من المحفظة (جني أرباح + سداد الفيزا + أرباح الشريك)
-  const harvestedCash = useMemo(() => {
-    const harvestTags = new Set(['جني أرباح', 'سداد الفيزا', 'أرباح الشريك']);
-    return cashflows
-      .filter(c => !c.opening && !c.partner && c.type === 'withdrawal' && harvestTags.has(c.tag))
-      .reduce((sum, c) => sum + c.amount, 0);
-  }, [cashflows]);
-
-  const monthlyGainRate = stats.days >= 15 ? Math.round((stats.profit / stats.days) * 30) : null;
+  // تفصيل الأرباح المسحوبة ومعدل إعادة الاستثمار
+  const withdrawnSummary = useMemo(() => {
+    return computeWithdrawnProfits(cashflows, stats.profit);
+  }, [cashflows, stats.profit]);
 
   return (
     <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-6 sm:p-8 text-white shadow-2xl">
@@ -387,21 +383,30 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                       <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10">
                         <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
                           <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
-                            <Banknote className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-                            <span>جني نقدي</span>
+                            <Banknote className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                            <span>أرباح مسحوبة</span>
                           </span>
-                          <b className="text-xs font-black tabular-nums text-emerald-300">+{fmtCompact(harvestedCash)}</b>
+                          <b className="text-xs font-black tabular-nums text-purple-300">
+                            {withdrawnSummary.totalWithdrawn > 0 ? `+${fmtCompact(withdrawnSummary.totalWithdrawn)}` : '0'}
+                          </b>
                         </div>
                         <div className="flex items-center justify-between rounded-xl bg-white/[0.05] px-2.5 py-1.5">
                           <span className="flex items-center gap-1 text-[10px] font-bold text-slate-300">
-                            <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                            <span>شهرياً</span>
+                            <RotateCcw className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+                            <span>إعادة استثمار</span>
                           </span>
-                          <b className={cx('text-xs font-black tabular-nums', (monthlyGainRate ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
-                            {monthlyGainRate !== null ? fmtCompact(monthlyGainRate) : '—'}
+                          <b className="text-xs font-black tabular-nums text-cyan-300">
+                            {withdrawnSummary.reinvestmentRatePct.toFixed(0)}%
                           </b>
                         </div>
                       </div>
+                      {withdrawnSummary.totalWithdrawn > 0 && (
+                        <div className="flex flex-wrap items-center justify-between text-[9px] font-bold text-slate-300 pt-1.5 px-1 border-t border-white/5">
+                          <span>أرباحي: {fmtCompact(withdrawnSummary.myWithdrawn)}</span>
+                          <span>الشريك: {fmtCompact(withdrawnSummary.partnerWithdrawn)}</span>
+                          {withdrawnSummary.visaObligations > 0 && <span>فيزا: {fmtCompact(withdrawnSummary.visaObligations)}</span>}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1909,6 +1914,7 @@ export function WealthGrowthDecomposition({
 }
 
 export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
+  const { settings, cashflows } = useVault();
   const s = stats;
 
   // 1. الحساب الدقيق للقمة التاريخية الحقيقية والهبوط اللحظي الحالي
@@ -1945,8 +1951,13 @@ export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
     return s.avgMonth / s.vol;
   }, [s.vol, s.avgMonth]);
 
+  // مؤشرات الأرباح المسحوبة ومعدل إعادة الاستثمار
+  const withdrawn = useMemo(() => {
+    return computeWithdrawnProfits(cashflows, s.profit);
+  }, [cashflows, s.profit]);
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       {/* 1. Risk & Capital Defense Cockpit */}
       <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900/90 dark:via-slate-900/40 dark:to-slate-900/90 p-5 shadow-sm flex flex-col justify-between gap-4">
         <div className="flex items-center justify-between">
@@ -1954,7 +1965,7 @@ export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
             <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center">
               <ShieldAlert className="w-4 h-4" />
             </div>
-            <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">حماية رأس المال وإدارة المخاطر</h3>
+            <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">حماية رأس المال والمخاطر</h3>
           </div>
           <span className={cx('text-[10px] font-black px-2.5 py-1 rounded-full', ddStatus.bg, ddStatus.color)}>
             {ddStatus.text}
@@ -2003,21 +2014,18 @@ export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
             <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-200/60 dark:border-slate-700/40">
               <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
                 <Zap className="w-3.5 h-3.5 shrink-0" />
-                <span>مستهدف استعادة القمة:</span>
+                <span>مستهدف القمة:</span>
               </span>
               <div className="flex items-center gap-1.5">
                 <b dir="ltr" className="font-black text-orange-500">
                   +{fmt(recoveryAmt)} ج.م (+{recoveryPct.toFixed(1)}%)
                 </b>
-                <span className="text-[10px] text-slate-400">
-                  (لـ {fmtCompact(peakNav)})
-                </span>
               </div>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-500 pt-1 border-t border-slate-200/60 dark:border-slate-700/40">
               <ShieldCheck className="w-4 h-4" />
-              <span>المحفظة تتداول حالياً عند أعلى قمة تاريخية مسجلة</span>
+              <span>المحفظة تتداول عند أعلى قمة مسجلة</span>
             </div>
           )}
         </div>
@@ -2027,13 +2035,13 @@ export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
           {/* 1. وسادة الأمان لرأس المال (Capital Cushion) */}
           <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-2.5 text-center flex flex-col justify-between">
             <div>
-              <div className="text-[10px] font-bold text-slate-400 truncate">وسادة الأمان للرأسمال</div>
+              <div className="text-[10px] font-bold text-slate-400 truncate">وسادة الأمان</div>
               <div dir="ltr" className={cx('text-sm sm:text-base font-black tabular-nums mt-0.5', s.profit >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
                 {s.profit >= 0 ? `+${fmtCompact(s.profit)}` : fmtCompact(s.profit)}
               </div>
             </div>
             <div className="text-[9px] font-black text-slate-400 mt-1">
-              {s.profit >= 0 ? `+${cushionPct.toFixed(1)}% فوق التكلفة` : `${cushionPct.toFixed(1)}% من التكلفة`}
+              {s.profit >= 0 ? `+${cushionPct.toFixed(0)}% فوق التكلفة` : `${cushionPct.toFixed(0)}%`}
             </div>
           </div>
 
@@ -2046,7 +2054,7 @@ export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
               </div>
             </div>
             <div className="text-[9px] font-black text-slate-400 mt-1">
-              {s.profitFactor === null ? '—' : s.profitFactor >= 1.5 ? 'أرباح تفوق الخسائر' : s.profitFactor >= 1 ? 'متوازن' : 'تحت الضغط'}
+              {s.profitFactor === null ? '—' : s.profitFactor >= 1.5 ? 'أرباح تفوق الخسائر' : 'متوازن'}
             </div>
           </div>
 
@@ -2059,7 +2067,120 @@ export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
               </div>
             </div>
             <div className="text-[9px] font-black text-slate-400 mt-1">
-              {riskEfficiency !== null ? `كفاءة ${riskEfficiency.toFixed(1)}x` : s.vol && s.vol <= 5 ? 'هادئ' : 'نشط'}
+              {riskEfficiency !== null ? `كفاءة ${riskEfficiency.toFixed(1)}x` : 'نشط'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Withdrawn Profits & Reinvestment Cockpit */}
+      <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900/90 dark:via-slate-900/40 dark:to-slate-900/90 p-5 shadow-sm flex flex-col justify-between gap-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+              <RotateCcw className="w-4 h-4" />
+            </div>
+            <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">الأرباح المسحوبة وإعادة الاستثمار</h3>
+          </div>
+          <span className={cx(
+            'text-[10px] font-black px-2.5 py-1 rounded-full',
+            withdrawn.reinvestmentRatePct >= 70
+              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+              : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+          )}>
+            {withdrawn.reinvestmentRatePct.toFixed(0)}% تدوير مركب 🔄
+          </span>
+        </div>
+
+        {/* Main Dual Gauge: Reinvested vs Withdrawn */}
+        <div className="bg-slate-100/80 dark:bg-slate-800/60 rounded-2xl p-4 space-y-3 border border-slate-200/50 dark:border-slate-800/40">
+          <div className="flex items-baseline justify-between">
+            <div>
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">إجمالي الأرباح المسحوبة</span>
+              <div dir="ltr" className="text-xl font-black text-purple-600 dark:text-purple-400 tabular-nums">
+                {fmt(withdrawn.totalWithdrawn)} <span className="text-xs font-bold text-slate-400">ج.م</span>
+              </div>
+            </div>
+            <div className="text-left">
+              <span className="text-[10px] font-bold text-slate-400">المعاد استثماره بالمحفظة</span>
+              <div dir="ltr" className="text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                {fmt(withdrawn.reinvestedProfit)} ج.م
+              </div>
+            </div>
+          </div>
+
+          {/* Visual Compounding Track */}
+          <div className="space-y-1">
+            <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700/60 overflow-hidden flex" dir="ltr">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-700"
+                style={{ width: `${withdrawn.reinvestmentRatePct}%` }}
+                title={`معاد استثماره: ${withdrawn.reinvestmentRatePct.toFixed(1)}%`}
+              />
+              <div
+                className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-700"
+                style={{ width: `${100 - withdrawn.reinvestmentRatePct}%` }}
+                title={`مسحوب: ${(100 - withdrawn.reinvestmentRatePct).toFixed(1)}%`}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[9px] font-black text-slate-400" dir="ltr">
+              <span>🔄 {withdrawn.reinvestmentRatePct.toFixed(0)}% مستمر للتراكم</span>
+              <span>🚪 {withdrawn.withdrawnRatePct.toFixed(0)}% مسحوب كأرباح</span>
+            </div>
+          </div>
+
+          {/* Sub Obligations Note */}
+          {withdrawn.visaObligations > 0 && (
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-200/60 dark:border-slate-700/40">
+              <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                <Banknote className="w-3.5 h-3.5 shrink-0" />
+                <span>سداد فيزا (تدوير التزامات):</span>
+              </span>
+              <b dir="ltr" className="font-black text-blue-600 dark:text-blue-400 tabular-nums">
+                {fmt(withdrawn.visaObligations)} ج.م
+              </b>
+            </div>
+          )}
+        </div>
+
+        {/* 3 Breakdown Metrics: My Withdrawn, Partner Withdrawn, Capital Additions */}
+        <div className="grid grid-cols-3 gap-2.5">
+          {/* 1. أرباحي المسحوبة */}
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-2.5 text-center flex flex-col justify-between">
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 truncate">أرباحي المسحوبة</div>
+              <div dir="ltr" className="text-sm sm:text-base font-black text-indigo-600 dark:text-indigo-400 tabular-nums mt-0.5">
+                {fmtCompact(withdrawn.myWithdrawn)}
+              </div>
+            </div>
+            <div className="text-[9px] font-black text-slate-400 mt-1">
+              جني نقدي لي
+            </div>
+          </div>
+
+          {/* 2. أرباح الشريك */}
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-2.5 text-center flex flex-col justify-between">
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 truncate">أرباح {settings.partner?.name || 'الشريك'}</div>
+              <div dir="ltr" className="text-sm sm:text-base font-black text-purple-600 dark:text-purple-400 tabular-nums mt-0.5">
+                {fmtCompact(withdrawn.partnerWithdrawn)}
+              </div>
+            </div>
+            <div className="text-[9px] font-black text-slate-400 mt-1">
+              مسحوبات الشريك
+            </div>
+          </div>
+
+          {/* 3. صافي زيادة رأس المال */}
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-white/70 dark:bg-slate-800/30 p-2.5 text-center flex flex-col justify-between">
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 truncate">زيادات رأس المال</div>
+              <div dir="ltr" className="text-sm sm:text-base font-black text-teal-600 dark:text-teal-400 tabular-nums mt-0.5">
+                +{fmtCompact(withdrawn.capitalAdditionsMine + withdrawn.capitalAdditionsPartner)}
+              </div>
+            </div>
+            <div className="text-[9px] font-black text-slate-400 mt-1">
+              حقن سيولة معتمد
             </div>
           </div>
         </div>
