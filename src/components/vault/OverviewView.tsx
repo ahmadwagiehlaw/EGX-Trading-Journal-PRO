@@ -514,11 +514,58 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
     return dir === 'rtl' ? [...allM].reverse() : allM;
   }, [pts, dir]);
 
-  // أعلى قمة عوائد داخل الفترة المختارة (لرسم خط قمة الأرباح)
-  const peakProfitInWin = useMemo(() => {
-    if (!data.length) return 0;
-    return Math.max(...data.map(d => (unit === 'egp' ? d.pProfit : d.pTwr)));
-  }, [data, unit]);
+  // أعلى قمة وأدنى قاع عوائد داخل الفترة المختارة (لرسم خطوط القمة والقاع وشريط بيانات النمو)
+  const growthPeriodMeta = useMemo(() => {
+    if (!data.length || !first || !last) return null;
+    let peakEgp = -Infinity;
+    let peakPct = -Infinity;
+    let peakDate = '';
+    let troughEgp = Infinity;
+    let troughPct = Infinity;
+    let troughDate = '';
+    let posCount = 0;
+
+    for (const d of data) {
+      if (d.pProfit >= 0) posCount++;
+      if (d.pProfit > peakEgp) {
+        peakEgp = d.pProfit;
+        peakPct = d.pTwr;
+        peakDate = d.date;
+      }
+      if (d.pProfit < troughEgp) {
+        troughEgp = d.pProfit;
+        troughPct = d.pTwr;
+        troughDate = d.date;
+      }
+    }
+
+    const recoveryEgp = last.pProfit - troughEgp;
+    const recoveryPct = last.pTwr - troughPct;
+    const posPct = Math.round((posCount / data.length) * 100);
+
+    return {
+      peakEgp: peakEgp === -Infinity ? 0 : peakEgp,
+      peakPct: peakPct === -Infinity ? 0 : peakPct,
+      peakDate,
+      troughEgp: troughEgp === Infinity ? 0 : troughEgp,
+      troughPct: troughPct === Infinity ? 0 : troughPct,
+      troughDate,
+      recoveryEgp,
+      recoveryPct,
+      posPct,
+    };
+  }, [data, first, last]);
+
+  const peakProfitInWin = growthPeriodMeta
+    ? unit === 'egp'
+      ? growthPeriodMeta.peakEgp
+      : growthPeriodMeta.peakPct
+    : 0;
+  const troughProfitInWin = growthPeriodMeta
+    ? unit === 'egp'
+      ? growthPeriodMeta.troughEgp
+      : growthPeriodMeta.troughPct
+    : 0;
 
   // أعلى قمة للقيمة السوقية داخل الفترة المختارة (لرسم خط القمة في شارت رأس المال)
   const peakNavInWin = useMemo(() => {
@@ -709,30 +756,82 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
               </div>
             )}
 
-            {mode === 'growth' && last && (
-              <>
-                <div>
-                  <div className="text-[11px] font-bold text-slate-400">
-                    {period === 'All' ? 'إجمالي العوائد التراكمية والنمو منذ البداية' : `تغير العوائد والنمو خلال الفترة (${period})`}
-                  </div>
-                  <div className="flex flex-wrap items-baseline gap-2.5 mt-0.5">
-                    <span dir="ltr" className={cx('text-2xl font-black tabular-nums', tone(last.pProfit))}>
+            {mode === 'growth' && last && growthPeriodMeta && (
+              <div className="w-full flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/60 dark:border-white/[0.06]">
+                {/* Right side: Institutional Growth & Returns Ticker Strip */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <span>عائد ({period === 'All' ? 'الكل' : period}):</span>
+                    <b dir="ltr" className={cx('text-sm font-black tabular-nums', tone(last.pProfit))}>
                       {fmtSigned(last.pProfit)} ج.م
-                    </span>
-                    <span dir="ltr" className={cx('rounded-lg px-2 py-0.5 text-xs font-black', last.pTwr >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500')}>
+                    </b>
+                    <span
+                      dir="ltr"
+                      className={cx(
+                        'rounded-md px-1.5 py-0.5 text-[10px] font-black tabular-nums',
+                        last.pTwr >= 0 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                      )}
+                    >
                       {fmtPct(last.pTwr)}
                     </span>
                   </div>
+
+                  <span className="text-slate-300 dark:text-slate-700">|</span>
+
+                  <div className="flex items-center gap-1.5">
+                    <span>النطاق:</span>
+                    <b dir="ltr" className="tabular-nums font-black text-rose-500">
+                      {unit === 'pct' ? fmtPct(growthPeriodMeta.troughPct, 1) : fmtCompact(growthPeriodMeta.troughEgp)}
+                    </b>
+                    <span>←</span>
+                    <b dir="ltr" className="tabular-nums font-black text-amber-500">
+                      {unit === 'pct' ? fmtPct(growthPeriodMeta.peakPct, 1) : fmtCompact(growthPeriodMeta.peakEgp)}
+                    </b>
+                  </div>
+
+                  {growthPeriodMeta.recoveryPct > 0.2 && last.pProfit > growthPeriodMeta.troughEgp && (
+                    <>
+                      <span className="text-slate-300 dark:text-slate-700">|</span>
+                      <div className="flex items-center gap-1">
+                        <span>ارتداد من القاع:</span>
+                        <b dir="ltr" className="tabular-nums font-black text-emerald-500">
+                          +{growthPeriodMeta.recoveryPct.toFixed(1)}% ({fmtSigned(growthPeriodMeta.recoveryEgp, 0)})
+                        </b>
+                      </div>
+                    </>
+                  )}
+
                   {period !== 'All' && (
-                    <div className="text-[11px] font-bold text-slate-400 mt-0.5">
-                      الإجمالي منذ البداية: <b dir="ltr" className={tone(last.profit)}>{fmtSigned(last.profit)} ج.م ({fmtPct((last.index - 1) * 100)})</b>
-                    </div>
+                    <>
+                      <span className="text-slate-300 dark:text-slate-700">|</span>
+                      <div className="flex items-center gap-1">
+                        <span>التراكمي الكلي:</span>
+                        <b dir="ltr" className={cx('tabular-nums font-black', tone(last.profit))}>
+                          {fmtSigned(last.profit)} ج.م ({fmtPct((last.index - 1) * 100, 1)})
+                        </b>
+                      </div>
+                    </>
                   )}
                 </div>
 
-                {/* Quick Toggle between EGP Curve and % Curve */}
-                <div className="flex items-center gap-2">
-                  <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[11px] font-black">
+                {/* Left side: Legend + Unit Toggle */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="hidden xl:flex items-center gap-3 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                    {peakProfitInWin > 0 && (
+                      <span className="flex items-center gap-1 text-amber-500">
+                        <i className="w-3 h-0 border-t-2 border-dashed border-amber-500 inline-block" />
+                        القمة (<b dir="ltr">{unit === 'egp' ? fmtCompact(growthPeriodMeta.peakEgp) : fmtPct(growthPeriodMeta.peakPct, 1)}</b>)
+                      </span>
+                    )}
+                    {troughProfitInWin < 0 && (
+                      <span className="flex items-center gap-1 text-rose-500">
+                        <i className="w-3 h-0 border-t-2 border-dashed border-rose-500 inline-block" />
+                        القاع (<b dir="ltr">{unit === 'egp' ? fmtCompact(growthPeriodMeta.troughEgp) : fmtPct(growthPeriodMeta.troughPct, 1)}</b>)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[10px] font-black">
                     <button
                       type="button"
                       onClick={() => setUnit('egp')}
@@ -755,7 +854,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                     </button>
                   </div>
                 </div>
-              </>
+              </div>
             )}
 
             {mode === 'benchmark' && lastBench && (() => {
@@ -763,7 +862,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
               const myRank = allScores.findIndex(v => Math.abs(v - lastBench.pTwr) < 1e-6) + 1;
 
               return (
-                <div className="w-full space-y-3">
+                <div className="w-full space-y-2.5">
                   {/* Top Controls Row: Series Toggles + Bank Rate (Presets + Manual Input) + Unit Switch + Live Sync */}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -898,30 +997,30 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                     </div>
                   </div>
 
-                  {/* 4 Institutional Comparison Cards: Actual Return + Working Capital + Alpha (α) */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                  {/* 4 Compact Institutional Comparison Cards: Side-by-Side (% vs EGP) + Alpha (α) Strip */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                     {/* 1. My Portfolio (Dominant Card) */}
-                    <div className="rounded-2xl border-2 border-emerald-500/45 bg-emerald-500/[0.08] p-3 flex flex-col justify-between gap-1.5 shadow-sm shadow-emerald-500/5">
+                    <div className="rounded-xl border-2 border-emerald-500/45 bg-emerald-500/[0.08] px-3 py-2 flex flex-col justify-between gap-1.5 shadow-sm shadow-emerald-500/5">
                       <div className="flex items-center justify-between text-[11px] font-black text-emerald-600 dark:text-emerald-400">
                         <span className="flex items-center gap-1.5">
                           <i className="w-3.5 h-1 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
                           أداء محفظتي
                         </span>
-                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px]">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[9px]">
                           <span>المركز #{myRank} {myRank === 1 ? '🏆' : ''}</span>
                           <span className="opacity-50">|</span>
                           <span dir="ltr">{period === 'All' ? 'الكل' : period}</span>
                         </span>
                       </div>
-                      <div>
-                        <div dir="ltr" className={cx('text-xl font-black tabular-nums text-right', tone(lastBench.pTwr))}>
+                      <div className="flex items-baseline justify-between gap-2 pt-0.5">
+                        <span dir="ltr" className={cx('text-lg sm:text-xl font-black tabular-nums leading-none', tone(lastBench.pTwr))}>
                           {unit === 'pct' ? fmtPct(lastBench.pTwr) : `${fmtSigned(lastBench.pProfit)} ج.م`}
-                        </div>
-                        <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right tabular-nums">
+                        </span>
+                        <span dir="ltr" className="text-[11px] font-extrabold text-slate-600 dark:text-slate-300 tabular-nums">
                           {unit === 'pct' ? `${fmtSigned(lastBench.pProfit)} ج.م` : fmtPct(lastBench.pTwr)}
-                        </div>
+                        </span>
                       </div>
-                      <div className="rounded-xl bg-slate-900/5 dark:bg-white/5 px-2.5 py-1 text-[10px] font-black text-slate-500 dark:text-slate-300 flex items-center justify-between">
+                      <div className="rounded-lg bg-slate-900/5 dark:bg-white/5 px-2 py-0.5 text-[10px] font-black text-slate-500 dark:text-slate-300 flex items-center justify-between">
                         <span>رأس المال العامل</span>
                         <span dir="ltr" className="tabular-nums">{fmt(lastBench.workingCap || lastBench.nav)} ج.م</span>
                       </div>
@@ -933,27 +1032,27 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                       const diffEgp = lastBench.pProfit - lastBench.bankProfit;
                       const iWin = diffPct >= 0;
                       return (
-                        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.04] p-3 flex flex-col justify-between gap-1.5">
+                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] px-3 py-2 flex flex-col justify-between gap-1.5">
                           <div className="flex items-center justify-between text-[11px] font-black text-amber-600 dark:text-amber-400">
                             <span className="flex items-center gap-1.5">
                               <i className="w-3 h-0.5 border-t-2 border-dashed border-amber-500" />
                               عائد البنك
                             </span>
-                            <span dir="ltr" className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] tabular-nums">
+                            <span dir="ltr" className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] tabular-nums">
                               {bankRate}% سنوياً
                             </span>
                           </div>
-                          <div>
-                            <div dir="ltr" className="text-xl font-black tabular-nums text-right text-amber-600 dark:text-amber-400">
+                          <div className="flex items-baseline justify-between gap-2 pt-0.5">
+                            <span dir="ltr" className="text-lg sm:text-xl font-black tabular-nums leading-none text-amber-600 dark:text-amber-400">
                               {unit === 'pct' ? fmtPct(lastBench.bankPct) : `${fmtSigned(lastBench.bankProfit)} ج.م`}
-                            </div>
-                            <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right tabular-nums">
+                            </span>
+                            <span dir="ltr" className="text-[11px] font-extrabold text-slate-600 dark:text-slate-300 tabular-nums">
                               {unit === 'pct' ? `${fmtSigned(lastBench.bankProfit)} ج.م` : fmtPct(lastBench.bankPct)}
-                            </div>
+                            </span>
                           </div>
                           <div
                             className={cx(
-                              'rounded-xl px-2.5 py-1 text-[10px] font-black flex items-center justify-between',
+                              'rounded-lg px-2 py-0.5 text-[10px] font-black flex items-center justify-between',
                               iWin
                                 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
                                 : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
@@ -976,27 +1075,27 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                       const diffEgp = lastBench.pProfit - lastBench.egx30Profit;
                       const iWin = diffPct >= 0;
                       return (
-                        <div className="rounded-2xl border border-sky-500/30 bg-sky-500/[0.04] p-3 flex flex-col justify-between gap-1.5">
+                        <div className="rounded-xl border border-sky-500/30 bg-sky-500/[0.04] px-3 py-2 flex flex-col justify-between gap-1.5">
                           <div className="flex items-center justify-between text-[11px] font-black text-sky-600 dark:text-sky-400">
                             <span className="flex items-center gap-1.5">
                               <i className="w-3 h-0.5 rounded-full bg-sky-500" />
                               مؤشر EGX30
                             </span>
-                            <span dir="ltr" className="rounded-md bg-sky-500/15 px-1.5 py-0.5 text-[10px] tabular-nums">
+                            <span dir="ltr" className="rounded-md bg-sky-500/15 px-1.5 py-0.5 text-[9px] tabular-nums">
                               {fmt(bench.egx30.close, 0)} نقطة
                             </span>
                           </div>
-                          <div>
-                            <div dir="ltr" className={cx('text-xl font-black tabular-nums text-right', tone(lastBench.egx30Pct))}>
+                          <div className="flex items-baseline justify-between gap-2 pt-0.5">
+                            <span dir="ltr" className={cx('text-lg sm:text-xl font-black tabular-nums leading-none', tone(lastBench.egx30Pct))}>
                               {unit === 'pct' ? fmtPct(lastBench.egx30Pct) : `${fmtSigned(lastBench.egx30Profit)} ج.م`}
-                            </div>
-                            <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right tabular-nums">
+                            </span>
+                            <span dir="ltr" className="text-[11px] font-extrabold text-slate-600 dark:text-slate-300 tabular-nums">
                               {unit === 'pct' ? `${fmtSigned(lastBench.egx30Profit)} ج.م` : fmtPct(lastBench.egx30Pct)}
-                            </div>
+                            </span>
                           </div>
                           <div
                             className={cx(
-                              'rounded-xl px-2.5 py-1 text-[10px] font-black flex items-center justify-between',
+                              'rounded-lg px-2 py-0.5 text-[10px] font-black flex items-center justify-between',
                               iWin
                                 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
                                 : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
@@ -1019,27 +1118,27 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                       const diffEgp = lastBench.pProfit - lastBench.egx70Profit;
                       const iWin = diffPct >= 0;
                       return (
-                        <div className="rounded-2xl border border-pink-500/30 bg-pink-500/[0.04] p-3 flex flex-col justify-between gap-1.5">
+                        <div className="rounded-xl border border-pink-500/30 bg-pink-500/[0.04] px-3 py-2 flex flex-col justify-between gap-1.5">
                           <div className="flex items-center justify-between text-[11px] font-black text-pink-600 dark:text-pink-400">
                             <span className="flex items-center gap-1.5">
                               <i className="w-3 h-0.5 rounded-full bg-pink-500" />
                               مؤشر EGX70
                             </span>
-                            <span dir="ltr" className="rounded-md bg-pink-500/15 px-1.5 py-0.5 text-[10px] tabular-nums">
+                            <span dir="ltr" className="rounded-md bg-pink-500/15 px-1.5 py-0.5 text-[9px] tabular-nums">
                               {fmt(bench.egx70.close, 0)} نقطة
                             </span>
                           </div>
-                          <div>
-                            <div dir="ltr" className={cx('text-xl font-black tabular-nums text-right', tone(lastBench.egx70Pct))}>
+                          <div className="flex items-baseline justify-between gap-2 pt-0.5">
+                            <span dir="ltr" className={cx('text-lg sm:text-xl font-black tabular-nums leading-none', tone(lastBench.egx70Pct))}>
                               {unit === 'pct' ? fmtPct(lastBench.egx70Pct) : `${fmtSigned(lastBench.egx70Profit)} ج.م`}
-                            </div>
-                            <div dir="ltr" className="text-[11px] font-black text-slate-500 dark:text-slate-400 text-right tabular-nums">
+                            </span>
+                            <span dir="ltr" className="text-[11px] font-extrabold text-slate-600 dark:text-slate-300 tabular-nums">
                               {unit === 'pct' ? `${fmtSigned(lastBench.egx70Profit)} ج.م` : fmtPct(lastBench.egx70Pct)}
-                            </div>
+                            </span>
                           </div>
                           <div
                             className={cx(
-                              'rounded-xl px-2.5 py-1 text-[10px] font-black flex items-center justify-between',
+                              'rounded-lg px-2 py-0.5 text-[10px] font-black flex items-center justify-between',
                               iWin
                                 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
                                 : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
@@ -1061,19 +1160,47 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
             })()}
 
             {mode === 'monthly' && (
-              <>
-                <div>
-                  <div className="text-[11px] font-bold text-slate-400">صافي أرباح وتصحيحات كل شهر</div>
-                  <div className="flex flex-wrap items-baseline gap-2.5 mt-0.5">
-                    <span className="text-lg font-black text-slate-900 dark:text-white">
-                      {monthBars.filter(m => m.gain >= 0).length} شهور رابحة
-                    </span>
-                    <span className="text-xs font-bold text-slate-400">
-                      من أصل {monthBars.length} شهر
-                    </span>
+              <div className="w-full flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/60 dark:border-white/[0.06]">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <span>الشهور الرابحة:</span>
+                    <b className="font-black text-emerald-500 tabular-nums">
+                      {monthBars.filter(m => m.gain >= 0).length} من {monthBars.length}
+                    </b>
+                    {monthBars.length > 0 && (
+                      <span className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-black text-emerald-500 tabular-nums">
+                        {Math.round((monthBars.filter(m => m.gain >= 0).length / monthBars.length) * 100)}%
+                      </span>
+                    )}
                   </div>
+                  {monthBars.length > 0 && (() => {
+                    const bestM = [...monthBars].sort((a, b) => b.gain - a.gain)[0];
+                    const worstM = [...monthBars].sort((a, b) => a.gain - b.gain)[0];
+                    return (
+                      <>
+                        <span className="text-slate-300 dark:text-slate-700">|</span>
+                        <div className="flex items-center gap-1">
+                          <span>أفضل شهر:</span>
+                          <b dir="ltr" className="tabular-nums font-black text-emerald-500">
+                            {fmtSigned(bestM.gain, 0)} ({fmtPct(bestM.pct, 1)})
+                          </b>
+                        </div>
+                        {worstM && worstM.gain < 0 && (
+                          <>
+                            <span className="text-slate-300 dark:text-slate-700">|</span>
+                            <div className="flex items-center gap-1">
+                              <span>أضعف شهر:</span>
+                              <b dir="ltr" className="tabular-nums font-black text-rose-500">
+                                {fmtSigned(worstM.gain, 0)} ({fmtPct(worstM.pct, 1)})
+                              </b>
+                            </div>
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
-                <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[11px] font-black">
+                <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-[10px] font-black">
                   <button
                     type="button"
                     onClick={() => setUnit('egp')}
@@ -1095,17 +1222,25 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                     بالنسبة (%)
                   </button>
                 </div>
-              </>
+              </div>
             )}
 
             {mode === 'dd' && last && (
-              <div>
-                <div className="text-[11px] font-bold text-slate-400">أقصى هبوط بالفترة ({period === 'All' ? 'الكل' : period})</div>
-                <div dir="ltr" className="text-2xl font-black tabular-nums text-rose-500 text-right mt-0.5">
-                  {fmtPct(Math.min(...data.map(d => d.pDd)))}
-                </div>
-                <div className="text-[11px] font-bold text-slate-400 mt-0.5">
-                  الهبوط الحالي من القمة: <b dir="ltr" className="text-rose-400">{fmtPct(last.pDd)}</b>
+              <div className="w-full flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/60 dark:border-white/[0.06]">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <span>أقصى هبوط ({period === 'All' ? 'الكل' : period}):</span>
+                    <b dir="ltr" className="text-sm font-black tabular-nums text-rose-500">
+                      {fmtPct(Math.min(...data.map(d => d.pDd)))}
+                    </b>
+                  </div>
+                  <span className="text-slate-300 dark:text-slate-700">|</span>
+                  <div className="flex items-center gap-1.5">
+                    <span>الهبوط الحالي من القمة:</span>
+                    <b dir="ltr" className="font-black tabular-nums text-rose-400">
+                      {fmtPct(last.pDd)}
+                    </b>
+                  </div>
                 </div>
               </div>
             )}
@@ -1323,20 +1458,20 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                   </Bar>
                 </BarChart>
               ) : (
-                <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <AreaChart data={data} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gSplitFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset={0} stopColor={mode === 'dd' ? '#fb7185' : '#34d399'} stopOpacity={0.4} />
+                      <stop offset={0} stopColor={mode === 'dd' ? '#fb7185' : '#34d399'} stopOpacity={0.38} />
                       <stop offset={off} stopColor={mode === 'dd' ? '#fb7185' : '#34d399'} stopOpacity={0.05} />
                       <stop offset={off} stopColor="#fb7185" stopOpacity={0.05} />
-                      <stop offset={1} stopColor="#fb7185" stopOpacity={0.4} />
+                      <stop offset={1} stopColor="#fb7185" stopOpacity={0.38} />
                     </linearGradient>
                     <linearGradient id="gSplitStroke" x1="0" y1="0" x2="0" y2="1">
                       <stop offset={off} stopColor={mode === 'dd' ? '#fb7185' : '#10b981'} />
                       <stop offset={off} stopColor="#f43f5e" />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
+                  <CartesianGrid stroke="currentColor" strokeOpacity={0.06} vertical={false} />
                   <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
                   <YAxis
                     orientation="right"
@@ -1346,21 +1481,23 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                     tickLine={false}
                     width={46}
                   />
-                  <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.5} />
+                  <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.45} strokeDasharray="3 3" />
                   {mode === 'growth' && peakProfitInWin > 0 && (
                     <ReferenceLine
                       y={peakProfitInWin}
                       stroke="#f59e0b"
-                      strokeWidth={2}
-                      strokeDasharray="6 4"
-                      strokeOpacity={0.95}
-                      label={{
-                        value: `القمة: ${unit === 'egp' ? fmtSigned(peakProfitInWin) : fmtPct(peakProfitInWin)}`,
-                        position: 'insideTopLeft',
-                        fill: '#d97706',
-                        fontSize: 10,
-                        fontWeight: 900,
-                      }}
+                      strokeWidth={1.6}
+                      strokeDasharray="5 4"
+                      strokeOpacity={0.85}
+                    />
+                  )}
+                  {mode === 'growth' && troughProfitInWin < 0 && (
+                    <ReferenceLine
+                      y={troughProfitInWin}
+                      stroke="#f43f5e"
+                      strokeWidth={1.3}
+                      strokeDasharray="4 4"
+                      strokeOpacity={0.55}
                     />
                   )}
                   <Tooltip
@@ -1373,6 +1510,18 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                             ? [
                               { name: period === 'All' ? 'إجمالي العوائد (ج.م)' : `عوائد الفترة (${period})`, value: `${fmtSigned(+p.pProfit)} ج.م`, color: +p.pProfit >= 0 ? '#34d399' : '#fb7185' },
                               { name: period === 'All' ? 'إجمالي النمو (%)' : `نمو الفترة (${period})`, value: fmtPct(+p.pTwr), color: +p.pTwr >= 0 ? '#10b981' : '#f43f5e' },
+                              ...(growthPeriodMeta && growthPeriodMeta.peakEgp > 0
+                                ? [
+                                  {
+                                    name: 'عن قمة الفترة',
+                                    value:
+                                      +p.pProfit >= growthPeriodMeta.peakEgp
+                                        ? 'قمة الفترة 🏆'
+                                        : `${fmtSigned(+p.pProfit - growthPeriodMeta.peakEgp)} ج.م (${fmtPct(+p.pTwr - growthPeriodMeta.peakPct, 1)})`,
+                                    color: '#fbbf24',
+                                  },
+                                ]
+                                : []),
                               ...(period !== 'All'
                                 ? [{ name: 'إجمالي العوائد منذ البداية', value: `${fmtSigned(+p.profit)} ج.م (${fmtPct((+p.index - 1) * 100)})`, color: '#818cf8' }]
                                 : []),
@@ -1386,10 +1535,10 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                     type="monotone"
                     dataKey={mode === 'growth' ? growthKey : 'pDd'}
                     stroke={mode === 'dd' ? '#fb7185' : 'url(#gSplitStroke)'}
-                    strokeWidth={2.5}
+                    strokeWidth={2.75}
                     fill="url(#gSplitFill)"
-                    dot={false}
-                    activeDot={{ r: 5 }}
+                    dot={data.length <= 25 ? { r: 2.5, fill: mode === 'dd' ? '#fb7185' : '#10b981' } : false}
+                    activeDot={{ r: 5.5, strokeWidth: 2, stroke: '#ffffff' }}
                   />
                 </AreaChart>
               )}
