@@ -58,7 +58,12 @@ export interface Point {
   by: Record<string, number>;
 }
 
-const signed = (f: VaultCashflow) => (f.type === 'deposit' ? f.amount : -f.amount);
+const signed = (f: VaultCashflow) => {
+  if (f.type === 'deposit') return f.amount;
+  if (f.type === 'withdrawal') return -f.amount;
+  // كوبون الأسهم: المعاد استثماره داخل المحفظة لا يغير صافي الإيداعات (0)، أما المسحوب خارجياً فيعوض هبوط الاستحقاق كسحب أرباح (-amount)
+  return f.dividendMode === 'withdrawn' ? -f.amount : 0;
+};
 
 export function buildSeries(snaps: VaultSnapshot[], flows: VaultCashflow[], ids: string[]): Point[] {
   const sel = new Set(ids);
@@ -581,21 +586,28 @@ export function raceData(seriesById: Record<string, ChartPoint[]>): Record<strin
 
 /* ───────── Cashflow analytics ───────── */
 export function flowsByTag(flows: VaultCashflow[]) {
-  const map = new Map<string, { tag: string; emoji: string; deposit: number; withdrawal: number }>();
+  const map = new Map<string, { tag: string; emoji: string; deposit: number; withdrawal: number; dividend: number }>();
   for (const f of flows) {
-    const cur = map.get(f.tag) ?? { tag: f.tag, emoji: f.emoji ?? '', deposit: 0, withdrawal: 0 };
-    cur[f.type] += f.amount;
+    const cur = map.get(f.tag) ?? { tag: f.tag, emoji: f.emoji ?? '', deposit: 0, withdrawal: 0, dividend: 0 };
+    if (f.type === 'deposit') cur.deposit += f.amount;
+    else if (f.type === 'withdrawal') cur.withdrawal += f.amount;
+    else cur.dividend += f.amount;
     map.set(f.tag, cur);
   }
-  return Array.from(map.values()).sort((a, b) => b.deposit + b.withdrawal - (a.deposit + a.withdrawal));
+  return Array.from(map.values()).sort((a, b) => (b.deposit + b.withdrawal + b.dividend) - (a.deposit + a.withdrawal + a.dividend));
 }
 
 export function flowsByMonth(flows: VaultCashflow[]) {
-  const map = new Map<string, { month: string; deposit: number; withdrawal: number; net: number }>();
+  const map = new Map<string, { month: string; deposit: number; withdrawal: number; dividend: number; net: number }>();
   for (const f of flows) {
     const k = f.date.slice(0, 7);
-    const cur = map.get(k) ?? { month: k, deposit: 0, withdrawal: 0, net: 0 };
-    cur[f.type] += f.amount;
+    const cur = map.get(k) ?? { month: k, deposit: 0, withdrawal: 0, dividend: 0, net: 0 };
+    if (f.type === 'deposit') cur.deposit += f.amount;
+    else if (f.type === 'withdrawal') cur.withdrawal += f.amount;
+    else {
+      cur.dividend += f.amount;
+      if (f.dividendMode === 'withdrawn') cur.withdrawal += f.amount;
+    }
     cur.net = cur.deposit - cur.withdrawal;
     map.set(k, cur);
   }
@@ -628,6 +640,9 @@ export interface WithdrawnProfitsSummary {
   reinvestedProfit: number;       // الأرباح التراكمية المعاد استثمارها داخل المحفظة
   reinvestmentRatePct: number;    // معدل إعادة الاستثمار %
   withdrawnRatePct: number;       // نسبة الأرباح المسحوبة من إجمالي الأرباح المحققة %
+  totalDividends: number;         // إجمالي كوبونات الأسهم المستلمة
+  reinvestedDividends: number;    // كوبونات أعيد استثمارها داخل المحفظة
+  withdrawnDividends: number;     // كوبونات تم سحبها كجني أرباح خارج المحفظة
 }
 
 export function computeWithdrawnProfits(
@@ -642,12 +657,24 @@ export function computeWithdrawnProfits(
   let capitalAdditionsPartner = 0;
   let capitalReductionsMine = 0;
   let capitalReductionsPartner = 0;
+  let totalDividends = 0;
+  let reinvestedDividends = 0;
+  let withdrawnDividends = 0;
 
   for (const f of flows) {
     if (f.opening) continue;
     const tag = (f.tag || '').trim();
 
-    if (f.type === 'withdrawal') {
+    if (f.type === 'dividend') {
+      totalDividends += f.amount;
+      if (f.dividendMode === 'withdrawn') {
+        withdrawnDividends += f.amount;
+        if (f.partner) partnerWithdrawn += f.amount;
+        else myWithdrawn += f.amount;
+      } else {
+        reinvestedDividends += f.amount;
+      }
+    } else if (f.type === 'withdrawal') {
       if (tag === 'سداد الفيزا' || tag.includes('فيزا')) {
         visaObligations += f.amount;
       } else if (tag === 'تخفيض رأس المال') {
@@ -689,6 +716,9 @@ export function computeWithdrawnProfits(
     reinvestedProfit,
     reinvestmentRatePct,
     withdrawnRatePct,
+    totalDividends,
+    reinvestedDividends,
+    withdrawnDividends,
   };
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, Cell, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
 import { Activity, Flame, ShieldAlert, TrendingDown, TrendingUp, Trophy, Calendar, Crown, Banknote, Users, Layers, ChevronUp, RefreshCw, Landmark, Sparkles, Target, Wallet, RotateCcw } from 'lucide-react';
-import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone } from './ui';
+import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone, GoldBarIcon } from './ui';
 import { useVault } from './VaultContext';
 import type { Point, Stats, Period, PeriodRet, BenchmarksState } from './calc';
 import {
@@ -287,8 +287,8 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                     >
                       <div className="flex items-center justify-between gap-2.5">
                         <div className="flex items-center gap-2.5">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full shrink-0 bg-gradient-to-br from-amber-300/30 via-yellow-400/25 to-amber-500/20 border border-amber-300/30 text-sm shadow-md">
-                            🪙
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full shrink-0 bg-gradient-to-br from-amber-300/30 via-yellow-400/25 to-amber-500/20 border border-amber-300/30 shadow-md">
+                            <GoldBarIcon className="w-5 h-5" />
                           </div>
                           <span className="text-lg sm:text-xl font-black tabular-nums tracking-tight bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-100 bg-clip-text text-transparent">
                             {fmt(heroCash.totalGold)}
@@ -1799,8 +1799,9 @@ export function WealthGrowthDecomposition({
                     </span>
                   )}
                   {pGold > 0 && (
-                    <span dir="ltr" className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-gradient-to-l from-amber-400/20 to-yellow-400/15 text-amber-700 dark:text-amber-300 border border-amber-400/40 shrink-0">
-                      🪙 {fmtCompact(pGold)} ({pGoldPct.toFixed(0)}%)
+                    <span dir="ltr" className="inline-flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-gradient-to-l from-amber-400/20 to-yellow-400/15 text-amber-700 dark:text-amber-300 border border-amber-400/40 shrink-0">
+                      <GoldBarIcon className="w-3 h-3" />
+                      <span>{fmtCompact(pGold)} ({pGoldPct.toFixed(0)}%)</span>
                     </span>
                   )}
                 </div>
@@ -1869,7 +1870,7 @@ export function WealthGrowthDecomposition({
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/[0.15] via-yellow-400/[0.08] to-amber-600/[0.04] border border-amber-400/50 dark:border-amber-400/35 p-2.5 space-y-1.5 shadow-sm shadow-amber-500/10">
               <div className="flex items-center justify-between gap-1">
                 <span className="flex items-center gap-1 text-[11px] font-black text-amber-700 dark:text-amber-300">
-                  <span>🪙</span>
+                  <GoldBarIcon className="w-4 h-4" />
                   <span>الذهب</span>
                 </span>
                 <span dir="ltr" className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-amber-400/20 text-amber-700 dark:text-amber-300 border border-amber-400/30 tabular-nums">
@@ -2324,6 +2325,22 @@ export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
               <span>{withdrawn.withdrawnRatePct.toFixed(0)}% مسحوب</span>
             </div>
           </div>
+
+          {withdrawn.totalDividends > 0 && (
+            <div className="flex items-center justify-between text-[10px] font-bold text-amber-600 dark:text-amber-400 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/40">
+              <span className="flex items-center gap-1">
+                <span>🎁 كوبونات الأسهم:</span>
+                {withdrawn.reinvestedDividends > 0 && withdrawn.withdrawnDividends > 0 && (
+                  <span className="text-[9px] text-slate-400 font-semibold">
+                    (معاد {fmtCompact(withdrawn.reinvestedDividends)} · مسحوب {fmtCompact(withdrawn.withdrawnDividends)})
+                  </span>
+                )}
+              </span>
+              <b dir="ltr" className="font-black tabular-nums">
+                +{fmt(withdrawn.totalDividends)} ج.م
+              </b>
+            </div>
+          )}
 
           {withdrawn.visaObligations > 0 && (
             <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/40">

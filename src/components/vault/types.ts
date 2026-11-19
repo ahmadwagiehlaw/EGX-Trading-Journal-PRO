@@ -55,7 +55,7 @@ export interface VaultSnapshot {
 export interface VaultCashflow {
   id: string;
   portfolioId: string;
-  type: 'deposit' | 'withdrawal';
+  type: 'deposit' | 'withdrawal' | 'dividend';
   amount: number; // always positive
   date: string;
   tag: string;
@@ -63,6 +63,8 @@ export interface VaultCashflow {
   note?: string;
   opening?: boolean;
   partner?: boolean; // الحركة تخص الشريك (إيداع/سحب من رأس ماله)
+  dividendMode?: 'reinvested' | 'withdrawn'; // للكوبونات: معاد استثماره داخل المحفظة أم مسحوب خارجها
+  ticker?: string; // رمز السهم الموزّع للكوبون (مثل EGAL)
   createdAt: number;
 }
 

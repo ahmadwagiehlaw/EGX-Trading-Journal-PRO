@@ -134,3 +134,37 @@ export function ChartTip({ active, payload, label, labelFmt, rows }: {
 
 export const tone = (n: number) => (n > 0 ? 'text-emerald-500' : n < 0 ? 'text-rose-500' : 'text-slate-400');
 
+/** أيقونة سبيكة ذهب ثلاثية الأبعاد بلمعة معدنية واضحة */
+export function GoldBarIcon({ className = 'w-4 h-4' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={cx('inline-block shrink-0', className)} aria-hidden="true">
+      <defs>
+        <linearGradient id="goldTop" x1="4" y1="6" x2="20" y2="12" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FEF9C3" />
+          <stop offset="45%" stopColor="#FACC15" />
+          <stop offset="100%" stopColor="#D97706" />
+        </linearGradient>
+        <linearGradient id="goldFront" x1="2" y1="12" x2="22" y2="19" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FDE047" />
+          <stop offset="55%" stopColor="#EAB308" />
+          <stop offset="100%" stopColor="#B45309" />
+        </linearGradient>
+        <linearGradient id="goldSide" x1="16" y1="9" x2="22" y2="19" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#D97706" />
+          <stop offset="100%" stopColor="#92400E" />
+        </linearGradient>
+      </defs>
+      {/* Top shining face of bullion bar */}
+      <path d="M6.5 8.5L17.5 8.5L19.5 13L4.5 13L6.5 8.5Z" fill="url(#goldTop)" stroke="#B45309" strokeWidth="0.6" strokeLinejoin="round" />
+      {/* Front bevel face */}
+      <path d="M4.5 13H19.5L21.5 18.5H2.5L4.5 13Z" fill="url(#goldFront)" stroke="#92400E" strokeWidth="0.65" strokeLinejoin="round" />
+      {/* Right metallic bevel shadow */}
+      <path d="M17.5 8.5L19.5 13L21.5 18.5L19 18.5L17.2 13L15.8 8.5H17.5Z" fill="url(#goldSide)" opacity="0.42" />
+      {/* Top specular highlight */}
+      <path d="M7.6 10.2H14.5" stroke="#FFFBEB" strokeWidth="1.15" strokeLinecap="round" opacity="0.9" />
+      {/* Small sparkle above bar */}
+      <path d="M19.5 4.2L20 5.5L21.3 6L20 6.5L19.5 7.8L19 6.5L17.7 6L19 5.5L19.5 4.2Z" fill="#FDE047" />
+    </svg>
+  );
+}
+

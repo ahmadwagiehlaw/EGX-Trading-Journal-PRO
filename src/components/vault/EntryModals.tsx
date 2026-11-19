@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Check, Plus, AlertTriangle, Pin, Zap, CheckCircle2, Calendar, Trash2, Users, Sparkles, SlidersHorizontal } from 'lucide-react';
-import { Modal, Field, inputCls, cx } from './ui';
+import { ArrowDownLeft, ArrowUpRight, Check, Plus, AlertTriangle, Pin, Zap, CheckCircle2, Calendar, Trash2, Users, Sparkles, SlidersHorizontal, Gift } from 'lucide-react';
+import { Modal, Field, inputCls, cx, GoldBarIcon } from './ui';
 import { useVault } from './VaultContext';
 import { ASSET_KEYS, ASSET_META } from './types';
 import type { AssetKey, VaultCashflow } from './types';
 import { todayStr, fmt, fmtDate } from './calc';
 
-type EntryType = 'snapshot' | 'deposit' | 'withdrawal';
+type EntryType = 'snapshot' | 'deposit' | 'withdrawal' | 'dividend';
 
 const getLastDate = (type: EntryType, fallback?: string): string => {
   try {
@@ -420,7 +420,8 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
               )}
               {totalGoldEntered > 0 && (
                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-l from-amber-500/25 to-yellow-500/15 border border-amber-400/40 px-2 py-0.5 text-amber-300">
-                  <span>🪙 الذهب</span>
+                  <GoldBarIcon className="w-3.5 h-3.5" />
+                  <span>الذهب</span>
                   <b dir="ltr" className="tabular-nums text-amber-200">
                     {fmt(totalGoldEntered)} ({((totalGoldEntered / grandTotal) * 100).toFixed(1)}%)
                   </b>
@@ -521,7 +522,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
                               : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-400 hover:text-slate-600'
                           )}
                         >
-                          <span>{meta.emoji}</span>
+                          {k === 'gold' ? <GoldBarIcon className="w-3.5 h-3.5" /> : <span>{meta.emoji}</span>}
                           <span>{meta.label}</span>
                         </button>
                       );
@@ -540,7 +541,10 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
                     return (
                       <div key={k} className={cx('rounded-xl border p-1.5 space-y-0.5', st.box)}>
                         <div className={cx('flex items-center justify-between text-[10px] font-black px-0.5', st.label)}>
-                          <span>{meta.emoji} {meta.label}</span>
+                          <span className="inline-flex items-center gap-1">
+                            {k === 'gold' ? <GoldBarIcon className="w-3.5 h-3.5" /> : <span>{meta.emoji}</span>}
+                            <span>{meta.label}</span>
+                          </span>
                           {pct > 0 && <span dir="ltr" className="text-[9px] tabular-nums opacity-85">{pct}%</span>}
                         </div>
                         <input
@@ -612,15 +616,17 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
 }
 
 /* ───────── Cashflow ───────── */
-export function CashflowModal({ open, onClose, initialType = 'deposit', editing }: { open: boolean; onClose: () => void; initialType?: 'deposit' | 'withdrawal'; editing?: VaultCashflow }) {
+export function CashflowModal({ open, onClose, initialType = 'deposit', editing }: { open: boolean; onClose: () => void; initialType?: 'deposit' | 'withdrawal' | 'dividend'; editing?: VaultCashflow }) {
   const { settings, cashflows, addCashflow, updateCashflow, deleteCashflow, saveSettings } = useVault();
   const active = settings.portfolios.filter(p => p.active);
-  const [type, setType] = useState<'deposit' | 'withdrawal'>(initialType);
+  const [type, setType] = useState<'deposit' | 'withdrawal' | 'dividend'>(initialType);
+  const [dividendMode, setDividendMode] = useState<'reinvested' | 'withdrawn'>(editing?.dividendMode ?? 'reinvested');
+  const [ticker, setTicker] = useState(editing?.ticker ?? '');
   const [pid, setPid] = useState(active[0]?.id ?? '');
   const [amount, setAmount] = useState('');
   const [party, setParty] = useState<'me' | 'partner'>(editing?.partner ? 'partner' : 'me');
 
-  const getLatestDbDate = (t: 'deposit' | 'withdrawal') => {
+  const getLatestDbDate = (t: 'deposit' | 'withdrawal' | 'dividend') => {
     const list = cashflows.filter(c => c.type === t).sort((a, b) => b.date.localeCompare(a.date));
     return list[0]?.date;
   };
@@ -637,6 +643,8 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
   useEffect(() => {
     if (open && editing) {
       setType(editing.type);
+      setDividendMode(editing.dividendMode ?? 'reinvested');
+      setTicker(editing.ticker ?? '');
       setPid(editing.portfolioId);
       setAmount(String(editing.amount));
       setDate(editing.date);
@@ -646,6 +654,8 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
       setNote(editing.note ?? '');
     } else if (open) {
       setType(initialType);
+      setDividendMode('reinvested');
+      setTicker('');
       setTag('');
       setParty('me');
       setAmount('');
@@ -657,7 +667,7 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialType, editing?.id]);
 
-  const handleTypeChange = (newType: 'deposit' | 'withdrawal') => {
+  const handleTypeChange = (newType: 'deposit' | 'withdrawal' | 'dividend') => {
     setType(newType);
     setTag('');
     if (!editing) {
@@ -673,37 +683,41 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
     }
   };
 
-  const tags = settings.tags[type];
   const isDep = type === 'deposit';
+  const isDiv = type === 'dividend';
+  const tags = isDiv ? [] : settings.tags[type];
   const partnerName = settings.partner?.name || 'الشريك';
   const currentPartnerCap = settings.partner?.partnerCapital ?? 570000;
   const currentMyCap = settings.partner?.myCapital ?? 330000;
   const numAmount = Math.abs(num(amount));
-  const isCapChange = (tag === 'زيادة رأس المال') || (tag === 'تخفيض رأس المال');
+  const isCapChange = !isDiv && ((tag === 'زيادة رأس المال') || (tag === 'تخفيض رأس المال'));
 
   const submit = async () => {
     const label = custom.trim() || tag;
     if (!num(amount) || !pid) return;
     setBusy(true);
     try {
-      let emoji = tags.find(t => t.label === label)?.emoji ?? '🏷️';
+      const cleanTicker = ticker.trim().toUpperCase();
+      let emoji = isDiv ? '🎁' : (tags.find(t => t.label === label)?.emoji ?? '🏷️');
       let nextTags = settings.tags;
-      if (custom.trim() && !tags.some(t => t.label === label)) {
+      if (!isDiv && custom.trim() && !tags.some(t => t.label === label)) {
         emoji = '🏷️';
         nextTags = { ...settings.tags, [type]: [...tags, { label, emoji }] };
       }
-      const finalTag = label || (isDep ? 'إيداع' : 'سحب');
+      const finalTag = isDiv
+        ? (cleanTicker ? `كوبون ${cleanTicker}` : 'كوبون أسهم')
+        : (label || (isDep ? 'إيداع' : 'سحب'));
       const isPartner = party === 'partner';
 
       // إذا كانت الحركة تخص زيادة أو تخفيض رأس المال، نقوم بتحديث رأس المال المرجعي المحفوظ للشريك أو المستخدم
       let nextPartnerSettings = settings.partner;
-      if (label === 'زيادة رأس المال') {
+      if (!isDiv && label === 'زيادة رأس المال') {
         if (isPartner) {
           nextPartnerSettings = { ...settings.partner, partnerCapital: currentPartnerCap + numAmount };
         } else {
           nextPartnerSettings = { ...settings.partner, myCapital: currentMyCap + numAmount };
         }
-      } else if (label === 'تخفيض رأس المال') {
+      } else if (!isDiv && label === 'تخفيض رأس المال') {
         if (isPartner) {
           nextPartnerSettings = { ...settings.partner, partnerCapital: Math.max(0, currentPartnerCap - numAmount) };
         } else {
@@ -719,28 +733,25 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
         });
       }
 
+      const payload: Omit<VaultCashflow, 'id' | 'createdAt'> = {
+        portfolioId: pid,
+        type,
+        amount: numAmount,
+        date,
+        tag: finalTag,
+        emoji,
+        partner: isPartner,
+        note: note || undefined,
+        ...(isDiv ? { dividendMode, ...(cleanTicker ? { ticker: cleanTicker } : {}) } : {}),
+      };
+
       if (editing) {
         await updateCashflow(editing.id, {
-          portfolioId: pid,
-          type,
-          amount: numAmount,
-          date,
-          tag: finalTag,
-          emoji,
-          partner: isPartner,
+          ...payload,
           note: note || '',
         });
       } else {
-        await addCashflow({
-          portfolioId: pid,
-          type,
-          amount: numAmount,
-          date,
-          tag: finalTag,
-          emoji,
-          partner: isPartner,
-          note: note || undefined,
-        });
+        await addCashflow(payload);
       }
       onClose();
     } finally { setBusy(false); }
@@ -749,17 +760,59 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'تعديل حركة' : 'حركة نقدية'}>
       <div className="space-y-4">
-        {/* نوع الحركة: إيداع / سحب */}
-        <div className="grid grid-cols-2 gap-2">
-          {(['deposit', 'withdrawal'] as const).map(t => (
+        {/* نوع الحركة: إيداع / سحب / كوبون */}
+        <div className="grid grid-cols-3 gap-2">
+          {(['deposit', 'withdrawal', 'dividend'] as const).map(t => (
             <button key={t} type="button" onClick={() => handleTypeChange(t)}
-              className={cx('flex items-center justify-center gap-2 rounded-2xl border-2 py-3 text-sm font-black transition-all',
-                type === t ? (t === 'deposit' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400') : 'border-slate-200 dark:border-slate-700 text-slate-400')}>
-              {t === 'deposit' ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
-              {t === 'deposit' ? 'إيداع' : 'سحب'}
+              className={cx(
+                'flex items-center justify-center gap-1.5 rounded-2xl border-2 py-2.5 text-xs sm:text-sm font-black transition-all',
+                type === t
+                  ? t === 'deposit'
+                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : t === 'withdrawal'
+                    ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                    : 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-300'
+              )}>
+              {t === 'deposit' ? <ArrowDownLeft className="w-4 h-4" /> : t === 'withdrawal' ? <ArrowUpRight className="w-4 h-4" /> : <Gift className="w-4 h-4" />}
+              {t === 'deposit' ? 'إيداع' : t === 'withdrawal' ? 'سحب' : 'كوبون'}
             </button>
           ))}
         </div>
+
+        {/* وجهة الكوبون (تظهر فقط عند اختيار كوبون) */}
+        {isDiv && (
+          <Field label="وجهة الكوبون">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setDividendMode('reinvested')}
+                className={cx(
+                  'rounded-2xl border-2 px-3 py-2 text-xs font-black transition-all text-center',
+                  dividendMode === 'reinvested'
+                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-500'
+                )}
+              >
+                <div>داخل المحفظة</div>
+                <div className="text-[10px] font-bold opacity-75">إعادة استثمار (لا يزيد الإيداعات)</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDividendMode('withdrawn')}
+                className={cx(
+                  'rounded-2xl border-2 px-3 py-2 text-xs font-black transition-all text-center',
+                  dividendMode === 'withdrawn'
+                    ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 shadow-sm'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-500'
+                )}
+              >
+                <div>خارج المحفظة</div>
+                <div className="text-[10px] font-bold opacity-75">جني أرباح (يحفظ TWR)</div>
+              </button>
+            </div>
+          </Field>
+        )}
 
         {/* عائد الحركة: أنا vs الشريك */}
         <Field label="عائد الحركة النقدية">
@@ -822,21 +875,33 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
           </Field>
         </div>
 
-        <Field label="التصنيف">
-          <div className="flex flex-wrap gap-2">
-            {tags.map(t => (
-              <button key={t.label} type="button" onClick={() => handleSelectTag(t.label)}
-                className={cx('rounded-xl border px-3 py-1.5 text-xs font-black transition-all',
-                  tag === t.label && !custom ? (isDep ? 'bg-emerald-500 border-emerald-500 text-white shadow' : 'bg-rose-500 border-rose-500 text-white shadow') : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-400')}>
-                <span className="ml-1">{t.emoji}</span>{t.label}
-              </button>
-            ))}
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            <Plus className="w-4 h-4 text-slate-400" />
-            <input value={custom} onChange={e => { setCustom(e.target.value); setTag(''); }} placeholder="تصنيف جديد (يتحفظ تلقائياً)" className={cx(inputCls, '!py-2')} />
-          </div>
-        </Field>
+        {isDiv ? (
+          <Field label="رمز السهم (اختياري)">
+            <input
+              dir="ltr"
+              value={ticker}
+              onChange={e => setTicker(e.target.value.toUpperCase())}
+              placeholder="EGAL, COMI, ETEL..."
+              className={cx(inputCls, 'text-left uppercase font-black tracking-wider')}
+            />
+          </Field>
+        ) : (
+          <Field label="التصنيف">
+            <div className="flex flex-wrap gap-2">
+              {tags.map(t => (
+                <button key={t.label} type="button" onClick={() => handleSelectTag(t.label)}
+                  className={cx('rounded-xl border px-3 py-1.5 text-xs font-black transition-all',
+                    tag === t.label && !custom ? (isDep ? 'bg-emerald-500 border-emerald-500 text-white shadow' : 'bg-rose-500 border-rose-500 text-white shadow') : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-400')}>
+                  <span className="ml-1">{t.emoji}</span>{t.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <Plus className="w-4 h-4 text-slate-400" />
+              <input value={custom} onChange={e => { setCustom(e.target.value); setTag(''); }} placeholder="تصنيف جديد (يتحفظ تلقائياً)" className={cx(inputCls, '!py-2')} />
+            </div>
+          </Field>
+        )}
 
         {/* تنبيه ذكي عند زيادة أو تخفيض رأس المال */}
         {isCapChange && numAmount > 0 && (
@@ -889,8 +954,15 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
             </button>
           )}
           <button disabled={!num(amount) || busy} onClick={submit}
-            className={cx('flex-1 flex items-center justify-center gap-2 rounded-2xl py-3 text-sm font-black text-white shadow-lg disabled:opacity-40 hover:brightness-110 transition', isDep ? 'bg-gradient-to-l from-emerald-500 to-teal-500 shadow-emerald-500/25' : 'bg-gradient-to-l from-rose-500 to-orange-500 shadow-rose-500/25')}>
-            <Check className="w-4 h-4" /> {editing ? 'حفظ التعديل' : isDep ? 'تأكيد الإيداع' : 'تأكيد السحب'}
+            className={cx(
+              'flex-1 flex items-center justify-center gap-2 rounded-2xl py-3 text-sm font-black text-white shadow-lg disabled:opacity-40 hover:brightness-110 transition',
+              isDep
+                ? 'bg-gradient-to-l from-emerald-500 to-teal-500 shadow-emerald-500/25'
+                : isDiv
+                ? 'bg-gradient-to-l from-amber-500 to-yellow-500 shadow-amber-500/25'
+                : 'bg-gradient-to-l from-rose-500 to-orange-500 shadow-rose-500/25'
+            )}>
+            <Check className="w-4 h-4" /> {editing ? 'حفظ التعديل' : isDep ? 'تأكيد الإيداع' : isDiv ? 'تسجيل الكوبون' : 'تأكيد السحب'}
           </button>
         </div>
       </div>

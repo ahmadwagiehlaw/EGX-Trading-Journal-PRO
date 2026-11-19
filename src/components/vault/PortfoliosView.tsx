@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from 'recharts';
 import { Crown, ArrowUpRight } from 'lucide-react';
-import { Card, ChartTip, Empty, Segmented, cx, tone } from './ui';
+import { Card, ChartTip, Empty, Segmented, cx, tone, GoldBarIcon } from './ui';
 import { useVault } from './VaultContext';
 import type { Period } from './calc';
 import { PERIODS, allocation, buildSeries, comparePortfolios, computeCashAmmo, fmt, fmtCompact, fmtPct, fmtSigned, fmtDate, raceData, shortDate, windowSeries } from './calc';
@@ -173,7 +173,8 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                 {pGold > 0 && (
                   <div className="rounded-xl bg-gradient-to-l from-amber-500/[0.16] via-yellow-400/[0.1] to-amber-500/[0.05] border border-amber-400/50 px-2.5 py-2 flex items-center justify-between shadow-xs shadow-amber-500/10">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] font-black text-amber-700 dark:text-amber-300">🪙 الذهب</span>
+                      <GoldBarIcon className="w-4 h-4" />
+                      <span className="text-[11px] font-black text-amber-700 dark:text-amber-300">الذهب</span>
                       <span dir="ltr" className="text-[10px] font-black text-amber-600/80 dark:text-amber-300/80 tabular-nums">{pGoldPct.toFixed(0)}%</span>
                     </div>
                     <b dir="ltr" className="text-xs sm:text-sm font-black text-amber-700 dark:text-amber-200 tabular-nums">{fmt(pGold)}</b>

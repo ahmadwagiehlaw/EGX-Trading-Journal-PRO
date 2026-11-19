@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from 'recharts';
-import { ArrowDownLeft, ArrowUpRight, Download, LineChart as LineIcon, Trash2, Printer } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Download, LineChart as LineIcon, Trash2, Printer, Gift } from 'lucide-react';
 import { Card, ChartTip, Empty, Segmented, cx } from './ui';
 import { useVault } from './VaultContext';
 import { dayNum, flowsByMonth, flowsByTag, fmt, fmtCompact, fmtDate, fmtSigned, monthLabel, MONTHS_EN } from './calc';
 
-type Filter = 'all' | 'deposit' | 'withdrawal' | 'nav';
+type Filter = 'all' | 'deposit' | 'withdrawal' | 'dividend' | 'nav';
 
 export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: string[]; onEditFlow: (c: import('./types').VaultCashflow) => void; onEditSnap: (pid: string, date: string) => void }) {
   const { settings, cashflows, snapshots, deleteCashflow, deleteSnapshot } = useVault();
@@ -45,19 +45,22 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
         if (!startDate || fs.date < startDate) startDate = fs.date;
         for (const f of portfolioFlows) {
           if (f.portfolioId === pid) {
+            const effAmt = f.type === 'deposit' ? f.amount : f.type === 'withdrawal' ? -f.amount : (f.dividendMode === 'withdrawn' ? -f.amount : 0);
+            if (effAmt === 0) continue;
             if (f.date > fs.date) {
-              if (f.type === 'deposit') postDep += f.amount;
-              else postWd += f.amount;
+              if (effAmt > 0) postDep += effAmt;
+              else postWd += Math.abs(effAmt);
             } else {
-              preNet += f.type === 'deposit' ? f.amount : -f.amount;
+              preNet += effAmt;
             }
           }
         }
       } else {
         for (const f of portfolioFlows) {
           if (f.portfolioId === pid) {
-            if (f.type === 'deposit') postDep += f.amount;
-            else postWd += f.amount;
+            const effAmt = f.type === 'deposit' ? f.amount : f.type === 'withdrawal' ? -f.amount : (f.dividendMode === 'withdrawn' ? -f.amount : 0);
+            if (effAmt > 0) postDep += effAmt;
+            else if (effAmt < 0) postWd += Math.abs(effAmt);
           }
         }
       }
@@ -73,7 +76,7 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
   const maxTag = Math.max(...byTag.map(t => Math.max(t.deposit, t.withdrawal)), 1);
 
   type Row =
-    | { id: string; kind: 'deposit' | 'withdrawal'; date: string; ts: number; pid: string; label: string; emoji: string; amount: number; note?: string; partner?: boolean }
+    | { id: string; kind: 'deposit' | 'withdrawal' | 'dividend'; date: string; ts: number; pid: string; label: string; emoji: string; amount: number; note?: string; partner?: boolean; dividendMode?: 'reinvested' | 'withdrawn' }
     | { id: string; kind: 'nav'; date: string; ts: number; label: string; emoji: string; amount: number; note?: string; items: { pid: string; total: number; note?: string }[] };
 
   const rows: Row[] = useMemo(() => {
@@ -89,6 +92,7 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
       amount: f.amount,
       note: f.note,
       partner: f.partner,
+      dividendMode: f.dividendMode,
     }));
 
     // 2. Group Snapshots by date
@@ -140,10 +144,11 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
     const rowsHtml = rows.map((r, i) => {
       const isDep = r.kind === 'deposit';
       const isWd = r.kind === 'withdrawal';
+      const isDiv = r.kind === 'dividend';
       const isNav = r.kind === 'nav';
-      const typeLabel = isDep ? 'إيداع' : isWd ? 'سحب' : 'قيمة سوقية';
-      const color = isDep ? '#10b981' : isWd ? '#f43f5e' : '#6366f1';
-      const sign = isDep ? '+' : isWd ? '−' : '';
+      const typeLabel = isDep ? 'إيداع' : isWd ? 'سحب' : isDiv ? (r.dividendMode === 'withdrawn' ? 'كوبون (مسحوب)' : 'كوبون (معاد استثماره)') : 'قيمة سوقية';
+      const color = isDep ? '#10b981' : isWd ? '#f43f5e' : isDiv ? '#d97706' : '#6366f1';
+      const sign = isDep || isDiv ? '+' : isWd ? '−' : '';
       const p = !isNav ? pname(r.pid) : null;
       const portfolioContent = isNav
         ? r.items.map(it => `${pname(it.pid)?.name || ''}: ${fmt(it.total)}`).join(' | ')
@@ -405,7 +410,7 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
                 </button>
               ))}
             </div>
-            <Segmented size="sm" value={filter} onChange={setFilter} options={[{ v: 'all', label: 'الكل' }, { v: 'deposit', label: 'إيداع' }, { v: 'withdrawal', label: 'سحب' }, { v: 'nav', label: 'قيم سوقية' }]} />
+            <Segmented size="sm" value={filter} onChange={setFilter} options={[{ v: 'all', label: 'الكل' }, { v: 'deposit', label: 'إيداع' }, { v: 'withdrawal', label: 'سحب' }, { v: 'dividend', label: 'كوبونات' }, { v: 'nav', label: 'قيم سوقية' }]} />
             <button onClick={exportPdf} title="طباعة / تصدير PDF" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"><Printer className="w-4 h-4" /></button>
             <button onClick={exportCsv} title="تصدير CSV" className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"><Download className="w-4 h-4" /></button>
           </div>
@@ -431,8 +436,8 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
                   }}
                   className="flex cursor-pointer items-start gap-3 rounded-2xl px-3 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition group"
                 >
-                  <div className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl mt-0.5', r.kind === 'deposit' ? 'bg-emerald-500/10 text-emerald-500' : r.kind === 'withdrawal' ? 'bg-rose-500/10 text-rose-500' : 'bg-indigo-500/10 text-indigo-500 dark:text-indigo-400')}>
-                    {r.kind === 'deposit' ? <ArrowDownLeft className="w-4 h-4" /> : r.kind === 'withdrawal' ? <ArrowUpRight className="w-4 h-4" /> : <LineIcon className="w-4 h-4" />}
+                  <div className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl mt-0.5', r.kind === 'deposit' ? 'bg-emerald-500/10 text-emerald-500' : r.kind === 'withdrawal' ? 'bg-rose-500/10 text-rose-500' : r.kind === 'dividend' ? 'bg-amber-500/15 text-amber-500' : 'bg-indigo-500/10 text-indigo-500 dark:text-indigo-400')}>
+                    {r.kind === 'deposit' ? <ArrowDownLeft className="w-4 h-4" /> : r.kind === 'withdrawal' ? <ArrowUpRight className="w-4 h-4" /> : r.kind === 'dividend' ? <Gift className="w-4 h-4" /> : <LineIcon className="w-4 h-4" />}
                   </div>
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-1.5 text-sm font-black text-slate-800 dark:text-slate-100">
@@ -453,6 +458,16 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
                       )}
 
                       {/* شارات وظيفية ذكية */}
+                      {r.kind === 'dividend' && (
+                        <span className={cx(
+                          'rounded-full border px-2 py-0.5 text-[10px] font-black',
+                          r.dividendMode === 'withdrawn'
+                            ? 'bg-amber-500/15 border-amber-500/35 text-amber-600 dark:text-amber-400'
+                            : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                        )}>
+                          {r.dividendMode === 'withdrawn' ? '🎯 كوبون مسحوب' : '♻️ كوبون معاد استثماره'}
+                        </span>
+                      )}
                       {!isNav && (r.label === 'جني أرباح' || r.label === 'أرباح الشريك' || (r.kind === 'withdrawal' && r.label.includes('أرباح'))) && (
                         <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-black text-emerald-600 dark:text-emerald-400">
                           🎯 ربح مسحوب
@@ -502,8 +517,8 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
                   </div>
 
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    <div dir="ltr" className={cx('text-sm sm:text-base font-black tabular-nums', r.kind === 'deposit' ? 'text-emerald-500' : r.kind === 'withdrawal' ? 'text-rose-500' : 'text-slate-800 dark:text-slate-100')}>
-                      {r.kind === 'deposit' ? '+' : r.kind === 'withdrawal' ? '−' : ''}{fmt(r.amount)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
+                    <div dir="ltr" className={cx('text-sm sm:text-base font-black tabular-nums', r.kind === 'deposit' ? 'text-emerald-500' : r.kind === 'withdrawal' ? 'text-rose-500' : r.kind === 'dividend' ? 'text-amber-500' : 'text-slate-800 dark:text-slate-100')}>
+                      {r.kind === 'deposit' || r.kind === 'dividend' ? '+' : r.kind === 'withdrawal' ? '−' : ''}{fmt(r.amount)} <span className="text-[10px] font-bold text-slate-400">ج.م</span>
                     </div>
 
                     <div className="flex items-center gap-1">
