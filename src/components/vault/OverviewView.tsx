@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Area, AreaChart, Bar, BarChart, Cell, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
+import { Area, AreaChart, Bar, BarChart, Cell, CartesianGrid, LabelList, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine, ComposedChart } from 'recharts';
 import { Activity, Flame, ShieldAlert, TrendingDown, TrendingUp, Trophy, Calendar, Crown, Banknote, Users, Layers, ChevronUp, RefreshCw, Landmark, Sparkles, Target, Wallet, RotateCcw } from 'lucide-react';
 import { Card, ChartTip, CountUp, Empty, Segmented, cx, tone, GoldBarIcon } from './ui';
 import { useVault } from './VaultContext';
@@ -1253,25 +1253,36 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
               </div>
             )}
 
-            {mode === 'dd' && last && (
-              <div className="w-full flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/60 dark:border-white/[0.06]">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                  <div className="flex items-center gap-1.5">
-                    <span>أقصى هبوط ({period === 'All' ? 'الكل' : period}):</span>
-                    <b dir="ltr" className="text-sm font-black tabular-nums text-rose-500">
-                      {fmtPct(Math.min(...data.map(d => d.pDd)))}
-                    </b>
-                  </div>
-                  <span className="text-slate-300 dark:text-slate-700">|</span>
-                  <div className="flex items-center gap-1.5">
-                    <span>الهبوط الحالي من القمة:</span>
-                    <b dir="ltr" className="font-black tabular-nums text-rose-400">
-                      {fmtPct(last.pDd)}
-                    </b>
+            {mode === 'dd' && last && (() => {
+              const maxDdVal = Math.min(...data.map(d => d.pDd));
+              const avgDdVal = data.length ? data.reduce((a, d) => a + d.pDd, 0) / data.length : 0;
+              return (
+                <div className="w-full flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/60 dark:border-white/[0.06]">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                    <div className="flex items-center gap-1.5">
+                      <span>أقصى هبوط ({period === 'All' ? 'الكل' : period}):</span>
+                      <b dir="ltr" className="text-sm font-black tabular-nums text-rose-500">
+                        {fmtPct(maxDdVal)}
+                      </b>
+                    </div>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <div className="flex items-center gap-1.5">
+                      <span>الحالي:</span>
+                      <b dir="ltr" className="font-black tabular-nums text-rose-400">
+                        {fmtPct(last.pDd)}
+                      </b>
+                    </div>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <div className="flex items-center gap-1.5">
+                      <span>متوسط الهبوط:</span>
+                      <b dir="ltr" className="font-black tabular-nums text-slate-600 dark:text-slate-300">
+                        {fmtPct(avgDdVal, 1)}
+                      </b>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* Chart Canvas */}
@@ -1448,7 +1459,7 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                   />
                 </ComposedChart>
               ) : mode === 'monthly' ? (
-                <BarChart data={monthBars} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <BarChart data={monthBars} margin={{ top: 22, right: 8, left: 0, bottom: 16 }}>
                   <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
                   <XAxis
                     dataKey="key"
@@ -1466,6 +1477,18 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                     width={46}
                   />
                   <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.45} />
+                  {monthBars.length > 1 && (() => {
+                    const avgVal = monthBars.reduce((a, m) => a + (unit === 'egp' ? m.gain : m.pct), 0) / monthBars.length;
+                    return (
+                      <ReferenceLine
+                        y={avgVal}
+                        stroke="#f59e0b"
+                        strokeWidth={1.5}
+                        strokeDasharray="5 4"
+                        strokeOpacity={0.75}
+                      />
+                    );
+                  })()}
                   <Tooltip
                     cursor={{ fill: 'rgba(148,163,184,0.1)' }}
                     content={
@@ -1483,6 +1506,16 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                     {monthBars.map(m => (
                       <Cell key={m.key} fill={m.gain >= 0 ? '#10b981' : '#f43f5e'} />
                     ))}
+                    <LabelList
+                      dataKey={unit === 'egp' ? 'gain' : 'pct'}
+                      position="top"
+                      formatter={(v: any) => {
+                        const n = Number(v);
+                        if (!Number.isFinite(n) || Math.abs(n) < (unit === 'egp' ? 500 : 0.3)) return '';
+                        return unit === 'egp' ? fmtCompact(n) : `${n > 0 ? '+' : ''}${n.toFixed(1)}%`;
+                      }}
+                      style={{ fontSize: 9, fontWeight: 800, fill: '#94a3b8' }}
+                    />
                   </Bar>
                 </BarChart>
               ) : (
@@ -1510,6 +1543,15 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                     width={46}
                   />
                   <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.45} strokeDasharray="3 3" />
+                  {mode === 'dd' && data.length > 0 && (
+                    <ReferenceLine
+                      y={Math.min(...data.map(d => d.pDd))}
+                      stroke="#f43f5e"
+                      strokeWidth={1.4}
+                      strokeDasharray="5 4"
+                      strokeOpacity={0.7}
+                    />
+                  )}
                   {mode === 'growth' && peakProfitInWin > 0 && (
                     <ReferenceLine
                       y={peakProfitInWin}
@@ -1563,9 +1605,13 @@ export function MainChart({ pts, accent = '#f97316', dir = 'rtl' }: { pts: Point
                     type="monotone"
                     dataKey={mode === 'growth' ? growthKey : 'pDd'}
                     stroke={mode === 'dd' ? '#fb7185' : 'url(#gSplitStroke)'}
-                    strokeWidth={2.75}
+                    strokeWidth={3}
                     fill="url(#gSplitFill)"
-                    dot={data.length <= 25 ? { r: 2.5, fill: mode === 'dd' ? '#fb7185' : '#10b981' } : false}
+                    dot={data.length <= 24 ? (props: any) => {
+                      const val = Number(props.value ?? 0);
+                      const fill = mode === 'dd' ? '#f43f5e' : val >= 0 ? '#10b981' : '#f43f5e';
+                      return <circle key={`dot-${props.index}`} cx={props.cx} cy={props.cy} r={2.8} fill={fill} stroke="#ffffff" strokeWidth={1} />;
+                    } : false}
                     activeDot={{ r: 5.5, strokeWidth: 2, stroke: '#ffffff' }}
                   />
                 </AreaChart>

@@ -3,15 +3,18 @@ import { Area, AreaChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, P
 import { Crown, ArrowUpRight } from 'lucide-react';
 import { Card, ChartTip, Empty, Segmented, cx, tone, GoldBarIcon } from './ui';
 import { useVault } from './VaultContext';
+import { ASSET_META } from './types';
 import type { Period } from './calc';
-import { PERIODS, allocation, buildSeries, comparePortfolios, computeCashAmmo, fmt, fmtCompact, fmtPct, fmtSigned, fmtDate, raceData, shortDate, windowSeries } from './calc';
+import { PERIODS, allocation, buildAssetHistory, buildSeries, comparePortfolios, computeCashAmmo, fmt, fmtCompact, fmtPct, fmtSigned, fmtDate, raceData, shortDate, windowSeries } from './calc';
 
-type ChartTab = 'race' | 'quality' | 'nav' | 'assets';
+type ChartTab = 'race' | 'gold' | 'assets' | 'nav' | 'quality';
 
 export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; scopeIds: string[]; onFocus: (id: string) => void }) {
   const { settings, snapshots, cashflows } = useVault();
   const [period, setPeriod] = useState<Period>('All');
   const [chartTab, setChartTab] = useState<ChartTab>('race');
+  const [goldUnit, setGoldUnit] = useState<'egp' | 'pct'>('egp');
+  const [assetView, setAssetView] = useState<'history' | 'donut'>('history');
   const ports = useMemo(() => settings.portfolios.filter(p => p.active), [settings.portfolios]);
 
   const rows = useMemo(() => comparePortfolios(snapshots, cashflows, ports), [snapshots, cashflows, ports]);
@@ -22,6 +25,13 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
   const cashAmmo = useMemo(() => computeCashAmmo(snapshots, cashflows, ports, scopeIds, factor), [snapshots, cashflows, ports, scopeIds, factor]);
   const alloc = useMemo(() => allocation(snapshots, cashflows, scopeIds).map(s => ({ ...s, value: s.value * factor })), [snapshots, cashflows, scopeIds, factor]);
   const allocTotal = alloc.reduce((a, s) => a + s.value, 0);
+  const assetHistory = useMemo(() => buildAssetHistory(snapshots, scopeIds, factor), [snapshots, scopeIds, factor]);
+  const goldHistory = useMemo(() => {
+    const firstGoldIdx = assetHistory.findIndex(p => p.gold > 0);
+    if (firstGoldIdx === -1) return [];
+    const startIdx = Math.max(0, firstGoldIdx - 1);
+    return assetHistory.slice(startIdx);
+  }, [assetHistory]);
 
   const race = useMemo(() => {
     const m: Record<string, ReturnType<typeof windowSeries>> = {};
@@ -56,8 +66,10 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
         const pCashPct = pCashObj?.cashPct ?? 0;
         const pGold = pCashObj?.goldAmount ?? 0;
         const pGoldPct = pCashObj?.goldPct ?? 0;
-        const pInvested = pCashObj?.investedAmount ?? Math.round(s.nav * factor);
-        const pInvestedPct = Math.max(0, 100 - pCashPct - pGoldPct);
+        const pStocks = pCashObj?.stocksAmount ?? Math.round(s.nav * factor);
+        const pStocksPct = pCashObj?.stocksPct ?? Math.max(0, 100 - pCashPct - pGoldPct);
+        const pOther = pCashObj?.otherAmount ?? 0;
+        const pOtherPct = pCashObj?.otherPct ?? 0;
 
         return (
           <div className="relative overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-4 sm:p-5 shadow-lg space-y-4">
@@ -154,16 +166,16 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                 </div>
               </div>
 
-              {/* Assets, Cash & Gold Allocation */}
+              {/* Assets, Cash, Gold & Other Allocation */}
               <div className="md:col-span-3 space-y-1.5">
-                <div className="rounded-xl bg-emerald-500/[0.06] border border-emerald-500/20 px-2.5 py-2 flex items-center justify-between">
+                <div className="rounded-xl bg-emerald-500/[0.06] border border-emerald-500/20 px-2.5 py-1.5 flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[11px] font-black text-emerald-700 dark:text-emerald-400">📈 الأسهم</span>
-                    <span dir="ltr" className="text-[10px] font-bold text-slate-400 tabular-nums">{pInvestedPct.toFixed(0)}%</span>
+                    <span dir="ltr" className="text-[10px] font-bold text-slate-400 tabular-nums">{pStocksPct.toFixed(0)}%</span>
                   </div>
-                  <b dir="ltr" className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 tabular-nums">{fmt(pInvested)}</b>
+                  <b dir="ltr" className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 tabular-nums">{fmt(pStocks)}</b>
                 </div>
-                <div className="rounded-xl bg-sky-500/[0.07] border border-sky-500/25 px-2.5 py-2 flex items-center justify-between">
+                <div className="rounded-xl bg-sky-500/[0.07] border border-sky-500/25 px-2.5 py-1.5 flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[11px] font-black text-sky-700 dark:text-sky-400">💵 الكاش</span>
                     <span dir="ltr" className="text-[10px] font-bold text-slate-400 tabular-nums">{pCashPct.toFixed(0)}%</span>
@@ -171,13 +183,22 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                   <b dir="ltr" className="text-xs sm:text-sm font-black text-sky-600 dark:text-sky-400 tabular-nums">{fmt(pCash)}</b>
                 </div>
                 {pGold > 0 && (
-                  <div className="rounded-xl bg-gradient-to-l from-amber-500/[0.16] via-yellow-400/[0.1] to-amber-500/[0.05] border border-amber-400/50 px-2.5 py-2 flex items-center justify-between shadow-xs shadow-amber-500/10">
+                  <div className="rounded-xl bg-gradient-to-l from-amber-500/[0.16] via-yellow-400/[0.1] to-amber-500/[0.05] border border-amber-400/50 px-2.5 py-1.5 flex items-center justify-between shadow-xs shadow-amber-500/10">
                     <div className="flex items-center gap-1.5">
-                      <GoldBarIcon className="w-4 h-4" />
+                      <GoldBarIcon className="w-5 h-4" />
                       <span className="text-[11px] font-black text-amber-700 dark:text-amber-300">الذهب</span>
                       <span dir="ltr" className="text-[10px] font-black text-amber-600/80 dark:text-amber-300/80 tabular-nums">{pGoldPct.toFixed(0)}%</span>
                     </div>
                     <b dir="ltr" className="text-xs sm:text-sm font-black text-amber-700 dark:text-amber-200 tabular-nums">{fmt(pGold)}</b>
+                  </div>
+                )}
+                {pOther > 0 && (
+                  <div className="rounded-xl bg-indigo-500/[0.06] border border-indigo-500/20 px-2.5 py-1.5 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-black text-indigo-600 dark:text-indigo-400">🏦 دخل ثابت</span>
+                      <span dir="ltr" className="text-[10px] font-bold text-slate-400 tabular-nums">{pOtherPct.toFixed(0)}%</span>
+                    </div>
+                    <b dir="ltr" className="text-xs sm:text-sm font-black text-indigo-700 dark:text-indigo-300 tabular-nums">{fmt(pOther)}</b>
                   </div>
                 )}
               </div>
@@ -221,29 +242,66 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
         );
       })()}
 
-      {/* Unified wide chart card — switch between views */}
+      {/* Unified wide chart card — Institutional 5-Tab Intelligence Center */}
       <Card
-        title={chartTab === 'race' ? 'سباق النمو (بغض النظر عن حجم المال)' : chartTab === 'quality' ? 'جودة الإدارة' : chartTab === 'nav' ? 'تطور القيمة السوقية بالمحافظ' : 'توزيع الأصول'}
+        title={
+          chartTab === 'race'
+            ? 'سباق المحافظ (%)'
+            : chartTab === 'gold'
+            ? (
+              <span className="inline-flex items-center gap-1.5">
+                <GoldBarIcon className="w-5 h-4" />
+                <span>تطور الذهب</span>
+              </span>
+            )
+            : chartTab === 'assets'
+            ? 'تطور وتوزيع الأصول'
+            : chartTab === 'nav'
+            ? 'تطور القيمة السوقية'
+            : 'جودة الإدارة'
+        }
         right={
           <div className="flex flex-wrap items-center gap-2">
             {chartTab === 'race' && <Segmented size="sm" value={period} onChange={setPeriod} options={PERIODS.map(p => ({ v: p, label: p === 'All' ? 'الكل' : p }))} />}
+            {chartTab === 'gold' && (
+              <Segmented size="sm" value={goldUnit} onChange={setGoldUnit} options={[{ v: 'egp', label: 'بالجنيه (ج.م)' }, { v: 'pct', label: 'الوزن (%)' }]} />
+            )}
+            {chartTab === 'assets' && (
+              <Segmented size="sm" value={assetView} onChange={setAssetView} options={[{ v: 'history', label: 'التطور الزمني' }, { v: 'donut', label: 'التوزيع الحالي' }]} />
+            )}
             <Segmented
               size="sm"
               value={chartTab}
               onChange={setChartTab}
               options={[
-                { v: 'race' as ChartTab, label: 'سباق النمو' },
-                { v: 'quality' as ChartTab, label: 'الجودة' },
-                { v: 'nav' as ChartTab, label: 'القيمة السوقية' },
+                { v: 'race' as ChartTab, label: 'سباق المحافظ' },
+                { v: 'gold' as ChartTab, label: 'الذهب' },
                 { v: 'assets' as ChartTab, label: 'الأصول' },
+                { v: 'nav' as ChartTab, label: 'القيمة السوقية' },
+                { v: 'quality' as ChartTab, label: 'الجودة' },
               ]}
             />
           </div>
         }
       >
-        <div className="flex flex-wrap gap-4 mb-3 text-[11px] font-bold text-slate-500">
-          {ports.map(p => <span key={p.id} className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />{p.name}</span>)}
-        </div>
+        {(chartTab === 'race' || chartTab === 'nav' || chartTab === 'quality') && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mb-3 pb-2.5 border-b border-slate-200/60 dark:border-white/[0.06] text-[11px] font-bold text-slate-500">
+            {ports.map(p => {
+              const lastVal = chartTab === 'race' && race.length ? Number(race[race.length - 1]?.[p.id]) : null;
+              return (
+                <span key={p.id} className="flex items-center gap-1.5">
+                  <i className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
+                  <span>{p.name}</span>
+                  {lastVal !== null && Number.isFinite(lastVal) && (
+                    <b dir="ltr" className={cx('tabular-nums font-black', tone(lastVal))}>
+                      {fmtPct(lastVal, 1)}
+                    </b>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        )}
 
         {chartTab === 'race' && (
           <div dir="ltr" className="h-80 -mx-2">
@@ -252,13 +310,123 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                 <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
                 <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
                 <YAxis orientation="right" tickFormatter={(v: number) => `${v.toFixed(0)}%`} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={40} />
-                <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.5} />
+                <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.45} strokeDasharray="3 3" />
                 <Tooltip content={<ChartTip labelFmt={fmtDate} rows={p => ports.filter(x => p[x.id] !== undefined).map(x => ({ name: x.name, value: fmtPct(+p[x.id]), color: x.color }))} />} />
-                {ports.map(p => <Line key={p.id} type="monotone" dataKey={p.id} stroke={p.color} strokeWidth={2.5} dot={false} connectNulls />)}
+                {ports.map((p, idx) => (
+                  <Line
+                    key={p.id}
+                    type="monotone"
+                    dataKey={p.id}
+                    stroke={p.color}
+                    strokeWidth={idx === 0 ? 3.2 : 2}
+                    strokeOpacity={idx === 0 ? 1 : 0.8}
+                    dot={false}
+                    connectNulls
+                  />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </div>
         )}
+
+        {chartTab === 'gold' && (() => {
+          if (!goldHistory.length || cashAmmo.totalGold <= 0) {
+            return <Empty text="سجّل قيمة الذهب في القيمة السوقية ليظهر منحنى تطور الذهب" />;
+          }
+          const curGold = goldHistory[goldHistory.length - 1];
+          const firstNonZero = goldHistory.find(g => g.gold > 0) ?? curGold;
+          const peakGold = Math.max(...goldHistory.map(g => (goldUnit === 'egp' ? g.gold : g.goldPct)));
+          const goldDelta = curGold.gold - firstNonZero.gold;
+          const goldDeltaPct = firstNonZero.gold > 0 ? (goldDelta / firstNonZero.gold) * 100 : 0;
+
+          return (
+            <div className="space-y-3">
+              {/* Institutional Gold Ticker Bar */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pb-2.5 border-b border-amber-400/25 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                <div className="flex items-center gap-1.5">
+                  <span>قيمة الذهب:</span>
+                  <b dir="ltr" className="text-sm font-black text-amber-600 dark:text-amber-300 tabular-nums">
+                    {fmt(curGold.gold)} ج.م
+                  </b>
+                  <span dir="ltr" className="rounded-md bg-amber-400/15 border border-amber-400/30 px-1.5 py-0.5 text-[10px] font-black text-amber-700 dark:text-amber-300 tabular-nums">
+                    {curGold.goldPct.toFixed(1)}% من الخزنة
+                  </span>
+                </div>
+                {goldHistory.length > 2 && Math.abs(goldDelta) >= 1 && (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <div className="flex items-center gap-1">
+                      <span>التغير:</span>
+                      <b dir="ltr" className={cx('tabular-nums font-black', tone(goldDelta))}>
+                        {fmtSigned(goldDelta)} ({fmtPct(goldDeltaPct, 1)})
+                      </b>
+                    </div>
+                  </>
+                )}
+                <span className="text-slate-300 dark:text-slate-700">|</span>
+                <div className="flex items-center gap-1">
+                  <span>القمة:</span>
+                  <b dir="ltr" className="tabular-nums font-black text-amber-500">
+                    {goldUnit === 'egp' ? `${fmt(peakGold)} ج.م` : `${peakGold.toFixed(1)}%`}
+                  </b>
+                </div>
+              </div>
+
+              <div dir="ltr" className="h-72 sm:h-80 -mx-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={goldHistory} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gGoldArea" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#eab308" stopOpacity={0.42} />
+                        <stop offset="60%" stopColor="#facc15" stopOpacity={0.14} />
+                        <stop offset="100%" stopColor="#eab308" stopOpacity={0} />
+                      </linearGradient>
+                      <filter id="goldLineGlow" x="-10%" y="-20%" width="120%" height="140%">
+                        <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#eab308" floodOpacity="0.45" />
+                      </filter>
+                    </defs>
+                    <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
+                    <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={30} />
+                    <YAxis
+                      orientation="right"
+                      tickFormatter={goldUnit === 'egp' ? fmtCompact : (v: number) => `${v.toFixed(1)}%`}
+                      tick={{ fontSize: 10, fill: '#94a3b8' }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={48}
+                    />
+                    {peakGold > 0 && (
+                      <ReferenceLine y={peakGold} stroke="#eab308" strokeWidth={1.4} strokeDasharray="5 4" strokeOpacity={0.75} />
+                    )}
+                    <Tooltip
+                      cursor={{ stroke: '#eab308', strokeDasharray: '4 4' }}
+                      content={
+                        <ChartTip
+                          labelFmt={fmtDate}
+                          rows={p => [
+                            { name: 'قيمة الذهب', value: `${fmt(+p.gold)} ج.م`, color: '#eab308' },
+                            { name: 'الوزن بالمحفظة', value: `${(+p.goldPct).toFixed(2)}%`, color: '#facc15' },
+                            { name: 'إجمالي الخزنة', value: `${fmt(+p.total)} ج.م`, color: '#94a3b8' },
+                          ]}
+                        />
+                      }
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey={goldUnit === 'egp' ? 'gold' : 'goldPct'}
+                      stroke="#eab308"
+                      strokeWidth={3.2}
+                      filter="url(#goldLineGlow)"
+                      fill="url(#gGoldArea)"
+                      dot={goldHistory.length <= 24 ? { r: 3.5, fill: '#facc15', stroke: '#92400e', strokeWidth: 1.5 } : false}
+                      activeDot={{ r: 6, fill: '#eab308', stroke: '#ffffff', strokeWidth: 2 }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          );
+        })()}
 
         {chartTab === 'quality' && (
           <div dir="ltr" className="h-80">
@@ -266,7 +434,7 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
               <RadarChart data={radarData} outerRadius="72%">
                 <PolarGrid stroke="currentColor" strokeOpacity={0.15} />
                 <PolarAngleAxis dataKey="k" tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 700 }} />
-                {ports.map(p => <Radar key={p.id} dataKey={p.id} name={p.name} stroke={p.color} fill={p.color} fillOpacity={0.18} strokeWidth={2} />)}
+                {ports.map(p => <Radar key={p.id} dataKey={p.id} name={p.name} stroke={p.color} fill={p.color} fillOpacity={0.2} strokeWidth={2.2} />)}
                 <Tooltip content={<ChartTip rows={d => ports.map(x => ({ name: x.name, value: (+d[x.id]).toFixed(0), color: x.color }))} />} />
               </RadarChart>
             </ResponsiveContainer>
@@ -281,14 +449,60 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                 <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
                 <YAxis orientation="right" tickFormatter={fmtCompact} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={46} />
                 <Tooltip content={<ChartTip labelFmt={fmtDate} rows={p => ports.map(x => ({ name: x.name, value: fmt(+p[x.id]), color: x.color }))} />} />
-                {ports.map(p => <Area key={p.id} type="monotone" stackId="1" dataKey={p.id} stroke={p.color} fill={p.color} fillOpacity={0.35} strokeWidth={2} />)}
+                {ports.map(p => <Area key={p.id} type="monotone" stackId="1" dataKey={p.id} stroke={p.color} fill={p.color} fillOpacity={0.38} strokeWidth={2} />)}
               </AreaChart>
             </ResponsiveContainer>
           </div>
         )}
 
         {chartTab === 'assets' && (
-          alloc.length === 0 ? <Empty text="لا توجد بيانات" /> : (
+          alloc.length === 0 ? <Empty text="لا توجد بيانات" /> : assetView === 'history' && assetHistory.length > 1 ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pb-2 border-b border-slate-200/60 dark:border-white/[0.06] text-[11px] font-bold text-slate-500">
+                {(['stocks', 'cash', 'gold', 'fixedIncome', 'clouds', 'equityFunds'] as const).map(k => {
+                  const hasAny = assetHistory.some(p => p[k] > 0);
+                  if (!hasAny) return null;
+                  return (
+                    <span key={k} className="flex items-center gap-1.5">
+                      <i className="w-2.5 h-2.5 rounded-full" style={{ background: ASSET_META[k].color }} />
+                      <span>{ASSET_META[k].label}</span>
+                    </span>
+                  );
+                })}
+              </div>
+              <div dir="ltr" className="h-72 sm:h-80 -mx-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={assetHistory} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
+                    <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={40} />
+                    <YAxis orientation="right" tickFormatter={fmtCompact} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={48} />
+                    <Tooltip
+                      content={
+                        <ChartTip
+                          labelFmt={fmtDate}
+                          rows={p =>
+                            (['stocks', 'cash', 'gold', 'fixedIncome', 'clouds', 'equityFunds'] as const)
+                              .filter(k => +p[k] > 0)
+                              .map(k => ({
+                                name: ASSET_META[k].label,
+                                value: `${fmt(+p[k])} ج.م (${+p.total > 0 ? ((+p[k] / +p.total) * 100).toFixed(1) : 0}%)`,
+                                color: ASSET_META[k].color,
+                              }))
+                          }
+                        />
+                      }
+                    />
+                    <Area type="monotone" stackId="a" dataKey="stocks" stroke={ASSET_META.stocks.color} fill={ASSET_META.stocks.color} fillOpacity={0.42} strokeWidth={1.8} />
+                    <Area type="monotone" stackId="a" dataKey="cash" stroke={ASSET_META.cash.color} fill={ASSET_META.cash.color} fillOpacity={0.42} strokeWidth={1.8} />
+                    <Area type="monotone" stackId="a" dataKey="fixedIncome" stroke={ASSET_META.fixedIncome.color} fill={ASSET_META.fixedIncome.color} fillOpacity={0.45} strokeWidth={1.8} />
+                    <Area type="monotone" stackId="a" dataKey="clouds" stroke={ASSET_META.clouds.color} fill={ASSET_META.clouds.color} fillOpacity={0.45} strokeWidth={1.8} />
+                    <Area type="monotone" stackId="a" dataKey="equityFunds" stroke={ASSET_META.equityFunds.color} fill={ASSET_META.equityFunds.color} fillOpacity={0.45} strokeWidth={1.8} />
+                    <Area type="monotone" stackId="a" dataKey="gold" stroke={ASSET_META.gold.color} fill={ASSET_META.gold.color} fillOpacity={0.75} strokeWidth={2.2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          ) : (
             <div className="flex flex-col sm:flex-row items-center justify-center gap-8 py-2">
               <div dir="ltr" className="relative h-64 w-64 shrink-0">
                 <ResponsiveContainer width="100%" height="100%">
@@ -307,7 +521,10 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
               <ul className="w-full max-w-sm space-y-2">
                 {alloc.map(s => (
                   <li key={s.key} className="flex items-center justify-between text-xs font-bold">
-                    <span className="flex items-center gap-2 text-slate-600 dark:text-slate-300"><i className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />{s.label}</span>
+                    <span className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                      {s.key === 'gold' ? <GoldBarIcon className="w-4 h-3.5" /> : <i className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />}
+                      {s.label}
+                    </span>
                     <span className="flex items-center gap-3"><b dir="ltr" className="tabular-nums">{fmt(s.value)}</b><span className="w-12 text-left text-slate-400">{((s.value / allocTotal) * 100).toFixed(1)}%</span></span>
                   </li>
                 ))}

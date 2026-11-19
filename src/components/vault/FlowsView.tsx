@@ -321,27 +321,27 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat
-          label="رصيد انطلاق المحفظة (أقدم قراءة)"
+          label="رصيد البداية"
           value={fmt(recon.startCap)}
-          sub={recon.startDate ? `معتمد بتاريخ ${fmtDate(recon.startDate)}` : 'لم تُسجل قراءة بعد'}
+          sub={recon.startDate ? fmtDate(recon.startDate) : '—'}
           cls="text-slate-800 dark:text-slate-100"
         />
         <Stat
-          label="إجمالي الإيداعات (بعد الانطلاق)"
+          label="الإيداعات"
           value={`+${fmt(recon.postDep)}`}
-          sub={dep !== recon.postDep ? `إجمالي كل السجل: +${fmt(dep)} ج.م` : 'كل الإيداعات النقدية المضافة'}
+          sub={dep !== recon.postDep ? `السجل: +${fmt(dep)}` : 'إيداعات نقدية'}
           cls="text-emerald-500"
         />
         <Stat
-          label="إجمالي السحوبات (بعد الانطلاق)"
+          label="السحوبات"
           value={`−${fmt(recon.postWd)}`}
-          sub={wd !== recon.postWd ? `إجمالي كل السجل: −${fmt(wd)} ج.م` : `نسبة السحب: ${recon.postDep > 0 ? ((recon.postWd / recon.postDep) * 100).toFixed(1) : 0}%`}
+          sub={wd !== recon.postWd ? `السجل: −${fmt(wd)}` : `${recon.postDep > 0 ? ((recon.postWd / recon.postDep) * 100).toFixed(0) : 0}% من الإيداعات`}
           cls="text-rose-500"
         />
         <Stat
-          label="صافي الإيداعات المعتمد (المطابق للنظرة العامة)"
+          label="صافي الإيداعات"
           value={fmt(recon.netInvestedCapital)}
-          sub={`${fmt(recon.startCap)} بداية ${fmtSigned(recon.netPostFlow)} صافي الحركات`}
+          sub={`${fmtCompact(recon.startCap)} بداية ${fmtSigned(recon.netPostFlow)} صافي`}
           cls="text-indigo-600 dark:text-indigo-400"
         />
       </div>

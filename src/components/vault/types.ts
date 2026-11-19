@@ -5,7 +5,7 @@ export const ASSET_META: Record<AssetKey, { label: string; color: string; emoji:
   clouds: { label: 'كلاودز', color: '#a78bfa', emoji: '☁️' },
   stocks: { label: 'الأسهم', color: '#34d399', emoji: '📈' },
   equityFunds: { label: 'صناديق', color: '#2dd4bf', emoji: '🧺' },
-  fixedIncome: { label: 'دخل ثابت', color: '#f59e0b', emoji: '🏦' },
+  fixedIncome: { label: 'دخل ثابت', color: '#6366f1', emoji: '🏦' },
   gold: { label: 'الذهب', color: '#eab308', emoji: '🪙' },
 };
 export const ASSET_KEYS = Object.keys(ASSET_META) as AssetKey[];

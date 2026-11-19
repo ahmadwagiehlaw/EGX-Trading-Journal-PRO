@@ -297,28 +297,31 @@ export function ProfitsView({ monthRets, nav, netDeposits }: { monthRets: Period
         />
       </div>
 
-      {/* شريط معادلة الحصاد النقدي والتراكم الرأسمالي (Cash Harvest vs Compounded Equity) */}
+      {/* شريط توزيع العوائد المختصر */}
       {(summary.totalMineEarned > 0 || summary.totalDistPartner > 0) && (
-        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/90 px-4 py-3 shadow-sm flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3 text-xs font-black">
-            <span className="text-slate-700 dark:text-slate-200">⚡ معادلة الثروة وتوزيع العوائد:</span>
-            <span className="inline-flex items-center gap-1 rounded-xl bg-amber-500/10 px-2.5 py-1 text-amber-600 dark:text-amber-400">
-              <span>كاش مسحوب وموزع لـ {partnerName}:</span>
-              <b dir="ltr">{fmt(summary.totalDistPartner)} ج.م</b>
+        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/90 px-4 py-2.5 shadow-sm flex flex-wrap items-center justify-between gap-2 text-[11px] font-black">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-slate-500 dark:text-slate-400">
+            <span className="flex items-center gap-1.5">
+              <span>موزع لـ {partnerName}:</span>
+              <b dir="ltr" className="text-amber-500 tabular-nums">{fmt(summary.totalDistPartner)} ج.م</b>
             </span>
-            <span className="inline-flex items-center gap-1 rounded-xl bg-emerald-500/10 px-2.5 py-1 text-emerald-600 dark:text-emerald-400">
-              <span>أرباحي المعاد استثمارها تراكمياً ({mySharePct}%):</span>
-              <b dir="ltr">{fmt(summary.totalMineEarned)} ج.م</b>
+            <span className="text-slate-300 dark:text-slate-700">|</span>
+            <span className="flex items-center gap-1.5">
+              <span>معاد استثماره ({mySharePct}%):</span>
+              <b dir="ltr" className="text-emerald-500 tabular-nums">{fmt(summary.totalMineEarned)} ج.م</b>
             </span>
             {summary.activePartnerReserve > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-xl bg-violet-500/10 px-2.5 py-1 text-violet-600 dark:text-violet-400">
-                <span>احتياطي مجنب مرحّل:</span>
-                <b dir="ltr">{fmt(summary.activePartnerReserve)} ج.م</b>
-              </span>
+              <>
+                <span className="text-slate-300 dark:text-slate-700">|</span>
+                <span className="flex items-center gap-1.5">
+                  <span>مجنب مرحّل:</span>
+                  <b dir="ltr" className="text-violet-500 tabular-nums">{fmt(summary.activePartnerReserve)} ج.م</b>
+                </span>
+              </>
             )}
           </div>
-          <span className="text-[11px] font-black text-slate-400" dir="ltr">
-            إجمالي الثروة المفرزة: <b className="text-slate-900 dark:text-white">{fmt(summary.totalMineEarned + summary.totalDistPartner + summary.activePartnerReserve)} ج.م</b>
+          <span className="text-slate-400" dir="ltr">
+            الإجمالي: <b className="text-slate-900 dark:text-white tabular-nums">{fmt(summary.totalMineEarned + summary.totalDistPartner + summary.activePartnerReserve)} ج.م</b>
           </span>
         </div>
       )}

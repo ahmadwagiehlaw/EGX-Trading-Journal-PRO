@@ -403,9 +403,13 @@ export interface PortfolioCashBreakdown {
   totalNav: number;
   cashAmount: number;
   goldAmount: number;
+  stocksAmount: number;
+  otherAmount: number;
   investedAmount: number;
   cashPct: number;
   goldPct: number;
+  stocksPct: number;
+  otherPct: number;
 }
 
 export interface CashAmmoSummary {
@@ -444,16 +448,23 @@ export function computeCashAmmo(
     const rawNav = (snap ? snap.total : 0) + afterFlow;
     const rawSnapCash = snap?.breakdown?.cash ?? 0;
     const rawSnapGold = snap?.breakdown?.gold ?? 0;
+    const rawSnapOther = (snap?.breakdown?.fixedIncome ?? 0) + (snap?.breakdown?.clouds ?? 0) + (snap?.breakdown?.equityFunds ?? 0);
     // أي إيداع نقدي بعد آخر تقييم لم يتم تحديث تقييمه يُعامل كسيولة نقدية مضافة، وأي سحب يخصم من الكاش أولاً
     const rawCash = Math.max(0, Math.min(rawNav, rawSnapCash + afterFlow));
     const rawGold = Math.max(0, Math.min(rawNav, rawSnapGold));
+    const rawOther = Math.max(0, Math.min(rawNav - rawCash - rawGold, rawSnapOther));
+    const rawStocks = Math.max(0, rawNav - rawCash - rawGold - rawOther);
 
     const pNav = Math.round(rawNav * factor);
     const pCash = Math.round(rawCash * factor);
     const pGold = Math.round(rawGold * factor);
+    const pOther = Math.round(rawOther * factor);
+    const pStocks = Math.round(rawStocks * factor);
     const pInvested = Math.max(0, pNav - pCash - pGold);
     const pCashPct = pNav > 0 ? (pCash / pNav) * 100 : 0;
     const pGoldPct = pNav > 0 ? (pGold / pNav) * 100 : 0;
+    const pStocksPct = pNav > 0 ? (pStocks / pNav) * 100 : 0;
+    const pOtherPct = pNav > 0 ? (pOther / pNav) * 100 : 0;
 
     totalNav += pNav;
     totalCash += pCash;
@@ -466,9 +477,13 @@ export function computeCashAmmo(
       totalNav: pNav,
       cashAmount: pCash,
       goldAmount: pGold,
+      stocksAmount: pStocks,
+      otherAmount: pOther,
       investedAmount: pInvested,
       cashPct: pCashPct,
       goldPct: pGoldPct,
+      stocksPct: pStocksPct,
+      otherPct: pOtherPct,
     });
   }
 
@@ -541,6 +556,78 @@ export function allocation(snaps: VaultSnapshot[], flows: VaultCashflow[], ids: 
   const slices: AllocSlice[] = ASSET_KEYS.map(k => ({ key: k, label: ASSET_META[k as AssetKey].label, color: ASSET_META[k as AssetKey].color, value: acc[k] ?? 0 }));
   slices.push({ key: 'unclassified', ...UNCLASSIFIED, value: acc.unclassified ?? 0 });
   return slices.filter(s => s.value > 0.5);
+}
+
+/* ───────── Historical Asset & Gold Evolution Series ───────── */
+export interface AssetHistoryPoint {
+  date: string;
+  total: number;
+  stocks: number;
+  cash: number;
+  gold: number;
+  goldPct: number;
+  fixedIncome: number;
+  clouds: number;
+  equityFunds: number;
+}
+
+export function buildAssetHistory(
+  snaps: VaultSnapshot[],
+  ids: string[],
+  factor = 1
+): AssetHistoryPoint[] {
+  const sel = new Set(ids);
+  const S = snaps.filter(s => sel.has(s.portfolioId)).sort((a, b) => a.date.localeCompare(b.date));
+  if (!S.length) return [];
+  const dates = Array.from(new Set(S.map(s => s.date))).sort();
+
+  return dates.map(d => {
+    let total = 0;
+    let stocks = 0;
+    let cash = 0;
+    let gold = 0;
+    let fixedIncome = 0;
+    let clouds = 0;
+    let equityFunds = 0;
+
+    for (const p of ids) {
+      let snap: VaultSnapshot | undefined;
+      for (const s of S) if (s.portfolioId === p && s.date <= d) snap = s;
+      if (!snap) continue;
+      total += snap.total;
+      const bd = snap.breakdown;
+      if (bd && Object.keys(bd).length > 0) {
+        const c = bd.cash ?? 0;
+        const g = bd.gold ?? 0;
+        const fi = bd.fixedIncome ?? 0;
+        const cl = bd.clouds ?? 0;
+        const ef = bd.equityFunds ?? 0;
+        const st = bd.stocks ?? Math.max(0, snap.total - c - g - fi - cl - ef);
+        stocks += st;
+        cash += c;
+        gold += g;
+        fixedIncome += fi;
+        clouds += cl;
+        equityFunds += ef;
+      } else {
+        stocks += snap.total;
+      }
+    }
+
+    const scTotal = total * factor;
+    const scGold = gold * factor;
+    return {
+      date: d,
+      total: scTotal,
+      stocks: stocks * factor,
+      cash: cash * factor,
+      gold: scGold,
+      goldPct: scTotal > 0 ? (scGold / scTotal) * 100 : 0,
+      fixedIncome: fixedIncome * factor,
+      clouds: clouds * factor,
+      equityFunds: equityFunds * factor,
+    };
+  });
 }
 
 /* ───────── Portfolio comparison ───────── */
