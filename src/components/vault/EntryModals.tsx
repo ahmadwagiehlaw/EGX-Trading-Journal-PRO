@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Check, Plus, AlertTriangle, Pin, Zap, CheckCircle2, Calendar, Trash2, Users, Sparkles } from 'lucide-react';
-import { Modal, Field, inputCls, Segmented, cx } from './ui';
+import { ArrowDownLeft, ArrowUpRight, Check, Plus, AlertTriangle, Pin, Zap, CheckCircle2, Calendar, Trash2, Users, Sparkles, SlidersHorizontal } from 'lucide-react';
+import { Modal, Field, inputCls, cx } from './ui';
 import { useVault } from './VaultContext';
 import { ASSET_KEYS, ASSET_META } from './types';
 import type { AssetKey, VaultCashflow } from './types';
@@ -25,7 +25,59 @@ const setLastDate = (type: EntryType, d: string) => {
   }
 };
 
-const DETAIL_GRID_KEYS: AssetKey[] = ['stocks', 'cash', 'clouds', 'fixedIncome', 'equityFunds', 'gold'];
+const ALL_ASSET_ORDER: AssetKey[] = ['stocks', 'cash', 'gold', 'clouds', 'equityFunds', 'fixedIncome'];
+const SNAP_FIELDS_STORAGE_KEY = 'egx_vault_snap_fields_v1';
+
+const defaultFieldsForPortfolio = (pid: string): AssetKey[] =>
+  pid === 'thndr' ? ['stocks', 'cash', 'gold', 'clouds'] : ['stocks', 'cash'];
+
+const loadVisibleFieldsMap = (): Record<string, AssetKey[]> => {
+  try {
+    const raw = localStorage.getItem(SNAP_FIELDS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return {};
+};
+
+const saveVisibleFieldsMap = (map: Record<string, AssetKey[]>) => {
+  try {
+    localStorage.setItem(SNAP_FIELDS_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore
+  }
+};
+
+const ASSET_BOX_STYLES: Record<AssetKey, { box: string; label: string }> = {
+  stocks: {
+    box: 'border-emerald-500/25 bg-emerald-500/[0.03]',
+    label: 'text-emerald-600 dark:text-emerald-400',
+  },
+  cash: {
+    box: 'border-sky-500/35 bg-sky-500/[0.05]',
+    label: 'text-sky-600 dark:text-sky-400',
+  },
+  gold: {
+    box: 'border-amber-400/60 bg-gradient-to-br from-amber-400/[0.15] via-yellow-400/[0.08] to-amber-500/[0.04] shadow-xs shadow-amber-500/10',
+    label: 'text-amber-600 dark:text-amber-300',
+  },
+  clouds: {
+    box: 'border-violet-500/25 bg-violet-500/[0.03]',
+    label: 'text-violet-600 dark:text-violet-400',
+  },
+  equityFunds: {
+    box: 'border-teal-500/25 bg-teal-500/[0.03]',
+    label: 'text-teal-600 dark:text-teal-400',
+  },
+  fixedIncome: {
+    box: 'border-orange-500/25 bg-orange-500/[0.03]',
+    label: 'text-orange-600 dark:text-orange-400',
+  },
+};
 
 const num = (s: string) => {
   const n = parseFloat(s.replace(/,/g, ''));
@@ -56,54 +108,66 @@ function PortfolioPills({ value, onChange }: { value: string; onChange: (id: str
 
 /* ───────── Snapshot (market value) ───────── */
 export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { open: boolean; onClose: () => void; initialPortfolio?: string; editDate?: string }) {
-  const { settings, snapshots, saveSnapshot, deleteSnapshot, saveSettings } = useVault();
+  const { settings, snapshots, saveSnapshot, deleteSnapshot } = useVault();
   const active = useMemo(() => settings.portfolios.filter(p => p.active), [settings.portfolios]);
-  const [mode, setMode] = useState<'quick' | 'detail'>('quick');
   const latestDbSnapDate = useMemo(() => {
     if (!snapshots.length) return undefined;
     return [...snapshots].sort((a, b) => b.date.localeCompare(a.date))[0]?.date;
   }, [snapshots]);
 
   const [date, setDate] = useState(() => editDate || getLastDate('snapshot', latestDbSnapDate));
+  const [totals, setTotals] = useState<Record<string, string>>({});
+  const [portfolioBreakdowns, setPortfolioBreakdowns] = useState<Record<string, Record<string, string>>>({});
+  const [visibleFieldsMap, setVisibleFieldsMap] = useState<Record<string, AssetKey[]>>(() => loadVisibleFieldsMap());
+  const [customizingPid, setCustomizingPid] = useState<string | null>(null);
+  const [totalManuallySet, setTotalManuallySet] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (open && !editDate) {
       setDate(prev => prev || getLastDate('snapshot', latestDbSnapDate));
     }
   }, [open, editDate, latestDbSnapDate]);
-  const [pid, setPid] = useState(initialPortfolio ?? active[0]?.id ?? '');
-  const [totals, setTotals] = useState<Record<string, string>>({});
-  const [portfolioBreakdowns, setPortfolioBreakdowns] = useState<Record<string, Record<string, string>>>({});
-  const [quickAsset, setQuickAsset] = useState<Record<string, AssetKey>>({});
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [expandedTags, setExpandedTags] = useState<Record<string, boolean>>({});
-  const [totalManuallySet, setTotalManuallySet] = useState<boolean>(false);
 
   useEffect(() => {
-    if (open && initialPortfolio) setPid(initialPortfolio);
-  }, [open, initialPortfolio]);
-
-  useEffect(() => {
-    if (!open) return;
-    if (editDate) {
+    if (open && editDate) {
       setDate(editDate);
-      const e = snapshots.find(s => s.portfolioId === (initialPortfolio ?? pid) && s.date === editDate);
-      setMode(e?.breakdown && Object.keys(e.breakdown).length ? 'detail' : 'quick');
     }
-  }, [open, editDate, initialPortfolio, pid, snapshots]);
+  }, [open, editDate]);
 
-  // Load snapshot data from DB only when modal opens or date changes
+  const getFieldsFor = (pid: string): AssetKey[] => {
+    const saved = visibleFieldsMap[pid];
+    const base = saved && saved.length > 0 ? saved : defaultFieldsForPortfolio(pid);
+    const curBd = portfolioBreakdowns[pid] || {};
+    const extras = ALL_ASSET_ORDER.filter(k => !base.includes(k) && num(curBd[k] ?? '') > 0);
+    return ALL_ASSET_ORDER.filter(k => base.includes(k) || extras.includes(k));
+  };
+
+  const toggleFieldFor = (pid: string, key: AssetKey) => {
+    setVisibleFieldsMap(prev => {
+      const current = prev[pid] && prev[pid].length > 0 ? prev[pid] : defaultFieldsForPortfolio(pid);
+      let next: AssetKey[];
+      if (current.includes(key)) {
+        if (current.length <= 1) return prev; // keep at least 1 field
+        next = current.filter(k => k !== key);
+      } else {
+        next = ALL_ASSET_ORDER.filter(k => current.includes(k) || k === key);
+      }
+      const updated = { ...prev, [pid]: next };
+      saveVisibleFieldsMap(updated);
+      return updated;
+    });
+  };
+
+  // Load snapshot data from DB when modal opens or date changes
   useEffect(() => {
     if (!open) return;
     const t: Record<string, string> = {};
     const bds: Record<string, Record<string, string>> = {};
-    const qAssets: Record<string, AssetKey> = {};
 
     active.forEach(p => {
       const e = snapshots.find(s => s.portfolioId === p.id && s.date === date);
-
       if (e) {
         t[p.id] = String(e.total);
         if (e.breakdown && Object.keys(e.breakdown).length > 0) {
@@ -112,235 +176,91 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
             if (e.breakdown?.[k]) bdMap[k] = String(e.breakdown[k]);
           });
           bds[p.id] = bdMap;
-          const presentKeys = Object.keys(bdMap);
-          if (presentKeys.length === 1) {
-            qAssets[p.id] = presentKeys[0] as AssetKey;
-          }
-        } else if (p.id === 'thndr') {
+        } else {
           bds[p.id] = { stocks: String(e.total) };
         }
       } else {
-        // لا توجد قراءة مسجلة في هذا التاريخ المحدد: اترك الحقول فارغة حتى لا تظهر قيم قديمة غريبة
         t[p.id] = '';
         bds[p.id] = {};
-      }
-
-      if (!qAssets[p.id]) {
-        qAssets[p.id] = p.pinnedAsset ?? (p.id === 'thndr' ? 'stocks' : 'stocks');
       }
     });
 
     setTotals(t);
     setPortfolioBreakdowns(bds);
-    setQuickAsset(qAssets);
-    setTotalManuallySet(false);
-    const curSnap = snapshots.find(s => s.portfolioId === pid && s.date === date);
-    setNote(curSnap?.note ?? '');
+    setTotalManuallySet({});
+    setCustomizingPid(null);
     setSuccessMsg(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, date]);
 
   const existing = (id: string) => snapshots.find(s => s.portfolioId === id && s.date === date);
   const latest = (id: string) => snapshots.filter(s => s.portfolioId === id).sort((a, b) => b.date.localeCompare(a.date))[0];
-  const latestWithBreakdown = (id: string) => snapshots.filter(s => s.portfolioId === id && s.breakdown && Object.keys(s.breakdown).length > 0 && s.date !== date).sort((a, b) => b.date.localeCompare(a.date))[0];
 
-  const togglePinAsset = async (targetPid: string, assetKey: AssetKey) => {
-    const pObj = settings.portfolios.find(p => p.id === targetPid);
-    if (!pObj) return;
-    const newPinned = pObj.pinnedAsset === assetKey ? undefined : assetKey;
-    const newPortfolios = settings.portfolios.map(p =>
-      p.id === targetPid ? { ...p, pinnedAsset: newPinned } : p
-    );
-    await saveSettings({ ...settings, portfolios: newPortfolios });
+  const handleMainTotalChange = (pid: string, val: string) => {
+    setTotals(prev => ({ ...prev, [pid]: val }));
+    setTotalManuallySet(prev => ({ ...prev, [pid]: true }));
+    const tot = num(val);
+    const fields = getFieldsFor(pid);
+    const primaryKey: AssetKey = fields.includes('stocks') ? 'stocks' : fields[0];
+    const curBd = portfolioBreakdowns[pid] || {};
 
-    if (newPinned) {
-      setQuickAsset(prev => ({ ...prev, [targetPid]: newPinned }));
-      const curVal = totals[targetPid] ? num(totals[targetPid]) : (latest(targetPid)?.total || 0);
-      if (curVal > 0) {
-        setPortfolioBreakdowns(prev => ({
-          ...prev,
-          [targetPid]: { [assetKey]: String(curVal) },
-        }));
-        setTotals(prev => ({ ...prev, [targetPid]: String(curVal) }));
+    if (tot <= 0) {
+      setPortfolioBreakdowns(prev => ({ ...prev, [pid]: {} }));
+      return;
+    }
+
+    const otherSum = ASSET_KEYS.reduce((a, k) => (k === primaryKey ? a : a + num(curBd[k] ?? '')), 0);
+    if (otherSum > 0 && otherSum <= tot) {
+      const rem = Math.max(0, tot - otherSum);
+      setPortfolioBreakdowns(prev => ({
+        ...prev,
+        [pid]: { ...curBd, [primaryKey]: rem > 0 ? String(rem) : '' },
+      }));
+    } else {
+      setPortfolioBreakdowns(prev => ({
+        ...prev,
+        [pid]: { [primaryKey]: val },
+      }));
+    }
+  };
+
+  const handleAssetFieldChange = (pid: string, field: AssetKey, val: string) => {
+    const curBd = portfolioBreakdowns[pid] || {};
+    const curTotal = num(totals[pid] ?? '');
+    const fields = getFieldsFor(pid);
+    const primaryKey: AssetKey = fields.includes('stocks') ? 'stocks' : fields[0];
+    const nextBd = { ...curBd, [field]: val };
+
+    // إذا كان الإجمالي محدداً مسبقاً وعدّل المستخدم كاش أو ذهب أو كلاودز: نخصمه من الأصل الأساسي (الأسهم) ليظل الإجمالي ثابتاً
+    if (field !== primaryKey && curTotal > 0 && (totalManuallySet[pid] || field === 'cash')) {
+      const nonPrimarySum = ASSET_KEYS.reduce((a, k) => (k === primaryKey ? a : a + num(nextBd[k] ?? '')), 0);
+      if (nonPrimarySum <= curTotal) {
+        const rem = Math.max(0, curTotal - nonPrimarySum);
+        nextBd[primaryKey] = rem > 0 ? String(rem) : '';
+        setPortfolioBreakdowns(prev => ({ ...prev, [pid]: nextBd }));
+        return;
       }
     }
-  };
 
-  const prevBreakdown = latestWithBreakdown(pid);
-  const copyPrevBreakdown = () => {
-    if (!prevBreakdown?.breakdown) return;
-    const next: Record<string, string> = {};
-    ASSET_KEYS.forEach(k => {
-      if (prevBreakdown.breakdown?.[k]) next[k] = String(prevBreakdown.breakdown[k]);
-    });
-    const sum = ASSET_KEYS.reduce((a, k) => a + num(next[k] ?? ''), 0);
-    setPortfolioBreakdowns(prev => ({ ...prev, [pid]: next }));
-    if (sum > 0) {
-      setTotals(prev => ({ ...prev, [pid]: String(sum) }));
-    }
-  };
-
-  // Current parts for selected portfolio in detail mode
-  const currentParts = portfolioBreakdowns[pid] || {};
-  const detailSum = useMemo(() => ASSET_KEYS.reduce((a, k) => a + num(currentParts[k] ?? ''), 0), [currentParts]);
-
-  // When editing in Detail mode: update breakdowns for pid and sync total
-  const handleDetailAssetChange = (key: AssetKey, val: string) => {
-    const nextParts = { ...currentParts, [key]: val };
-    const sum = ASSET_KEYS.reduce((a, k) => a + num(nextParts[k] ?? ''), 0);
-    setPortfolioBreakdowns(prev => ({ ...prev, [pid]: nextParts }));
+    // وإلا نجمع الأصول تلقائياً لحساب الإجمالي
+    setTotalManuallySet(prev => ({ ...prev, [pid]: false }));
+    const sum = ASSET_KEYS.reduce((a, k) => a + num(nextBd[k] ?? ''), 0);
+    setPortfolioBreakdowns(prev => ({ ...prev, [pid]: nextBd }));
     setTotals(prev => ({ ...prev, [pid]: sum > 0 ? String(sum) : '' }));
   };
 
-  // When clicking "كل المحفظة" inside Detail mode for an asset
-  const handleAssignAllToAssetInDetail = (key: AssetKey) => {
-    const curVal = totals[pid] ? num(totals[pid]) : (latest(pid)?.total || 0);
-    if (curVal > 0) {
-      const nextParts: Record<string, string> = { [key]: String(curVal) };
-      setPortfolioBreakdowns(prev => ({ ...prev, [pid]: nextParts }));
-      setTotals(prev => ({ ...prev, [pid]: String(curVal) }));
-    }
-  };
-
-  // When typing total in Quick mode ("كل المحافظ")
-  const handleQuickTotalChange = (portfolioId: string, val: string) => {
-    setTotals(prev => ({ ...prev, [portfolioId]: val }));
-    const nVal = num(val);
-    const chosenTag = quickAsset[portfolioId] || settings.portfolios.find(p => p.id === portfolioId)?.pinnedAsset || 'stocks';
-    const curBd = portfolioBreakdowns[portfolioId] || {};
-    const cashVal = Math.min(nVal, num(curBd.cash ?? ''));
-
-    if (nVal <= 0) {
-      setPortfolioBreakdowns(prev => ({ ...prev, [portfolioId]: {} }));
-      return;
-    }
-
-    // إذا كان هناك كاش مسجل كجزء من الإجمالي، يُخصم من الإجمالي ويذهب الباقي للأصل الأساسي (الأسهم)
-    if (cashVal > 0 && chosenTag !== 'cash') {
-      const restStocks = Math.max(0, nVal - cashVal);
-      setPortfolioBreakdowns(prev => ({
-        ...prev,
-        [portfolioId]: {
-          ...curBd,
-          [chosenTag]: restStocks > 0 ? String(restStocks) : '',
-          cash: String(cashVal),
-        },
-      }));
+  const insertLatestForPortfolio = (pid: string) => {
+    const l = latest(pid);
+    if (!l) return;
+    setTotals(prev => ({ ...prev, [pid]: String(l.total) }));
+    if (l.breakdown && Object.keys(l.breakdown).length > 0) {
+      const bdMap: Record<string, string> = {};
+      ASSET_KEYS.forEach(k => {
+        if (l.breakdown?.[k]) bdMap[k] = String(l.breakdown[k]);
+      });
+      setPortfolioBreakdowns(prev => ({ ...prev, [pid]: bdMap }));
     } else {
-      setPortfolioBreakdowns(prev => ({ ...prev, [portfolioId]: { [chosenTag]: val } }));
-    }
-  };
-
-  // معالج سريع لتسجيل الكاش المتاح كجزء داخلي من إجمالي المحفظة (وليس إضافة فوقها)
-  const handleQuickCashSplitChange = (portfolioId: string, cashStr: string) => {
-    const curTotal = num(totals[portfolioId] ?? '');
-    const curBd = portfolioBreakdowns[portfolioId] || {};
-    const rawCash = num(cashStr);
-
-    if (curTotal <= 0) {
-      // إذا لم يكن الإجمالي مكتوباً بعد، نسجل الكاش فقط كقيمة مبدئية
-      setPortfolioBreakdowns(prev => ({ ...prev, [portfolioId]: { ...curBd, cash: cashStr } }));
-      return;
-    }
-
-    const clampedCash = Math.min(curTotal, Math.max(0, rawCash));
-    const chosenTag = quickAsset[portfolioId] || settings.portfolios.find(p => p.id === portfolioId)?.pinnedAsset || 'stocks';
-    const otherAssets = portfolioId === 'thndr' ? num(curBd.clouds ?? '') + num(curBd.equityFunds ?? '') : 0;
-    const remainingMain = Math.max(0, curTotal - clampedCash - otherAssets);
-
-    setPortfolioBreakdowns(prev => ({
-      ...prev,
-      [portfolioId]: {
-        ...curBd,
-        [chosenTag === 'cash' ? 'stocks' : chosenTag]: remainingMain > 0 ? String(remainingMain) : '',
-        cash: cashStr === '' ? '' : String(clampedCash),
-      },
-    }));
-  };
-
-  // Specialized handlers for Thndr's smart sub-boxes (stocks - clouds - cash)
-  const handleThndrMainTotalChange = (val: string) => {
-    setTotals(prev => ({ ...prev, thndr: val }));
-    setTotalManuallySet(true);
-    const tot = num(val);
-    const curBd = portfolioBreakdowns['thndr'] || {};
-    const cloudsVal = num(curBd.clouds ?? '');
-    const fundsVal = num(curBd.equityFunds ?? '');
-    const cashVal = num(curBd.cash ?? '');
-
-    if (tot <= 0) {
-      setPortfolioBreakdowns(prev => ({
-        ...prev,
-        thndr: { stocks: '', clouds: '', equityFunds: '', cash: '' },
-      }));
-      return;
-    }
-
-    // إذا كانت هناك أصول فرعية أو كاش مسجل: تُحسب الأسهم كباقي الإجمالي تلقائياً (الكاش جزء من الإجمالي وليس فوقه)
-    if (cloudsVal > 0 || fundsVal > 0 || cashVal > 0) {
-      const remainingStocks = Math.max(0, tot - cloudsVal - fundsVal - cashVal);
-      setPortfolioBreakdowns(prev => ({
-        ...prev,
-        thndr: {
-          ...curBd,
-          stocks: remainingStocks > 0 ? String(remainingStocks) : '',
-        },
-      }));
-    } else {
-      setPortfolioBreakdowns(prev => ({
-        ...prev,
-        thndr: { stocks: val, clouds: '', equityFunds: '', cash: '' },
-      }));
-    }
-  };
-
-  const handleThndrSubChange = (field: 'stocks' | 'clouds' | 'equityFunds' | 'cash', subVal: string) => {
-    const curBd = portfolioBreakdowns['thndr'] || {};
-    const curTotal = num(totals['thndr'] ?? '');
-    const subNum = num(subVal);
-
-    // إذا عدل المستخدم خانة الكاش أو الكلاودز وكان الإجمالي مكتوباً بالفعل: يُخصم من الأسهم ويظل الإجمالي ثابتاً!
-    if ((field === 'cash' || (totalManuallySet && field === 'clouds')) && curTotal > 0 && subNum <= curTotal) {
-      const nextBd = { ...curBd, [field]: subVal };
-      const cVal = num(nextBd.clouds ?? '');
-      const fVal = num(nextBd.equityFunds ?? '');
-      const kVal = num(nextBd.cash ?? '');
-      const remainingStocks = Math.max(0, curTotal - cVal - fVal - kVal);
-      nextBd.stocks = remainingStocks > 0 ? String(remainingStocks) : '';
-      setPortfolioBreakdowns(prev => ({ ...prev, thndr: nextBd }));
-      return;
-    }
-
-    const newBd = { ...curBd, [field]: subVal };
-    setTotalManuallySet(false);
-
-    // الجمع التلقائي المباشر في حال إدخال الأجزاء بدون إجمالي مسبق
-    const s = num(newBd.stocks ?? '');
-    const c = num(newBd.clouds ?? '');
-    const f = num(newBd.equityFunds ?? '');
-    const k = num(newBd.cash ?? '');
-    const sum = s + c + f + k;
-
-    setPortfolioBreakdowns(prev => ({
-      ...prev,
-      thndr: newBd,
-    }));
-
-    setTotals(prev => ({
-      ...prev,
-      thndr: sum > 0 ? String(sum) : (subVal ? subVal : ''),
-    }));
-  };
-
-  // When clicking a quick asset tag under a portfolio in Quick mode
-  const handleQuickTagClick = (portfolioId: string, assetKey: AssetKey) => {
-    setQuickAsset(prev => ({ ...prev, [portfolioId]: assetKey }));
-    const curTot = totals[portfolioId];
-    if (curTot && num(curTot) > 0) {
-      setPortfolioBreakdowns(prev => ({
-        ...prev,
-        [portfolioId]: { [assetKey]: curTot },
-      }));
+      setPortfolioBreakdowns(prev => ({ ...prev, [pid]: { stocks: String(l.total) } }));
     }
   };
 
@@ -358,8 +278,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
           });
           bds[p.id] = bdMap;
         } else {
-          const chosen = quickAsset[p.id] || p.pinnedAsset || 'stocks';
-          bds[p.id] = { [chosen]: String(l.total) };
+          bds[p.id] = { stocks: String(l.total) };
         }
       }
     });
@@ -367,35 +286,22 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
     setPortfolioBreakdowns(bds);
   };
 
-  // Check for large sudden jumps/increases to warn about possible unrecorded deposits
   const warnings = useMemo(() => {
-    const alerts: { name: string; current: number; prev: number; diff: number; pct: number }[] = [];
-    if (mode === 'quick') {
-      active.forEach(p => {
-        const val = num(totals[p.id] ?? '');
-        const l = latest(p.id);
-        if (val > 0 && l && l.total > 0 && l.date !== date) {
-          const diff = val - l.total;
-          const pct = (diff / l.total) * 100;
-          if (pct >= 15 && diff >= 15000) {
-            alerts.push({ name: p.name, current: val, prev: l.total, diff, pct });
-          }
-        }
-      });
-    } else {
-      const p = active.find(x => x.id === pid);
-      const l = latest(pid);
-      if (p && detailSum > 0 && l && l.total > 0 && l.date !== date) {
-        const diff = detailSum - l.total;
+    const alerts: { name: string; diff: number; pct: number }[] = [];
+    active.forEach(p => {
+      const val = num(totals[p.id] ?? '');
+      const l = latest(p.id);
+      if (val > 0 && l && l.total > 0 && l.date !== date) {
+        const diff = val - l.total;
         const pct = (diff / l.total) * 100;
         if (pct >= 15 && diff >= 15000) {
-          alerts.push({ name: p.name, current: detailSum, prev: l.total, diff, pct });
+          alerts.push({ name: p.name, diff, pct });
         }
       }
-    }
+    });
     return alerts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, totals, detailSum, pid, active, snapshots, date]);
+  }, [totals, active, snapshots, date]);
 
   const submit = async (continueNext = false) => {
     setBusy(true);
@@ -406,58 +312,39 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
           await deleteSnapshot(`${p.id}_${editDate}`);
         }
       }
-      if (mode === 'quick') {
-        for (const p of active) {
-          const raw = totals[p.id];
-          if (raw === undefined || raw === '') continue;
-          const prev = existing(p.id);
-          const val = num(raw);
-          const pObj = settings.portfolios.find(x => x.id === p.id);
+      for (const p of active) {
+        const raw = totals[p.id];
+        if (raw === undefined || raw === '') continue;
+        const prev = existing(p.id);
+        const val = num(raw);
 
-          let bd: Partial<Record<AssetKey, number>> | undefined = undefined;
-          const curBd = portfolioBreakdowns[p.id];
-          if (curBd && Object.keys(curBd).length > 0) {
-            const sumBd = ASSET_KEYS.reduce((a, k) => a + num(curBd[k] ?? ''), 0);
-            if (sumBd === val) {
-              bd = {};
-              ASSET_KEYS.forEach(k => {
-                const v = num(curBd[k] ?? '');
-                if (v) bd![k] = v;
-              });
-            }
+        let bd: Partial<Record<AssetKey, number>> | undefined = undefined;
+        const curBd = portfolioBreakdowns[p.id];
+        if (curBd && Object.keys(curBd).length > 0) {
+          const sumBd = ASSET_KEYS.reduce((a, k) => a + num(curBd[k] ?? ''), 0);
+          if (Math.abs(sumBd - val) < 1) {
+            bd = {};
+            ASSET_KEYS.forEach(k => {
+              const v = num(curBd[k] ?? '');
+              if (v) bd![k] = v;
+            });
           }
-          if (!bd && val > 0) {
-            const chosenTag = quickAsset[p.id] || pObj?.pinnedAsset || 'stocks';
-            bd = { [chosenTag]: val };
-          }
-
-          await saveSnapshot({
-            portfolioId: p.id,
-            date,
-            total: val,
-            breakdown: bd,
-            note: note || prev?.note,
-          });
         }
-      } else {
-        const curBd = portfolioBreakdowns[pid] || {};
-        const sum = ASSET_KEYS.reduce((a, k) => a + num(curBd[k] ?? ''), 0);
-        const bd: Partial<Record<AssetKey, number>> = {};
-        ASSET_KEYS.forEach(k => {
-          const v = num(curBd[k] ?? '');
-          if (v) bd[k] = v;
-        });
+        if (!bd && val > 0) {
+          bd = { stocks: val };
+        }
+
         await saveSnapshot({
-          portfolioId: pid,
+          portfolioId: p.id,
           date,
-          total: sum,
+          total: val,
           breakdown: bd,
-          note: note || undefined,
+          note: prev?.note,
         });
       }
 
       if (continueNext) {
-        setSuccessMsg(`تم حفظ تسجيل يوم (${fmtDate(date)}) بنجاح! يمكنك تغيير التاريخ وإدخال قراءة جديدة فوراً.`);
+        setSuccessMsg(`تم حفظ (${fmtDate(date)})`);
       } else {
         onClose();
       }
@@ -466,18 +353,16 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
     }
   };
 
-  const grandTotal = useMemo(() => {
-    return active.reduce((sum, p) => sum + num(totals[p.id] ?? ''), 0);
-  }, [active, totals]);
-
-  const canSave = mode === 'quick' ? Object.values(totals).some(v => v !== '') : detailSum > 0;
+  const grandTotal = useMemo(() => active.reduce((sum, p) => sum + num(totals[p.id] ?? ''), 0), [active, totals]);
+  const totalCashEntered = useMemo(() => active.reduce((sum, p) => sum + num(portfolioBreakdowns[p.id]?.cash ?? ''), 0), [active, portfolioBreakdowns]);
+  const totalGoldEntered = useMemo(() => active.reduce((sum, p) => sum + num(portfolioBreakdowns[p.id]?.gold ?? ''), 0), [active, portfolioBreakdowns]);
+  const canSave = Object.values(totals).some(v => v !== '');
 
   return (
     <Modal open={open} onClose={onClose} title="تسجيل القيمة السوقية">
-      <div className="space-y-3.5">
-        {/* Top Controls: Mode Switcher + Date Picker */}
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <Segmented size="sm" value={mode} onChange={setMode} options={[{ v: 'quick', label: 'كل المحافظ' }, { v: 'detail', label: 'تفصيلي بالأصول' }]} />
+      <div className="space-y-3">
+        {/* Compact Top Bar: Date + Quick Fill All */}
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <input
               type="date"
@@ -485,408 +370,207 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
               max={todayStr()}
               onChange={e => { setDate(e.target.value); setLastDate('snapshot', e.target.value); setSuccessMsg(null); }}
               className={cx(inputCls, '!w-auto !py-1.5 text-xs')}
-              title={editDate ? "يمكنك تعديل التاريخ وسينتقل التسجيل تلقائياً للتاريخ الجديد" : undefined}
             />
             <button
               type="button"
               onClick={() => { setDate(todayStr()); setLastDate('snapshot', todayStr()); setSuccessMsg(null); }}
-              title="تعيين تاريخ اليوم"
+              title="اليوم"
               className={cx(
                 'p-2 rounded-xl border transition-all shrink-0',
                 date === todayStr()
                   ? 'border-orange-500/40 bg-orange-500/10 text-orange-500'
-                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:text-orange-500 hover:border-orange-400'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:text-orange-500'
               )}
             >
               <Calendar className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={fillAllLatest}
+            className="text-[11px] font-black text-orange-500 hover:text-orange-600 bg-orange-500/10 hover:bg-orange-500/20 px-2.5 py-1.5 rounded-xl transition flex items-center gap-1 shrink-0"
+          >
+            <Zap className="w-3 h-3" />
+            <span>نسخ آخر القيم</span>
+          </button>
         </div>
 
-        {/* Dedicated Full-Width Grand Total + Offensive Cash Ammo Review Bar */}
-        {(() => {
-          const totalCashEntered = active.reduce((sum, p) => sum + num(portfolioBreakdowns[p.id]?.cash ?? ''), 0);
-          const cashPctOfTotal = grandTotal > 0 ? (totalCashEntered / grandTotal) * 100 : 0;
-          return (
-            <div className="rounded-2xl bg-gradient-to-l from-slate-900 to-slate-800 dark:from-slate-800 dark:to-slate-900 px-4 py-2.5 text-white shadow-sm space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-300">إجمالي القيمة السوقية للمحافظ:</span>
-                  {editDate && <span className="text-[9px] font-black text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">وضع التعديل</span>}
-                </div>
-                <div dir="ltr" className="text-xl font-black text-orange-400 tabular-nums">
-                  {fmt(grandTotal)} <span className="text-xs font-bold text-slate-400">ج.م</span>
-                </div>
-              </div>
-              {grandTotal > 0 && (
-                <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[11px] font-bold">
-                  <span className="text-sky-300 flex items-center gap-1">
-                    <span>💵 الذخيرة الهجومية (الكاش المتاح داخلياً):</span>
-                  </span>
-                  <span dir="ltr" className="font-black text-sky-400 tabular-nums">
-                    {fmt(totalCashEntered)} ج.م ({cashPctOfTotal.toFixed(1)}% من الإجمالي)
-                  </span>
-                </div>
-              )}
+        {/* Sleek Summary Banner (Total + Cash + Gold) */}
+        <div className="rounded-2xl bg-gradient-to-l from-slate-900 to-slate-800 dark:from-slate-800 dark:to-slate-900 px-3.5 py-2.5 text-white shadow-sm space-y-1.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black text-slate-300">الإجمالي</span>
+              {editDate && <span className="text-[9px] font-black text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">تعديل</span>}
             </div>
-          );
-        })()}
-
-        {mode === 'quick' ? (
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-[11px] font-bold text-slate-400">قيم المحافظ:</span>
-              <button
-                type="button"
-                onClick={fillAllLatest}
-                className="text-[11px] font-black text-orange-500 hover:text-orange-600 dark:hover:text-orange-400 bg-orange-500/10 hover:bg-orange-500/20 px-2.5 py-1 rounded-xl transition-all flex items-center gap-1"
-              >
-                <span>نسخ آخر القيم للكل</span>
-                <span className="text-xs">⚡</span>
-              </button>
+            <div dir="ltr" className="text-xl font-black text-orange-400 tabular-nums">
+              {fmt(grandTotal)} <span className="text-[11px] font-bold text-slate-400">ج.م</span>
             </div>
-            {active.map(p => {
-              const l = latest(p.id);
-              const curBd = portfolioBreakdowns[p.id];
-              const bdEntries = curBd ? Object.entries(curBd).filter(([_, v]) => num(v) > 0) : [];
-              const isMulti = bdEntries.length > 1;
-              const activeTag = isMulti ? null : (bdEntries.length === 1 ? (bdEntries[0][0] as AssetKey) : (quickAsset[p.id] || p.pinnedAsset || (p.id === 'thndr' ? 'stocks' : 'stocks')));
-
-              return (
-                <div key={p.id} className="rounded-2xl border border-slate-100 dark:border-slate-800 p-3 space-y-2">
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <i className="w-3 h-3 rounded-full shrink-0" style={{ background: p.color }} />
-                    <div className="w-20 text-sm font-black text-slate-800 dark:text-slate-100 truncate">{p.name}</div>
-                    <input
-                      inputMode="decimal" dir="ltr"
-                      value={totals[p.id] ?? ''}
-                      onChange={e => p.id === 'thndr' ? handleThndrMainTotalChange(e.target.value) : handleQuickTotalChange(p.id, e.target.value)}
-                      placeholder={l ? `آخر قيمة ${fmt(l.total)}` : '0'}
-                      className={cx(inputCls, 'text-left tabular-nums flex-1')}
-                    />
-                    {l && (
-                      <button
-                        type="button"
-                        title={`إدراج آخر قيمة (${fmt(l.total)})`}
-                        onClick={() => p.id === 'thndr' ? handleThndrMainTotalChange(String(l.total)) : handleQuickTotalChange(p.id, String(l.total))}
-                        className="px-2.5 py-1.5 rounded-xl text-xs font-black bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-orange-500 hover:text-white transition-all shrink-0"
-                      >
-                        إدراج
-                      </button>
-                    )}
-                    {existing(p.id) && <span className="text-[10px] font-black text-amber-500 shrink-0">مسجل</span>}
-                  </div>
-
-                  {p.id === 'thndr' ? (
-                    /* 4 Compact Smart Sub-boxes for Thndr (Stocks, Cash Ammo, Clouds, Funds) */
-                    <div className="space-y-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/60 mt-1">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                        {/* 1. الأسهم */}
-                        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.03] p-1.5 space-y-0.5">
-                          <div className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
-                            📈 أسهم
-                          </div>
-                          <input
-                            inputMode="decimal"
-                            dir="ltr"
-                            value={curBd?.stocks ?? ''}
-                            onChange={e => handleThndrSubChange('stocks', e.target.value)}
-                            placeholder="0"
-                            className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
-                          />
-                        </div>
-
-                        {/* 2. الكاش الهجومي المتاح */}
-                        <div className="rounded-xl border border-sky-500/35 bg-sky-500/[0.06] p-1.5 space-y-0.5">
-                          <div className="flex items-center justify-between text-[10px] font-black text-sky-600 dark:text-sky-400">
-                            <span>💵 كاش متاح</span>
-                            {num(totals[p.id] ?? '') > 0 && num(curBd?.cash ?? '') > 0 && (
-                              <span dir="ltr" className="text-[9px]">
-                                {((num(curBd?.cash ?? '') / num(totals[p.id] ?? '')) * 100).toFixed(0)}%
-                              </span>
-                            )}
-                          </div>
-                          <input
-                            inputMode="decimal"
-                            dir="ltr"
-                            value={curBd?.cash ?? ''}
-                            onChange={e => handleThndrSubChange('cash', e.target.value)}
-                            placeholder="من الإجمالي"
-                            className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
-                          />
-                        </div>
-
-                        {/* 3. الكلاودز */}
-                        <div className="rounded-xl border border-violet-500/25 bg-violet-500/[0.03] p-1.5 space-y-0.5">
-                          <div className="text-[10px] font-black text-violet-600 dark:text-violet-400">
-                            ☁️ كلاودز
-                          </div>
-                          <input
-                            inputMode="decimal"
-                            dir="ltr"
-                            value={curBd?.clouds ?? ''}
-                            onChange={e => handleThndrSubChange('clouds', e.target.value)}
-                            placeholder="0"
-                            className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
-                          />
-                        </div>
-
-                        {/* 4. صناديق الاستثمار */}
-                        <div className="rounded-xl border border-teal-500/25 bg-teal-500/[0.03] p-1.5 space-y-0.5">
-                          <div className="text-[10px] font-black text-teal-600 dark:text-teal-400">
-                            🧺 صناديق
-                          </div>
-                          <input
-                            inputMode="decimal"
-                            dir="ltr"
-                            value={curBd?.equityFunds ?? ''}
-                            onChange={e => handleThndrSubChange('equityFunds', e.target.value)}
-                            placeholder="0"
-                            className={cx(inputCls, '!py-1 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
-                          />
-                        </div>
-                      </div>
-
-                      {/* أزرار سريعة لنسبة الكاش الهجومي داخل ثاندر (كجزء من الإجمالي) */}
-                      {num(totals[p.id] ?? '') > 0 && (
-                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 px-1">
-                          <span>تحديد سريع للكاش المتاح من الإجمالي:</span>
-                          <div className="flex items-center gap-1" dir="ltr">
-                            {[0, 10, 15, 20, 30].map(pct => {
-                              const totVal = num(totals[p.id] ?? '');
-                              const targetCash = Math.round((totVal * pct) / 100);
-                              const curCash = num(curBd?.cash ?? '');
-                              const isAct = totVal > 0 && Math.abs(curCash - targetCash) < 50 && (pct > 0 ? curCash > 0 : curCash === 0);
-                              return (
-                                <button
-                                  key={pct}
-                                  type="button"
-                                  onClick={() => handleQuickCashSplitChange(p.id, pct === 0 ? '' : String(targetCash))}
-                                  className={cx(
-                                    'px-1.5 py-0.5 rounded-md font-black transition',
-                                    isAct
-                                      ? 'bg-sky-500 text-white'
-                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-sky-500/15 hover:text-sky-500'
-                                  )}
-                                >
-                                  {pct}%
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    /* Quick Cash Split + Asset tags for other portfolios (Mubasher, Hermes, etc.) */
-                    <div className="space-y-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/60 mt-1">
-                      {/* سطر الكاش الهجومي السريع (جزء داخلي من إجمالي المحفظة) */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-sky-500/[0.05] border border-sky-500/20 px-2.5 py-1.5">
-                        <div className="flex items-center gap-1.5 text-[11px] font-black text-sky-600 dark:text-sky-400">
-                          <span>💵 الكاش المتاح (جزء من الإجمالي):</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-1 sm:flex-initial justify-end">
-                          <input
-                            inputMode="decimal"
-                            dir="ltr"
-                            value={curBd?.cash ?? ''}
-                            onChange={e => handleQuickCashSplitChange(p.id, e.target.value)}
-                            placeholder="0 (اختياري)"
-                            className={cx(inputCls, '!w-28 !py-1 !px-2 !text-xs text-left tabular-nums bg-white dark:bg-slate-900')}
-                          />
-                          {num(totals[p.id] ?? '') > 0 && (
-                            <div className="flex items-center gap-1" dir="ltr">
-                              {[0, 10, 20].map(pct => {
-                                const totVal = num(totals[p.id] ?? '');
-                                const targetCash = Math.round((totVal * pct) / 100);
-                                const curCash = num(curBd?.cash ?? '');
-                                const isAct = totVal > 0 && Math.abs(curCash - targetCash) < 50 && (pct > 0 ? curCash > 0 : curCash === 0);
-                                return (
-                                  <button
-                                    key={pct}
-                                    type="button"
-                                    onClick={() => handleQuickCashSplitChange(p.id, pct === 0 ? '' : String(targetCash))}
-                                    className={cx(
-                                      'px-1.5 py-0.5 rounded-md text-[10px] font-black transition',
-                                      isAct
-                                        ? 'bg-sky-500 text-white'
-                                        : 'bg-white dark:bg-slate-800 text-slate-500 hover:bg-sky-500/15 hover:text-sky-500 border border-slate-200 dark:border-slate-700'
-                                    )}
-                                  >
-                                    {pct}%
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* ملخص التوزيع الداخلي التلقائي (أسهم مقابل كاش) */}
-                      {num(totals[p.id] ?? '') > 0 && num(curBd?.cash ?? '') > 0 && (
-                        <div className="flex items-center justify-between px-2 text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                          <span>التوزيع الداخلي لـ {fmt(num(totals[p.id] ?? ''))} ج.م:</span>
-                          <span dir="ltr" className="font-black">
-                            📈 أسهم: <b className="text-emerald-500">{fmt(Math.max(0, num(totals[p.id] ?? '') - num(curBd?.cash ?? '')))}</b>
-                            {' · '}
-                            💵 كاش: <b className="text-sky-500">{fmt(num(curBd?.cash ?? ''))} ({((num(curBd?.cash ?? '') / num(totals[p.id] ?? '')) * 100).toFixed(1)}%)</b>
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-1.5 pr-2 flex-wrap">
-                        <span className="text-[10px] font-bold text-slate-400 shrink-0">الأصل الأساسي:</span>
-                        {isMulti && !curBd?.cash && (
-                          <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20 shrink-0">
-                            موزع تفصيلياً
-                          </span>
-                        )}
-                        {(() => {
-                          const isExpanded = !!expandedTags[p.id];
-                          const primaryKeys: AssetKey[] = ['stocks', 'clouds'];
-                          const secondaryKeys: AssetKey[] = ['fixedIncome', 'gold', 'cash'];
-                          const visibleKeys = isExpanded
-                            ? [...primaryKeys, ...secondaryKeys]
-                            : (activeTag && secondaryKeys.includes(activeTag) ? [...primaryKeys, activeTag] : primaryKeys);
-
-                          return (
-                            <>
-                              {visibleKeys.map(k => {
-                                const meta = ASSET_META[k];
-                                const isSelected = activeTag === k;
-                                return (
-                                  <button
-                                    key={k}
-                                    type="button"
-                                    onClick={() => handleQuickTagClick(p.id, k)}
-                                    className={cx(
-                                      'text-[10px] font-black px-2 py-0.5 rounded-lg border transition-all flex items-center gap-1 shrink-0',
-                                      isSelected
-                                        ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-transparent shadow-xs scale-[1.03]'
-                                        : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:border-slate-400'
-                                    )}
-                                  >
-                                    <span>{meta.emoji}</span>
-                                    <span>{meta.label}</span>
-                                    {isSelected && <span className="text-[9px] opacity-75">100%</span>}
-                                  </button>
-                                );
-                              })}
-                              <button
-                                type="button"
-                                onClick={() => setExpandedTags(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
-                                className="text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-2 py-0.5 rounded-lg transition shrink-0"
-                              >
-                                {isExpanded ? 'إخفاء ▴' : '+ المزيد'}
-                              </button>
-                            </>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            
           </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <PortfolioPills value={pid} onChange={setPid} />
-              {totals[pid] && num(totals[pid]) > 0 && (
-                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                  القيمة المسجلة مسبقاً: <b dir="ltr" className="text-orange-500 tabular-nums">{fmt(num(totals[pid]))}</b>
+
+          {grandTotal > 0 && (totalCashEntered > 0 || totalGoldEntered > 0) && (
+            <div className="flex flex-wrap items-center gap-2 pt-1.5 border-t border-white/10 text-[11px] font-black">
+              {totalCashEntered > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500/15 border border-sky-400/25 px-2 py-0.5 text-sky-300">
+                  <span>💵 الكاش</span>
+                  <b dir="ltr" className="tabular-nums text-sky-200">
+                    {fmt(totalCashEntered)} ({((totalCashEntered / grandTotal) * 100).toFixed(1)}%)
+                  </b>
+                </span>
+              )}
+              {totalGoldEntered > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-l from-amber-500/25 to-yellow-500/15 border border-amber-400/40 px-2 py-0.5 text-amber-300">
+                  <span>🪙 الذهب</span>
+                  <b dir="ltr" className="tabular-nums text-amber-200">
+                    {fmt(totalGoldEntered)} ({((totalGoldEntered / grandTotal) * 100).toFixed(1)}%)
+                  </b>
                 </span>
               )}
             </div>
+          )}
+        </div>
 
-            {prevBreakdown && (!currentParts || Object.values(currentParts).every(v => !v || v === '0')) && (
-              <div className="flex items-center justify-between rounded-2xl bg-orange-500/10 border border-orange-500/20 px-3.5 py-2.5 text-xs font-black text-orange-600 dark:text-orange-400">
-                <span className="truncate">توجد تفاصيل أصول سابقة بتاريخ ({fmtDate(prevBreakdown.date)})</span>
-                <button
-                  type="button"
-                  onClick={copyPrevBreakdown}
-                  className="rounded-xl bg-gradient-to-l from-orange-500 to-amber-500 text-white px-3 py-1 text-[11px] font-black shadow-sm shadow-orange-500/20 hover:brightness-110 transition shrink-0"
-                >
-                  نسخ تفاصيل آخر تسجيل ⚡
-                </button>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              {DETAIL_GRID_KEYS.map(k => {
-                const curVal = totals[pid] ? num(totals[pid]) : 0;
-                const currentP = active.find(p => p.id === pid);
-                const isPinned = currentP?.pinnedAsset === k;
-                return (
-                  <div
-                    key={k}
+        {/* Portfolio Cards with Inline Per-Portfolio Field Customizer */}
+        <div className="space-y-2.5">
+          {active.map(p => {
+            const l = latest(p.id);
+            const curBd = portfolioBreakdowns[p.id] || {};
+            const fields = getFieldsFor(p.id);
+            const isCustomizing = customizingPid === p.id;
+            const totNum = num(totals[p.id] ?? '');
+            const gridCols =
+              fields.length <= 2
+                ? 'grid-cols-2'
+                : fields.length === 3
+                ? 'grid-cols-3'
+                : 'grid-cols-2 sm:grid-cols-4';
+
+            return (
+              <div
+                key={p.id}
+                className={cx(
+                  'rounded-2xl border p-2.5 space-y-2 transition-all',
+                  initialPortfolio === p.id
+                    ? 'border-orange-500/40 bg-orange-500/[0.02]'
+                    : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/40'
+                )}
+              >
+                {/* Header Row: Portfolio + Main Total + Insert + Customize */}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 w-20 shrink-0">
+                    <i className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: p.color }} />
+                    <span className="text-sm font-black text-slate-800 dark:text-slate-100 truncate">{p.name}</span>
+                  </div>
+
+                  <input
+                    inputMode="decimal"
+                    dir="ltr"
+                    value={totals[p.id] ?? ''}
+                    onChange={e => handleMainTotalChange(p.id, e.target.value)}
+                    placeholder={l ? fmt(l.total) : '0'}
+                    className={cx(inputCls, '!py-1.5 text-left tabular-nums font-black flex-1')}
+                  />
+
+                  {l && (
+                    <button
+                      type="button"
+                      title={`إدراج ${fmt(l.total)}`}
+                      onClick={() => insertLatestForPortfolio(p.id)}
+                      className="px-2 py-1.5 rounded-xl text-[11px] font-black bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-orange-500 hover:text-white transition shrink-0"
+                    >
+                      إدراج
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setCustomizingPid(isCustomizing ? null : p.id)}
+                    title="تخصيص الأصول الظاهرة"
                     className={cx(
-                      'rounded-2xl border p-3 transition-all',
-                      isPinned
-                        ? 'border-amber-500/60 bg-amber-500/[0.04] shadow-sm ring-2 ring-amber-500/20'
-                        : 'border-slate-100 dark:border-slate-800'
+                      'p-1.5 rounded-xl border transition shrink-0',
+                      isCustomizing
+                        ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-transparent'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                     )}
-                    style={{ borderTopColor: ASSET_META[k].color, borderTopWidth: 3 }}
                   >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 flex items-center gap-1 truncate">
-                        {ASSET_META[k].emoji} {ASSET_META[k].label}
-                      </span>
-                      <div className="flex items-center gap-1 shrink-0">
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                  </button>
+
+                  {existing(p.id) && (
+                    <span title="مسجل" className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                  )}
+                </div>
+
+                {/* Inline Field Customizer Chips (Toggle Visible Assets for This Portfolio) */}
+                {isCustomizing && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/70">
+                    {ALL_ASSET_ORDER.map(k => {
+                      const activeField = fields.includes(k);
+                      const meta = ASSET_META[k];
+                      return (
                         <button
+                          key={k}
                           type="button"
-                          onClick={() => togglePinAsset(pid, k)}
-                          title={isPinned ? 'إلغاء التثبيت التلقائي' : `تثبيت محفظة ${currentP?.name ?? ''} في ${ASSET_META[k].label} (100% تلقائي كل مرة)`}
+                          onClick={() => toggleFieldFor(p.id, k)}
                           className={cx(
-                            'flex items-center gap-1 text-[10px] font-black px-1.5 py-0.5 rounded-lg transition-all',
-                            isPinned
-                              ? 'bg-amber-500 text-white shadow-sm'
-                              : 'text-slate-400 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-black border transition',
+                            activeField
+                              ? k === 'gold'
+                                ? 'bg-amber-400/20 border-amber-400 text-amber-700 dark:text-amber-300'
+                                : 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-transparent'
+                              : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-400 hover:text-slate-600'
                           )}
                         >
-                          <Pin className={cx('w-3 h-3', isPinned && 'fill-white rotate-45')} />
-                          {isPinned && <span className="text-[9px]">مثبت</span>}
+                          <span>{meta.emoji}</span>
+                          <span>{meta.label}</span>
                         </button>
-
-                        {curVal > 0 && (
-                          <button
-                            type="button"
-                            title="إدراج كل قيمة المحفظة بالكامل في هذا الحقل"
-                            onClick={() => handleAssignAllToAssetInDetail(k)}
-                            className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-orange-500 hover:text-white text-slate-500 transition-all"
-                          >
-                            كل المحفظة
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <input
-                      inputMode="decimal" dir="ltr"
-                      value={currentParts[k] ?? ''}
-                      onChange={e => handleDetailAssetChange(k, e.target.value)}
-                      placeholder="0"
-                      className={cx(inputCls, 'text-left tabular-nums !py-2')}
-                    />
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-            <div className="flex items-center justify-between rounded-2xl bg-slate-900 dark:bg-slate-800 px-4 py-3 text-white">
-              <span className="text-xs font-bold text-slate-300">الإجمالي المحسوب</span>
-              <span dir="ltr" className="text-xl font-black tabular-nums">{fmt(detailSum)}</span>
-            </div>
-            <Field label="ملاحظة"><input value={note} onChange={e => setNote(e.target.value)} className={inputCls} /></Field>
-          </div>
-        )}
+                )}
+
+                {/* Active Asset Inputs Grid */}
+                <div className={cx('grid gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/60', gridCols)}>
+                  {fields.map(k => {
+                    const meta = ASSET_META[k];
+                    const st = ASSET_BOX_STYLES[k];
+                    const valNum = num(curBd[k] ?? '');
+                    const pct = totNum > 0 && valNum > 0 ? Math.round((valNum / totNum) * 100) : 0;
+
+                    return (
+                      <div key={k} className={cx('rounded-xl border p-1.5 space-y-0.5', st.box)}>
+                        <div className={cx('flex items-center justify-between text-[10px] font-black px-0.5', st.label)}>
+                          <span>{meta.emoji} {meta.label}</span>
+                          {pct > 0 && <span dir="ltr" className="text-[9px] tabular-nums opacity-85">{pct}%</span>}
+                        </div>
+                        <input
+                          inputMode="decimal"
+                          dir="ltr"
+                          value={curBd[k] ?? ''}
+                          onChange={e => handleAssetFieldChange(p.id, k, e.target.value)}
+                          placeholder="0"
+                          className={cx(
+                            inputCls,
+                            '!py-1 !px-2 !text-xs text-left tabular-nums bg-white/90 dark:bg-slate-900/90',
+                            k === 'gold' && 'focus:!border-amber-400'
+                          )}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
         {warnings.length > 0 && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-200">
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2 flex items-start gap-2 text-[11px] font-bold text-amber-800 dark:text-amber-200">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
-            <div className="flex-1 text-[11px] font-bold leading-normal">
+            <div className="flex-1">
               {warnings.map(w => (
                 <span key={w.name} className="block">
-                  قفزة في <b>{w.name}</b> بمقدار <b dir="ltr" className="text-emerald-600 dark:text-emerald-400">+{fmt(w.diff)} ج.م</b> (+{w.pct.toFixed(0)}%). تأكد من تسجيل أي إيداع نقدي جديد أولاً.
+                  قفزة في <b>{w.name}</b>: <b dir="ltr" className="text-emerald-600 dark:text-emerald-400">+{fmt(w.diff)}</b> (+{w.pct.toFixed(0)}%) — تأكد من تسجيل الإيداع أولاً.
                 </span>
               ))}
             </div>
@@ -894,21 +578,21 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
         )}
 
         {successMsg && (
-          <div className="flex items-center justify-between gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-xs font-black text-emerald-600 dark:text-emerald-400 animate-in fade-in">
+          <div className="flex items-center justify-between gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3 py-1.5 text-xs font-black text-emerald-600 dark:text-emerald-400">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{successMsg}</span>
             </div>
-            <button type="button" onClick={() => setSuccessMsg(null)} className="text-emerald-500 hover:text-emerald-700 text-xs font-bold">✕</button>
+            <button type="button" onClick={() => setSuccessMsg(null)} className="text-xs font-bold">✕</button>
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
+        <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
           <button
             type="button"
             disabled={!canSave || busy}
             onClick={() => submit(false)}
-            className="w-full sm:flex-1 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-orange-500 to-amber-500 py-3 text-sm font-black text-white shadow-lg shadow-orange-500/25 disabled:opacity-40 hover:brightness-110 transition"
+            className="w-full sm:flex-1 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-orange-500 to-amber-500 py-2.5 text-sm font-black text-white shadow-lg shadow-orange-500/25 disabled:opacity-40 hover:brightness-110 transition"
           >
             <Check className="w-4 h-4" /> حفظ وإغلاق
           </button>
@@ -916,10 +600,10 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
             type="button"
             disabled={!canSave || busy}
             onClick={() => submit(true)}
-            className="w-full sm:flex-1 flex items-center justify-center gap-2 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 border border-slate-800 dark:border-slate-200 py-3 text-sm font-black shadow-md disabled:opacity-40 hover:bg-slate-800 dark:hover:bg-slate-100 transition"
+            className="w-full sm:flex-1 flex items-center justify-center gap-2 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 py-2.5 text-sm font-black shadow-md disabled:opacity-40 hover:bg-slate-800 dark:hover:bg-slate-100 transition"
           >
             <Zap className="w-4 h-4 text-amber-400 dark:text-amber-600" />
-            <span>حفظ ومتابعة الإدخال ⚡</span>
+            <span>حفظ ومتابعة</span>
           </button>
         </div>
       </div>

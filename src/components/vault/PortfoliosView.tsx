@@ -54,7 +54,10 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
         const pCashObj = cashAmmo.byPortfolio.find(c => c.portfolioId === activeR.portfolio.id);
         const pCash = pCashObj?.cashAmount ?? 0;
         const pCashPct = pCashObj?.cashPct ?? 0;
+        const pGold = pCashObj?.goldAmount ?? 0;
+        const pGoldPct = pCashObj?.goldPct ?? 0;
         const pInvested = pCashObj?.investedAmount ?? Math.round(s.nav * factor);
+        const pInvestedPct = Math.max(0, 100 - pCashPct - pGoldPct);
 
         return (
           <div className="relative overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-4 sm:p-5 shadow-lg space-y-4">
@@ -151,22 +154,31 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                 </div>
               </div>
 
-              {/* Assets & Cash Allocation */}
-              <div className="md:col-span-3 space-y-2">
-                <div className="rounded-2xl bg-emerald-500/[0.06] border border-emerald-500/20 p-2.5 flex items-center justify-between">
-                  <div>
-                    <div className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">📈 مستثمر بالأسهم</div>
-                    <div className="text-[10px] font-semibold text-slate-400">{(100 - pCashPct).toFixed(0)}% من المحفظة</div>
+              {/* Assets, Cash & Gold Allocation */}
+              <div className="md:col-span-3 space-y-1.5">
+                <div className="rounded-xl bg-emerald-500/[0.06] border border-emerald-500/20 px-2.5 py-2 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-black text-emerald-700 dark:text-emerald-400">📈 الأسهم</span>
+                    <span dir="ltr" className="text-[10px] font-bold text-slate-400 tabular-nums">{pInvestedPct.toFixed(0)}%</span>
                   </div>
-                  <b dir="ltr" className="text-sm font-black text-slate-800 dark:text-slate-100 tabular-nums">{fmt(pInvested)}</b>
+                  <b dir="ltr" className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 tabular-nums">{fmt(pInvested)}</b>
                 </div>
-                <div className="rounded-2xl bg-sky-500/[0.07] border border-sky-500/25 p-2.5 flex items-center justify-between">
-                  <div>
-                    <div className="text-[10px] font-bold text-sky-700 dark:text-sky-400">💵 كاش هجومي متاح</div>
-                    <div className="text-[10px] font-semibold text-slate-400">{pCashPct.toFixed(0)}% ذخيرة سيولة</div>
+                <div className="rounded-xl bg-sky-500/[0.07] border border-sky-500/25 px-2.5 py-2 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-black text-sky-700 dark:text-sky-400">💵 الكاش</span>
+                    <span dir="ltr" className="text-[10px] font-bold text-slate-400 tabular-nums">{pCashPct.toFixed(0)}%</span>
                   </div>
-                  <b dir="ltr" className="text-sm font-black text-sky-600 dark:text-sky-400 tabular-nums">{fmt(pCash)}</b>
+                  <b dir="ltr" className="text-xs sm:text-sm font-black text-sky-600 dark:text-sky-400 tabular-nums">{fmt(pCash)}</b>
                 </div>
+                {pGold > 0 && (
+                  <div className="rounded-xl bg-gradient-to-l from-amber-500/[0.16] via-yellow-400/[0.1] to-amber-500/[0.05] border border-amber-400/50 px-2.5 py-2 flex items-center justify-between shadow-xs shadow-amber-500/10">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-black text-amber-700 dark:text-amber-300">🪙 الذهب</span>
+                      <span dir="ltr" className="text-[10px] font-black text-amber-600/80 dark:text-amber-300/80 tabular-nums">{pGoldPct.toFixed(0)}%</span>
+                    </div>
+                    <b dir="ltr" className="text-xs sm:text-sm font-black text-amber-700 dark:text-amber-200 tabular-nums">{fmt(pGold)}</b>
+                  </div>
+                )}
               </div>
 
               {/* Sparkline Curve */}

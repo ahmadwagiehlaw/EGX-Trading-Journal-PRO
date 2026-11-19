@@ -390,27 +390,31 @@ export function computeStats(pts: Point[]): Stats {
   };
 }
 
-/* ───────── Tactical Cash Ammo & Readiness Engine (الكاش الهجومي) ───────── */
+/* ───────── Tactical Cash Ammo & Gold Reserve Engine ───────── */
 export interface PortfolioCashBreakdown {
   portfolioId: string;
   portfolioName: string;
   color: string;
   totalNav: number;
   cashAmount: number;
+  goldAmount: number;
   investedAmount: number;
   cashPct: number;
+  goldPct: number;
 }
 
 export interface CashAmmoSummary {
   totalNav: number;
   totalCash: number;
+  totalGold: number;
   totalInvested: number;
   cashPct: number;
+  goldPct: number;
   posture: 'depleted' | 'defensive' | 'optimal' | 'fortress';
   postureLabel: string;
   postureColor: string;
-  targetCash15Amt: number; // المبلغ المطلوب للوصول لـ 15% كاش هجومي
-  targetCash20Amt: number; // المبلغ المطلوب للوصول لـ 20% كاش هجومي
+  targetCash15Amt: number; // المبلغ المطلوب للوصول لـ 15% كاش
+  targetCash20Amt: number; // المبلغ المطلوب للوصول لـ 20% كاش
   byPortfolio: PortfolioCashBreakdown[];
 }
 
@@ -425,6 +429,7 @@ export function computeCashAmmo(
   const byPortfolio: PortfolioCashBreakdown[] = [];
   let totalNav = 0;
   let totalCash = 0;
+  let totalGold = 0;
 
   for (const p of activePorts) {
     const ps = snaps.filter(s => s.portfolioId === p.id).sort((a, b) => a.date.localeCompare(b.date));
@@ -433,16 +438,21 @@ export function computeCashAmmo(
 
     const rawNav = (snap ? snap.total : 0) + afterFlow;
     const rawSnapCash = snap?.breakdown?.cash ?? 0;
+    const rawSnapGold = snap?.breakdown?.gold ?? 0;
     // أي إيداع نقدي بعد آخر تقييم لم يتم تحديث تقييمه يُعامل كسيولة نقدية مضافة، وأي سحب يخصم من الكاش أولاً
     const rawCash = Math.max(0, Math.min(rawNav, rawSnapCash + afterFlow));
+    const rawGold = Math.max(0, Math.min(rawNav, rawSnapGold));
 
     const pNav = Math.round(rawNav * factor);
     const pCash = Math.round(rawCash * factor);
-    const pInvested = Math.max(0, pNav - pCash);
+    const pGold = Math.round(rawGold * factor);
+    const pInvested = Math.max(0, pNav - pCash - pGold);
     const pCashPct = pNav > 0 ? (pCash / pNav) * 100 : 0;
+    const pGoldPct = pNav > 0 ? (pGold / pNav) * 100 : 0;
 
     totalNav += pNav;
     totalCash += pCash;
+    totalGold += pGold;
 
     byPortfolio.push({
       portfolioId: p.id,
@@ -450,13 +460,16 @@ export function computeCashAmmo(
       color: p.color,
       totalNav: pNav,
       cashAmount: pCash,
+      goldAmount: pGold,
       investedAmount: pInvested,
       cashPct: pCashPct,
+      goldPct: pGoldPct,
     });
   }
 
-  const totalInvested = Math.max(0, totalNav - totalCash);
+  const totalInvested = Math.max(0, totalNav - totalCash - totalGold);
   const cashPct = totalNav > 0 ? (totalCash / totalNav) * 100 : 0;
+  const goldPct = totalNav > 0 ? (totalGold / totalNav) * 100 : 0;
 
   let posture: CashAmmoSummary['posture'] = 'optimal';
   let postureLabel = 'منطقة القنص المثالية 🎯';
@@ -486,8 +499,10 @@ export function computeCashAmmo(
   return {
     totalNav,
     totalCash,
+    totalGold,
     totalInvested,
     cashPct,
+    goldPct,
     posture,
     postureLabel,
     postureColor,
