@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from 'recharts';
-import { Crown, ArrowUpRight } from 'lucide-react';
+import { Crown, ArrowUpRight, Scale, ShieldCheck, AlertTriangle, Sparkles } from 'lucide-react';
 import { Card, ChartTip, Empty, Segmented, cx, tone, GoldBarIcon } from './ui';
 import { useVault } from './VaultContext';
 import { ASSET_META } from './types';
@@ -8,6 +8,42 @@ import type { Period } from './calc';
 import { PERIODS, allocation, buildAssetHistory, buildSeries, comparePortfolios, computeCashAmmo, fmt, fmtCompact, fmtPct, fmtSigned, fmtDate, raceData, shortDate, windowSeries } from './calc';
 
 type ChartTab = 'race' | 'gold' | 'assets' | 'nav' | 'quality';
+type AllocPreset = 'growth' | 'balanced' | 'defensive' | 'custom';
+
+interface TargetWeights {
+  stocks: number;
+  cash: number;
+  gold: number;
+  fixed: number;
+}
+
+const PRESET_WEIGHTS: Record<Exclude<AllocPreset, 'custom'>, TargetWeights> = {
+  growth: { stocks: 65, cash: 15, gold: 10, fixed: 10 },
+  balanced: { stocks: 50, cash: 20, gold: 15, fixed: 15 },
+  defensive: { stocks: 35, cash: 25, gold: 20, fixed: 20 },
+};
+
+const EXPECTED_ANNUAL_YIELD: TargetWeights = {
+  stocks: 28,
+  gold: 24,
+  fixed: 20,
+  cash: 0,
+};
+
+const TARGET_ALLOC_KEY = 'egx_vault_target_alloc_v1';
+
+function loadTargetState(): { preset: AllocPreset; weights: TargetWeights } {
+  try {
+    const raw = localStorage.getItem(TARGET_ALLOC_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p?.preset && p?.weights) return p;
+    }
+  } catch {
+    // ignore
+  }
+  return { preset: 'balanced', weights: PRESET_WEIGHTS.balanced };
+}
 
 export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; scopeIds: string[]; onFocus: (id: string) => void }) {
   const { settings, snapshots, cashflows } = useVault();
@@ -15,7 +51,22 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
   const [chartTab, setChartTab] = useState<ChartTab>('race');
   const [goldUnit, setGoldUnit] = useState<'egp' | 'pct'>('egp');
   const [assetView, setAssetView] = useState<'history' | 'donut'>('history');
+  const [allocState, setAllocState] = useState<{ preset: AllocPreset; weights: TargetWeights }>(loadTargetState);
   const ports = useMemo(() => settings.portfolios.filter(p => p.active), [settings.portfolios]);
+
+  const selectPreset = (preset: AllocPreset) => {
+    const weights = preset === 'custom' ? allocState.weights : PRESET_WEIGHTS[preset];
+    const next = { preset, weights };
+    setAllocState(next);
+    try { localStorage.setItem(TARGET_ALLOC_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  };
+
+  const updateCustomWeight = (k: keyof TargetWeights, val: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(val)));
+    const next = { preset: 'custom' as AllocPreset, weights: { ...allocState.weights, [k]: clamped } };
+    setAllocState(next);
+    try { localStorage.setItem(TARGET_ALLOC_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  };
 
   const rows = useMemo(() => comparePortfolios(snapshots, cashflows, ports), [snapshots, cashflows, ports]);
   const ranked = [...rows].sort((a, b) => b.score - a.score);
@@ -534,28 +585,304 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
         )}
       </Card>
 
-      {/* Allocation per portfolio */}
-      <Card title="تركيبة كل محفظة">
-        <div className="space-y-4">
-          {perPortfolioAlloc.map(({ p, slices }) => {
-            const tot = slices.reduce((a, s) => a + s.value, 0);
-            return (
-              <div key={p.id}>
-                <div className="flex items-center justify-between text-xs font-black mb-1.5">
-                  <span className="flex items-center gap-2"><i className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />{p.name}</span>
-                  <span dir="ltr" className="text-slate-400 tabular-nums">{fmt(tot * factor)}</span>
+      {/* ───────── Institutional Portfolio Balance Lab (7/12) + Compact Structure & Signals (5/12) ───────── */}
+      {(() => {
+        const totNav = Math.max(1, cashAmmo.totalNav);
+        const actStocks = cashAmmo.byPortfolio.reduce((a, b) => a + b.stocksAmount, 0);
+        const actCash = cashAmmo.totalCash;
+        const actGold = cashAmmo.totalGold;
+        const actFixed = cashAmmo.byPortfolio.reduce((a, b) => a + b.otherAmount, 0);
+
+        const actualPct: TargetWeights = {
+          stocks: (actStocks / totNav) * 100,
+          cash: (actCash / totNav) * 100,
+          gold: (actGold / totNav) * 100,
+          fixed: (actFixed / totNav) * 100,
+        };
+
+        const w = allocState.weights;
+        const wSum = w.stocks + w.cash + w.gold + w.fixed;
+        const norm = wSum > 0 ? 100 / wSum : 1;
+        const tgtPct: TargetWeights = {
+          stocks: w.stocks * norm,
+          cash: w.cash * norm,
+          gold: w.gold * norm,
+          fixed: w.fixed * norm,
+        };
+
+        const totalAbsDiff =
+          Math.abs(actualPct.stocks - tgtPct.stocks) +
+          Math.abs(actualPct.cash - tgtPct.cash) +
+          Math.abs(actualPct.gold - tgtPct.gold) +
+          Math.abs(actualPct.fixed - tgtPct.fixed);
+        const balanceScore = Math.max(0, Math.min(100, Math.round(100 - totalAbsDiff * 0.85)));
+
+        const curExpRet =
+          (actualPct.stocks * EXPECTED_ANNUAL_YIELD.stocks +
+            actualPct.gold * EXPECTED_ANNUAL_YIELD.gold +
+            actualPct.fixed * EXPECTED_ANNUAL_YIELD.fixed +
+            actualPct.cash * EXPECTED_ANNUAL_YIELD.cash) / 100;
+        const tgtExpRet =
+          (tgtPct.stocks * EXPECTED_ANNUAL_YIELD.stocks +
+            tgtPct.gold * EXPECTED_ANNUAL_YIELD.gold +
+            tgtPct.fixed * EXPECTED_ANNUAL_YIELD.fixed +
+            tgtPct.cash * EXPECTED_ANNUAL_YIELD.cash) / 100;
+        const expRetGainEgp = Math.round(totNav * ((tgtExpRet - curExpRet) / 100));
+        const defensivePct = actualPct.cash + actualPct.gold + actualPct.fixed;
+
+        const buckets: {
+          key: keyof TargetWeights;
+          label: string;
+          color: string;
+          actualAmt: number;
+          actualPct: number;
+          targetPct: number;
+          isGold?: boolean;
+        }[] = [
+          { key: 'stocks', label: 'الأسهم', color: ASSET_META.stocks.color, actualAmt: actStocks, actualPct: actualPct.stocks, targetPct: tgtPct.stocks },
+          { key: 'cash', label: 'الكاش', color: ASSET_META.cash.color, actualAmt: actCash, actualPct: actualPct.cash, targetPct: tgtPct.cash },
+          { key: 'gold', label: 'الذهب', color: ASSET_META.gold.color, actualAmt: actGold, actualPct: actualPct.gold, targetPct: tgtPct.gold, isGold: true },
+          { key: 'fixed', label: 'دخل ثابت', color: ASSET_META.fixedIncome.color, actualAmt: actFixed, actualPct: actualPct.fixed, targetPct: tgtPct.fixed },
+        ];
+
+        const topPort = ranked[0];
+        const idleCashPort = cashAmmo.byPortfolio.find(bp => bp.cashPct >= 60 && bp.cashAmount >= 10000);
+
+        return (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+            {/* 1. Scientific Rebalancing & Allocation Simulator (7 cols) */}
+            <Card
+              className="lg:col-span-7 flex flex-col justify-between"
+              title={
+                <span className="inline-flex items-center gap-2">
+                  <Scale className="w-4 h-4 text-orange-500" />
+                  <span>مختبر التوازن وإعادة الهيكلة</span>
+                  <span
+                    dir="ltr"
+                    className={cx(
+                      'rounded-lg px-2 py-0.5 text-[10px] font-black tabular-nums',
+                      balanceScore >= 80
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                        : balanceScore >= 55
+                        ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                        : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                    )}
+                  >
+                    {balanceScore}/100
+                  </span>
+                </span>
+              }
+              right={
+                <Segmented
+                  size="sm"
+                  value={allocState.preset}
+                  onChange={selectPreset}
+                  options={[
+                    { v: 'growth', label: 'هجومي' },
+                    { v: 'balanced', label: 'متوازن' },
+                    { v: 'defensive', label: 'دفاعي' },
+                    { v: 'custom', label: 'مخصص' },
+                  ]}
+                />
+              }
+            >
+              <div className="space-y-3.5">
+                {/* Custom Target Sliders/Inputs when 'custom' is active */}
+                {allocState.preset === 'custom' && (
+                  <div className="grid grid-cols-4 gap-2 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-2.5 border border-slate-200/70 dark:border-slate-700/60">
+                    {buckets.map(b => (
+                      <label key={b.key} className="space-y-1 text-center">
+                        <span className="block text-[10px] font-black text-slate-500">{b.label} %</span>
+                        <input
+                          type="number"
+                          dir="ltr"
+                          min={0}
+                          max={100}
+                          value={allocState.weights[b.key]}
+                          onChange={e => updateCustomWeight(b.key, Number(e.target.value))}
+                          className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1 text-center text-xs font-black tabular-nums focus:outline-none focus:border-orange-400"
+                        />
+                      </label>
+                    ))}
+                    {wSum !== 100 && (
+                      <div className="col-span-4 text-center text-[10px] font-black text-amber-500">
+                        المجموع: {wSum}% (يتم التطبيع تلقائياً إلى 100%)
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 4 Asset Rebalance Gap Bars */}
+                <div className="space-y-2.5">
+                  {buckets.map(b => {
+                    const diffPct = b.targetPct - b.actualPct;
+                    const diffEgp = Math.round((totNav * diffPct) / 100);
+                    const isBalanced = Math.abs(diffPct) <= 2.5;
+                    const isUnderweight = diffPct > 2.5;
+
+                    return (
+                      <div key={b.key} className="space-y-1">
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-1.5 font-black text-slate-800 dark:text-slate-100">
+                            {b.isGold ? <GoldBarIcon className="w-4 h-3.5" /> : <i className="w-2.5 h-2.5 rounded-full" style={{ background: b.color }} />}
+                            <span>{b.label}</span>
+                            <span dir="ltr" className="text-[11px] font-bold text-slate-400 tabular-nums">
+                              {b.actualPct.toFixed(1)}% ← {b.targetPct.toFixed(0)}%
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span dir="ltr" className="hidden sm:inline text-[11px] font-bold text-slate-400 tabular-nums">
+                              {fmtCompact(b.actualAmt)}
+                            </span>
+                            {isBalanced ? (
+                              <span className="rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-black">
+                                ✓ متوازن
+                              </span>
+                            ) : isUnderweight ? (
+                              <span dir="ltr" className="rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-black tabular-nums">
+                                +{fmtCompact(diffEgp)} تعزيز
+                              </span>
+                            ) : (
+                              <span dir="ltr" className="rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[10px] font-black tabular-nums">
+                                {fmtCompact(diffEgp)} فائض
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Visual Actual Bar with Target Vertical Marker */}
+                        <div className="relative h-2.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-visible" dir="ltr">
+                          <div
+                            className="h-full rounded-full transition-all duration-700"
+                            style={{ width: `${Math.min(100, Math.max(1.5, b.actualPct))}%`, background: b.color }}
+                          />
+                          <div
+                            title={`الهدف: ${b.targetPct.toFixed(0)}%`}
+                            className="absolute top-[-3px] bottom-[-3px] w-0.5 rounded-full bg-slate-900 dark:bg-white shadow-sm transition-all duration-500"
+                            style={{ left: `${Math.min(99, Math.max(1, b.targetPct))}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="flex h-5 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800" dir="ltr">
-                  {slices.map(s => <div key={s.key} title={`${s.label} ${fmt(s.value)}`} style={{ width: `${(s.value / tot) * 100}%`, background: s.color }} className="h-full transition-all duration-700" />)}
-                </div>
-                <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-bold text-slate-400">
-                  {slices.map(s => <span key={s.key} className="flex items-center gap-1"><i className="w-1.5 h-1.5 rounded-full" style={{ background: s.color }} />{s.label} {((s.value / tot) * 100).toFixed(0)}%</span>)}
+
+                {/* Bottom Quantitative Simulation Strip: Current vs Target Expected Return + Defensive Cushion */}
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <div className="rounded-xl bg-slate-50/90 dark:bg-slate-800/50 px-2.5 py-2 text-center border border-slate-200/60 dark:border-slate-800">
+                    <div className="text-[10px] font-bold text-slate-400">العائد المتوقع الحالي</div>
+                    <div dir="ltr" className="text-sm font-black text-slate-800 dark:text-slate-100 tabular-nums mt-0.5">
+                      {curExpRet.toFixed(1)}%
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-emerald-500/[0.06] px-2.5 py-2 text-center border border-emerald-500/20">
+                    <div className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">بعد إعادة التوازن</div>
+                    <div dir="ltr" className="text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums mt-0.5">
+                      {tgtExpRet.toFixed(1)}%{' '}
+                      {Math.abs(expRetGainEgp) >= 1000 && (
+                        <span className="text-[10px] opacity-85">({fmtSigned(expRetGainEgp)})</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-sky-500/[0.06] px-2.5 py-2 text-center border border-sky-500/20">
+                    <div className="text-[10px] font-bold text-sky-700 dark:text-sky-400">الأصول الدفاعية</div>
+                    <div dir="ltr" className="text-sm font-black text-sky-600 dark:text-sky-400 tabular-nums mt-0.5">
+                      {defensivePct.toFixed(0)}%
+                    </div>
+                  </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      </Card>
+            </Card>
+
+            {/* 2. Compact Portfolio Structure & Concentration Radar (5 cols) */}
+            <Card title="هيكل المحافظ والتركّز" className="lg:col-span-5 flex flex-col justify-between">
+              <div className="space-y-3.5">
+                {/* Compact Portfolio Stacked Bars */}
+                <div className="space-y-3">
+                  {perPortfolioAlloc.map(({ p, slices }) => {
+                    const tot = slices.reduce((a, s) => a + s.value, 0);
+                    return (
+                      <div key={p.id}>
+                        <div className="flex items-center justify-between text-xs font-black mb-1">
+                          <span className="flex items-center gap-1.5">
+                            <i className="w-2 h-2 rounded-full" style={{ background: p.color }} />
+                            {p.name}
+                          </span>
+                          <span dir="ltr" className="text-slate-500 dark:text-slate-400 tabular-nums text-[11px]">{fmt(tot * factor)}</span>
+                        </div>
+                        <div className="flex h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800" dir="ltr">
+                          {slices.map(s => (
+                            <div
+                              key={s.key}
+                              title={`${s.label} ${fmt(s.value * factor)}`}
+                              style={{ width: `${tot > 0 ? (s.value / tot) * 100 : 0}%`, background: s.color }}
+                              className="h-full transition-all duration-700"
+                            />
+                          ))}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-bold text-slate-400">
+                          {slices.map(s => (
+                            <span key={s.key} className="flex items-center gap-1">
+                              <i className="w-1.5 h-1.5 rounded-full" style={{ background: s.color }} />
+                              {s.label} {tot > 0 ? ((s.value / tot) * 100).toFixed(0) : 0}%
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Crisp Quantitative Diagnostic Signals (Zero Fluff) */}
+                <div className="space-y-1.5 pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                  {topPort && topPort.share >= 75 && (
+                    <div className="flex items-center justify-between rounded-xl bg-amber-500/[0.08] border border-amber-500/20 px-2.5 py-1.5 text-[11px] font-black text-amber-700 dark:text-amber-300">
+                      <span className="flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        <span>تركّز مرتفع في {topPort.portfolio.name}</span>
+                      </span>
+                      <b dir="ltr" className="tabular-nums">{topPort.share.toFixed(0)}%</b>
+                    </div>
+                  )}
+
+                  {idleCashPort && (
+                    <div className="flex items-center justify-between rounded-xl bg-sky-500/[0.08] border border-sky-500/20 px-2.5 py-1.5 text-[11px] font-black text-sky-700 dark:text-sky-300">
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                        <span>سيولة خامدة في {idleCashPort.portfolioName}</span>
+                      </span>
+                      <b dir="ltr" className="tabular-nums">{fmtCompact(idleCashPort.cashAmount)} ({idleCashPort.cashPct.toFixed(0)}%)</b>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between rounded-xl bg-gradient-to-l from-amber-500/[0.12] to-yellow-500/[0.04] border border-amber-400/35 px-2.5 py-1.5 text-[11px] font-black text-amber-700 dark:text-amber-300">
+                    <span className="flex items-center gap-1.5">
+                      <GoldBarIcon className="w-4 h-3.5" />
+                      <span>وزن الذهب مقابل الهدف</span>
+                    </span>
+                    <b dir="ltr" className="tabular-nums">
+                      {actualPct.gold.toFixed(1)}% / {tgtPct.gold.toFixed(0)}%
+                    </b>
+                  </div>
+
+                  {balanceScore >= 80 && (
+                    <div className="flex items-center justify-between rounded-xl bg-emerald-500/[0.08] border border-emerald-500/20 px-2.5 py-1.5 text-[11px] font-black text-emerald-700 dark:text-emerald-400">
+                      <span className="flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                        <span>توزيع متوازن ومتوافق مع الخطة</span>
+                      </span>
+                      <b dir="ltr">{balanceScore}%</b>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          </div>
+        );
+      })()}
 
       {/* Table */}
       <Card title="جدول المقارنة" pad={false}>
