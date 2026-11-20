@@ -7,6 +7,8 @@ export interface Transaction {
   price: number;
   shares: number;
   amount: number;
+  grossAmount?: number; // for dividends before tax
+  taxRate?: number;     // dividend tax % (e.g. 5 for EGX)
   linkedBuyId?: string;
   portfolioType?: 'investment' | 'speculation';
   note?: string;
@@ -166,7 +168,8 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
   const realizedEvents: RealizedEvent[] = [];
 
   for (const tx of sortedTxs) {
-    const txCommission = tx.amount * commissionRate;
+    const isTradeTx = tx.type === 'buy' || tx.type === 'sell';
+    const txCommission = isTradeTx ? tx.amount * commissionRate : 0;
     totalCommissionPaid += txCommission;
 
     if (tx.type === 'buy') {
@@ -242,6 +245,10 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
       
       totalSold += tx.shares;
       totalRevenue += tx.amount;
+    } else if (tx.type === 'bonus' && tx.shares > 0) {
+      // أسهم مجانية مباشرة بدون تكلفة (تُضاف كدفعة بتكلفة صفر فتخفض المتوسط والتعادل تلقائياً)
+      openLots.push({ shares: tx.shares, price: 0, amount: 0, txId: tx.id, date: tx.date, pType: tx.portfolioType || 'investment' });
+      totalBought += tx.shares;
     } else if (tx.type === 'split' || tx.type === 'bonus') {
       const multiplier = tx.price > 0 ? tx.price : 1;
       for (const lot of openLots) {
@@ -329,7 +336,7 @@ export function computePositionCycles(transactions: Transaction[] = [], commissi
   
   for (const tx of sorted) {
     currentCycleTxs.push(tx);
-    if (tx.type === 'buy') {
+    if (tx.type === 'buy' || (tx.type === 'bonus' && tx.shares > 0)) {
       currentOpenShares += tx.shares;
       hasBoughtInCycle = true;
     } else if (tx.type === 'sell') {

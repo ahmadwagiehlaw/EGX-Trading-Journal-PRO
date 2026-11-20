@@ -42,6 +42,7 @@ import BatchPriceModal from './BatchPriceModal';
 import EODReviewModal from './EODReviewModal';
 import { useTrades, type TickerPosition } from '../context/TradeContext';
 import { computePositionMetrics, formatEGP, computeDominantPortfolio } from '../utils/calculations';
+import { loadCachedLiveQuotes } from '../utils/egxLivePrices';
 import { getStockBySymbol } from '../data/egxStocks';
 
 // Helper to get sector icon and styling
@@ -570,6 +571,47 @@ export default memo(function TradesJournal({
                       </p>
                     </div>
                   </div>
+
+                  {/* Live Market Price & Unrealized PnL Strip (Active Positions) */}
+                  {metrics.isOpen && (() => {
+                    const u = metrics.netUnrealizedPnL;
+                    const cost = metrics.openShares * metrics.avgEntry;
+                    const uPct = cost > 0 ? (u / cost) * 100 : 0;
+                    const cachedQ = loadCachedLiveQuotes()[pos.symbol.toUpperCase()];
+                    const targetP = (pos.plan as any)?.targetPrice || (pos.plan as any)?.target || 0;
+                    const stopP = metrics.currentStop || 0;
+                    const barPct = targetP > stopP && stopP > 0
+                      ? Math.max(0, Math.min(100, ((metrics.currentPrice - stopP) / (targetP - stopP)) * 100))
+                      : null;
+                    return (
+                      <div className="mb-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 p-2 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-base font-black font-mono-num text-slate-900 dark:text-white" dir="ltr">
+                              {metrics.currentPrice.toFixed(2)}
+                            </span>
+                            <span className="text-[9px] font-bold text-slate-400">EGP</span>
+                            {cachedQ && cachedQ.change !== 0 && (
+                              <span dir="ltr" className={`text-[9px] font-black font-mono-num px-1 py-0.2 rounded ${cachedQ.change > 0 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'}`}>
+                                {cachedQ.change > 0 ? '+' : ''}{cachedQ.change.toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
+                          <span dir="ltr" className={`text-[11px] font-black font-mono-num px-1.5 py-0.5 rounded-lg ${u > 0 ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : u < 0 ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300' : 'text-slate-500'}`}>
+                            {u > 0 ? '+' : ''}{formatEGP(u)} ({u > 0 ? '+' : ''}{uPct.toFixed(1)}%)
+                          </span>
+                        </div>
+                        {barPct !== null && (
+                          <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden" title={`موقع السعر بين الوقف (${stopP.toFixed(2)}) والهدف (${targetP.toFixed(2)})`}>
+                            <div
+                              className={`h-full rounded-full transition-all ${barPct < 20 ? 'bg-rose-500' : barPct > 75 ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                              style={{ width: `${Math.max(4, barPct)}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Free-Ride House Money Badge */}
                   {metrics.isFreeRide && (

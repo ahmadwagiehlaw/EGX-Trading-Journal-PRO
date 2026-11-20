@@ -7,6 +7,7 @@ export interface EgxLiveQuote {
   atr: number;
   rsi: number;
   ema50: number;
+  rvol?: number; // relative volume vs 10d avg
   updatedAt: number;
 }
 
@@ -47,7 +48,7 @@ export async function fetchEgxLiveQuotes(symbols: string[]): Promise<Record<stri
   const tickers = cleanSymbols.map(s => `EGX:${s}`);
   const body = JSON.stringify({
     symbols: { tickers },
-    columns: ['close', 'change', 'high', 'low', 'ATR', 'RSI', 'EMA50'],
+    columns: ['close', 'change', 'high', 'low', 'ATR', 'RSI', 'EMA50', 'relative_volume_10d_calc'],
   });
 
   // text/plain avoids CORS preflight and works directly from browser to TradingView Egypt scanner
@@ -80,6 +81,7 @@ export async function fetchEgxLiveQuotes(symbols: string[]): Promise<Record<stri
       atr: typeof d[4] === 'number' && Number.isFinite(d[4]) ? Number(d[4].toFixed(2)) : 0,
       rsi: typeof d[5] === 'number' && Number.isFinite(d[5]) ? Number(d[5].toFixed(1)) : 0,
       ema50: typeof d[6] === 'number' && Number.isFinite(d[6]) ? Number(d[6].toFixed(2)) : 0,
+      rvol: typeof d[7] === 'number' && Number.isFinite(d[7]) ? Number(d[7].toFixed(2)) : undefined,
       updatedAt: now,
     };
   }

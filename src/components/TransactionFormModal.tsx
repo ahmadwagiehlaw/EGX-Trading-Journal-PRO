@@ -65,6 +65,7 @@ export default function TransactionFormModal({
   const [isRuleBreaker, setIsRuleBreaker] = useState(false);
   const [executionRating, setExecutionRating] = useState<number>(0);
   const [showExtraJournal, setShowExtraJournal] = useState(false);
+  const [taxRateStr, setTaxRateStr] = useState<string>('5');
 
   useEffect(() => {
     if (transactionToEdit) {
@@ -88,6 +89,7 @@ export default function TransactionFormModal({
       }
       setIsRuleBreaker(transactionToEdit.isRuleBreaker || false);
       setExecutionRating(transactionToEdit.executionRating || 0);
+      setTaxRateStr(transactionToEdit.taxRate !== undefined ? String(transactionToEdit.taxRate) : '5');
       if (transactionToEdit.emotion) setEmotion(transactionToEdit.emotion);
       if (transactionToEdit.portfolioType) setPortfolioType(transactionToEdit.portfolioType);
     } else {
@@ -145,12 +147,14 @@ export default function TransactionFormModal({
     e.preventDefault();
     setError(null);
 
-    const price = parseFloat(priceStr);
     const shares = parseInt(sharesStr);
-    const amount = price * shares;
+    const price = type === 'bonus' ? 0 : parseFloat(priceStr);
+    const taxRate = type === 'dividend' ? Math.max(0, Math.min(100, parseFloat(taxRateStr) || 0)) : 0;
+    const grossAmount = type === 'bonus' ? 0 : price * shares;
+    const amount = type === 'dividend' ? +(grossAmount * (1 - taxRate / 100)).toFixed(2) : grossAmount;
 
-    if (isNaN(price) || price <= 0) {
-      setError('يرجى إدخال سعر صحيح أكبر من الصفر.');
+    if (type !== 'bonus' && (isNaN(price) || price <= 0)) {
+      setError(type === 'dividend' ? 'يرجى إدخال قيمة كوبون صحيحة أكبر من الصفر.' : 'يرجى إدخال سعر صحيح أكبر من الصفر.');
       return;
     }
 
@@ -205,6 +209,10 @@ export default function TransactionFormModal({
         price,
         shares,
         amount,
+        ...(type === 'dividend' && {
+          grossAmount: +grossAmount.toFixed(2),
+          taxRate,
+        }),
         note: note.trim(),
         linkedBuyId: linkedBuyId || transactionToEdit?.linkedBuyId || null,
         ...(type === 'buy' && { 
@@ -295,17 +303,17 @@ export default function TransactionFormModal({
 
       <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto max-h-[80vh]">
         <div className="grid grid-cols-4 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-2xl gap-1">
-          <button type="button" onClick={() => { setType('buy'); setError(null); }} className={`py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1 transition-all ${type === 'buy' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
-            <Plus className="w-3.5 h-3.5" /> شراء إضافي
+          <button type="button" onClick={() => { setType('buy'); setError(null); if (!priceStr && position.currentMarketPrice) setPriceStr(position.currentMarketPrice.toString()); }} className={`py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1 transition-all ${type === 'buy' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
+            <Plus className="w-3.5 h-3.5" /> شراء
           </button>
-          <button type="button" onClick={() => { setType('sell'); setError(null); }} className={`py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1 transition-all ${type === 'sell' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
+          <button type="button" onClick={() => { setType('sell'); setError(null); if (!priceStr && position.currentMarketPrice) setPriceStr(position.currentMarketPrice.toString()); }} className={`py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1 transition-all ${type === 'sell' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
             <ArrowDownLeft className="w-3.5 h-3.5" /> بيع جزئي
           </button>
-          <button type="button" onClick={() => { setType('dividend'); setError(null); }} className={`py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1 transition-all ${type === 'dividend' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
-            توزيع نقدي
+          <button type="button" onClick={() => { setType('dividend'); setError(null); setPriceStr(''); if (!sharesStr && currentMetrics.openShares > 0) setSharesStr(currentMetrics.openShares.toString()); }} className={`py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1 transition-all ${type === 'dividend' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
+            كوبون نقدي
           </button>
-          <button type="button" onClick={() => { setType('split'); setError(null); }} className={`py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1 transition-all ${type === 'split' || type === 'bonus' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
-            مجاني/تجزئة
+          <button type="button" onClick={() => { setType('bonus'); setError(null); setPriceStr('0'); setSharesStr(''); }} className={`py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1 transition-all ${type === 'split' || type === 'bonus' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
+            أسهم مجانية
           </button>
         </div>
 
@@ -366,20 +374,111 @@ export default function TransactionFormModal({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5 col-span-2">
-            <label className="text-xs font-black text-slate-500">تاريخ المعاملة</label>
-            <input type="date" required value={dateStr} onChange={e => setDateStr(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 text-center font-bold font-mono-num" />
+        {/* DEDICATED FORM BY TRANSACTION TYPE */}
+        {type === 'dividend' ? (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-slate-500">تاريخ استحقاق / صرف الكوبون</label>
+              <input type="date" required value={dateStr} onChange={e => setDateStr(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 px-4 text-center font-bold font-mono-num" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-black text-slate-500">الأسهم المستحقة للكوبون</label>
+                <input type="number" step="1" required value={sharesStr} onChange={e => setSharesStr(e.target.value)} placeholder={String(currentMetrics.openShares || 1000)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 px-3 text-center font-black font-mono-num" />
+                <span className="text-[10px] font-bold text-slate-400 block">لا يُغيّر عدد أسهمك المفتوحة</span>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-black text-slate-500">قيمة الكوبون للسهم (EGP)</label>
+                <input type="number" step="0.001" required value={priceStr} onChange={e => setPriceStr(e.target.value)} placeholder="مثال: 16" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 px-3 text-center font-black font-mono-num" />
+                <span className="text-[10px] font-bold text-slate-400 block">إجمالي الكوبون قبل الضريبة</span>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black text-slate-500">ضريبة التوزيعات (%)</label>
+                <div className="flex items-center gap-1">
+                  {['0', '5', '10'].map(r => (
+                    <button key={r} type="button" onClick={() => setTaxRateStr(r)} className={`px-2 py-0.5 rounded-lg text-[10px] font-black border transition ${taxRateStr === r ? 'bg-amber-500 text-white border-amber-500' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}>
+                      {r}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <input type="number" step="0.1" min="0" max="100" value={taxRateStr} onChange={e => setTaxRateStr(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-center font-black font-mono-num text-sm" />
+            </div>
+
+            {(() => {
+              const s = parseInt(sharesStr) || 0;
+              const p = parseFloat(priceStr) || 0;
+              const t = Math.max(0, Math.min(100, parseFloat(taxRateStr) || 0));
+              if (s <= 0 || p <= 0) return null;
+              const gross = s * p;
+              const taxAmt = gross * (t / 100);
+              const net = gross - taxAmt;
+              return (
+                <div className="rounded-2xl border border-amber-500/35 bg-amber-500/[0.08] p-3 space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between text-slate-600 dark:text-slate-300 font-bold">
+                    <span>إجمالي الكوبون ({s.toLocaleString()} × {p}):</span>
+                    <span dir="ltr" className="font-mono-num">{formatEGP(gross, 2)} EGP</span>
+                  </div>
+                  <div className="flex items-center justify-between text-rose-600 dark:text-rose-400 font-bold">
+                    <span>خصم الضريبة ({t}%):</span>
+                    <span dir="ltr" className="font-mono-num">-{formatEGP(taxAmt, 2)} EGP</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1.5 border-t border-amber-500/20 font-black text-emerald-700 dark:text-emerald-300 text-sm">
+                    <span>🎁 صافي الربح المُضاف للسهم:</span>
+                    <span dir="ltr" className="font-mono-num">+{formatEGP(net, 2)} EGP</span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-black text-slate-500">عدد الأسهم</label>
-            <input type="number" step="1" required value={sharesStr} onChange={e => setSharesStr(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 text-center font-bold" />
+        ) : type === 'bonus' ? (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-slate-500">تاريخ التوزيع المجاني</label>
+              <input type="date" required value={dateStr} onChange={e => setDateStr(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 px-4 text-center font-bold font-mono-num" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-slate-500">عدد الأسهم المجانية المضافة (بدون تكلفة)</label>
+              <input type="number" step="1" required value={sharesStr} onChange={e => setSharesStr(e.target.value)} placeholder="مثال: 200" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 text-center font-black font-mono-num text-base" autoFocus />
+            </div>
+            {(() => {
+              const add = parseInt(sharesStr) || 0;
+              if (add <= 0) return null;
+              const newTotal = currentMetrics.openShares + add;
+              const oldCost = currentMetrics.openShares * currentMetrics.avgEntry;
+              const newAvg = newTotal > 0 ? oldCost / newTotal : 0;
+              return (
+                <div className="rounded-2xl border border-purple-500/35 bg-purple-500/[0.08] p-3 space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between font-black text-purple-800 dark:text-purple-200">
+                    <span>✦ ستُضاف كدفعة مجانية (سعر 0.00 EGP)</span>
+                    <span dir="ltr" className="font-mono-num">+{add.toLocaleString()} سهم</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1.5 border-t border-purple-500/20 font-bold text-slate-700 dark:text-slate-200">
+                    <span>إجمالي أسهمك الجديد: <b>{newTotal.toLocaleString()} سهم</b></span>
+                    <span>المتوسط الجديد: <b dir="ltr" className="text-emerald-600 dark:text-emerald-400 font-mono-num">{newAvg.toFixed(2)} EGP</b></span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-black text-slate-500">سعر التنفيذ (EGP)</label>
-            <input type="number" step="0.001" required value={priceStr} onChange={e => setPriceStr(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 text-center font-bold" />
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5 col-span-2">
+              <label className="text-xs font-black text-slate-500">تاريخ المعاملة</label>
+              <input type="date" required value={dateStr} onChange={e => setDateStr(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 text-center font-bold font-mono-num" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-slate-500">عدد الأسهم</label>
+              <input type="number" step="1" required value={sharesStr} onChange={e => setSharesStr(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 text-center font-bold" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-slate-500">سعر التنفيذ (EGP)</label>
+              <input type="number" step="0.001" required value={priceStr} onChange={e => setPriceStr(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 text-center font-bold" />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Pre-Sell Simulator Preview (Lowest-Price First Live Impact) */}
         {sellPreview && (

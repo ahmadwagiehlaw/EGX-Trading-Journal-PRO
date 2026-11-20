@@ -32,7 +32,7 @@ import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 import { useTrades } from '../context/TradeContext';
 import { useTheme } from '../context/ThemeContext';
 import { computePositionMetrics, computeOpenLotsLowestPriceFirst, computeStopAnalytics, computePositionCycles, formatEGP, type TrailingStopState } from '../utils/calculations';
-import { fetchEgxLiveQuotes } from '../utils/egxLivePrices';
+import { fetchEgxLiveQuotes, loadCachedLiveQuotes, type EgxLiveQuote } from '../utils/egxLivePrices';
 import TransactionFormModal from './TransactionFormModal';
 
 export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; onClose?: () => void }) {
@@ -61,6 +61,11 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
   const [leftTab, setLeftTab] = useState<'risk' | 'notes'>('risk');
   const [showPlanTools, setShowPlanTools] = useState(false);
   const [syncingSingle, setSyncingSingle] = useState(false);
+  const [quoteTick, setQuoteTick] = useState(0);
+  const liveQuote: EgxLiveQuote | null = useMemo(() => {
+    if (!position?.symbol) return null;
+    return loadCachedLiveQuotes()[position.symbol.toUpperCase()] || null;
+  }, [position?.symbol, quoteTick]);
   const openLots = useMemo(() => (position?.transactions ? computeOpenLotsLowestPriceFirst(position.transactions) : []), [position?.transactions]);
   const [stockNote, setStockNote] = useState('');
   const [isEditingNote, setIsEditingNote] = useState(false);
@@ -525,6 +530,7 @@ if (!position || !metrics) return null;
       const map = await fetchEgxLiveQuotes([position!.symbol]);
       const q = map[position!.symbol.toUpperCase()];
       if (q && q.close > 0) {
+        setQuoteTick(t => t + 1);
         const prevHigh = position!.trailingStop?.highestReached || 0;
         const newHigh = Math.max(prevHigh, q.close);
         const mult = position!.trailingStop?.atrMultiplier || 2;
@@ -570,7 +576,7 @@ if (!position || !metrics) return null;
     let prev = -100;
     let lvl = 0;
     list.forEach(i => {
-      if (i.pct - prev < 18) lvl = Math.min(lvl + 1, 2); else lvl = 0;
+      if (i.pct - prev < 26) lvl = Math.min(lvl + 1, 2); else lvl = 0;
       i.level = lvl;
       prev = i.pct;
     });
@@ -596,10 +602,10 @@ if (!position || !metrics) return null;
 
   return (
     <div className="w-full space-y-6" dir="rtl">
-      <div className={isChartExpanded ? "flex flex-col" : "grid lg:grid-cols-2 gap-6 items-start"}>
+      <div className={isChartExpanded ? "flex flex-col" : "grid lg:grid-cols-2 gap-6 items-stretch"}>
         
         {/* Right Column: Tabbed Open Lots | Transaction Ledger | Live Chart */}
-        <div className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col relative z-10 transition-all duration-300 ${isChartExpanded ? 'h-[82vh]' : ''}`}>
+        <div className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col relative z-10 transition-all duration-300 ${isChartExpanded ? 'h-[82vh]' : 'h-full min-h-[540px]'}`}>
           
           {/* Integrated Top Bar: 3 Crisp Tabs + Expand */}
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80">
@@ -715,7 +721,13 @@ if (!position || !metrics) return null;
                           <td className="py-2.5 px-2 text-[11px] text-slate-500 dark:text-slate-400">{new Date(lot.date).toLocaleDateString('en-GB')}</td>
                           <td className="py-2.5 px-2">
                             <div className="flex items-center justify-center gap-1">
-                              <span className="text-blue-600 dark:text-blue-400 font-black">{lot.price.toFixed(2)}</span>
+                              {lot.price === 0 ? (
+                                <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30">
+                                  مجاني ✦
+                                </span>
+                              ) : (
+                                <span className="text-blue-600 dark:text-blue-400 font-black">{lot.price.toFixed(2)}</span>
+                              )}
                               {isNextToSell && (
                                 <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
                                   التالية
@@ -827,9 +839,13 @@ if (!position || !metrics) return null;
                                 <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-black ${
                                   tx.type === 'buy'
                                     ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
-                                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                    : tx.type === 'sell'
+                                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                      : tx.type === 'dividend'
+                                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                                        : 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
                                 }`}>
-                                  {tx.type === 'buy' ? 'شراء' : 'بيع'}
+                                  {tx.type === 'buy' ? 'شراء' : tx.type === 'sell' ? 'بيع' : tx.type === 'dividend' ? 'كوبون 🎁' : 'مجاني ✦'}
                                 </span>
                               </td>
                               <td className="py-2 px-1.5 font-bold text-slate-600 dark:text-slate-300">
@@ -839,10 +855,10 @@ if (!position || !metrics) return null;
                                 {tx.shares.toLocaleString()}
                               </td>
                               <td className="py-2 px-1.5 font-black text-slate-800 dark:text-white">
-                                {tx.price.toFixed(2)}
+                                {tx.type === 'bonus' ? 'مجاني' : tx.price.toFixed(2)}
                               </td>
                               <td className="py-2 px-1.5">
-                                {tx.type === 'sell' && tx.id ? (
+                                {(tx.type === 'sell' || tx.type === 'dividend') && tx.id ? (
                                   <span className={`font-black ${(metrics!.txPnL?.[tx.id] || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
                                     {(metrics!.txPnL?.[tx.id] || 0) >= 0 ? '+' : ''}{formatEGP(metrics!.txPnL?.[tx.id] || 0)}
                                   </span>
@@ -926,57 +942,55 @@ if (!position || !metrics) return null;
         </div>
 
         {/* Left Column: Hero Price, Executive Summary & Focused Risk Panel */}
-        <div className={`bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-3xl p-5 md:p-6 border border-slate-200 dark:border-slate-800 flex-col space-y-4 shadow-sm ${isChartExpanded ? 'hidden' : 'flex'}`}>
+        <div className={`bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-3xl p-5 md:p-6 border border-slate-200 dark:border-slate-800 flex-col space-y-4 shadow-sm h-full ${isChartExpanded ? 'hidden' : 'flex'}`}>
 
-          {/* HERO HEADER: Ticker + Dominant Live Market Price + Open Position */}
+          {/* HERO HEADER: Ticker + Dominant Live Market Price + Clear Live Sync + Open Position */}
           <div className="flex flex-wrap justify-between items-start gap-3">
             <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight" dir="ltr">{position!.symbol}</h3>
 
                 {/* Dominant Live Market Price Box */}
-                <div className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-950 px-3 py-1.5 shadow-sm">
-                  <div
-                    onClick={() => { setIsEditingMarketPrice(true); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); }}
-                    className="cursor-text flex items-baseline gap-1"
-                    title="اضغط لتعديل سعر السوق يدوياً"
-                  >
-                    {isEditingMarketPrice ? (
-                      <input
-                        type="number" step="any"
-                        value={marketPriceInput}
-                        onChange={(e) => setMarketPriceInput(e.target.value)}
-                        onBlur={handleUpdateMarketPrice}
-                        onKeyDown={e => e.key === 'Enter' && handleUpdateMarketPrice()}
-                        className="w-20 bg-transparent text-xl font-black outline-none text-left font-mono-num"
-                        dir="ltr" autoFocus
-                        placeholder={metrics!.currentPrice.toFixed(2)}
-                      />
-                    ) : (
-                      <span className="text-xl font-black font-mono-num tracking-tight" dir="ltr">
-                        {metrics!.currentPrice.toFixed(2)}
-                      </span>
-                    )}
-                    <span className="text-[10px] font-bold opacity-70">EGP</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleQuickLiveSync}
-                    disabled={syncingSingle}
-                    title="تحديث السعر والمؤشرات لحظياً"
-                    className="p-1 rounded-lg bg-white/15 dark:bg-slate-900/10 hover:bg-white/25 transition disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${syncingSingle ? 'animate-spin' : ''}`} />
-                  </button>
+                <div
+                  onClick={() => { setIsEditingMarketPrice(true); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); }}
+                  className="inline-flex items-baseline gap-1.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-950 px-3 py-1.5 shadow-sm cursor-text"
+                  title="اضغط لتعديل سعر السوق يدوياً"
+                >
+                  {isEditingMarketPrice ? (
+                    <input
+                      type="number" step="any"
+                      value={marketPriceInput}
+                      onChange={(e) => setMarketPriceInput(e.target.value)}
+                      onBlur={handleUpdateMarketPrice}
+                      onKeyDown={e => e.key === 'Enter' && handleUpdateMarketPrice()}
+                      className="w-20 bg-transparent text-xl font-black outline-none text-left font-mono-num"
+                      dir="ltr" autoFocus
+                      placeholder={metrics!.currentPrice.toFixed(2)}
+                    />
+                  ) : (
+                    <span className="text-xl font-black font-mono-num tracking-tight" dir="ltr">
+                      {metrics!.currentPrice.toFixed(2)}
+                    </span>
+                  )}
+                  <span className="text-[10px] font-bold opacity-70">EGP</span>
+                  {liveQuote && Number.isFinite(liveQuote.change) && liveQuote.change !== 0 && (
+                    <span dir="ltr" className={`text-[10px] font-black font-mono-num px-1.5 py-0.5 rounded-md ${liveQuote.change > 0 ? 'bg-emerald-500/25 text-emerald-300 dark:text-emerald-700' : 'bg-rose-500/25 text-rose-300 dark:text-rose-700'}`}>
+                      {liveQuote.change > 0 ? '+' : ''}{liveQuote.change.toFixed(1)}%
+                    </span>
+                  )}
                 </div>
 
-                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black border ${
-                  metrics!.isOpen
-                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                    : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                }`}>
-                  {metrics!.isOpen ? 'مفتوح' : 'مغلق'}
-                </span>
+                {/* Unmistakable Live Sync Button */}
+                <button
+                  type="button"
+                  onClick={handleQuickLiveSync}
+                  disabled={syncingSingle}
+                  title="تحديث السعر والقمة وATR وRSI وEMA50 لحظياً"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 text-[11px] font-black transition disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${syncingSingle ? 'animate-spin' : ''}`} />
+                  <span>{syncingSingle ? 'تحديث...' : 'تحديث ⚡'}</span>
+                </button>
               </div>
             </div>
 
@@ -1110,6 +1124,19 @@ if (!position || !metrics) return null;
                   </span>
                 )}
               </div>
+
+              {liveQuote && liveQuote.ema50 > 0 && (
+                <div className="col-span-3 flex flex-wrap items-center justify-between gap-2 px-1 pt-0.5 text-[10px] font-black">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border ${metrics!.currentPrice >= liveQuote.ema50 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/50'}`}>
+                    {metrics!.currentPrice >= liveQuote.ema50 ? '▲ فوق EMA50' : '▼ تحت EMA50'} ({liveQuote.ema50.toFixed(2)})
+                  </span>
+                  {liveQuote.rvol && liveQuote.rvol > 0 && (
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border font-mono-num ${liveQuote.rvol >= 1.5 ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/50' : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}>
+                      سيولة RVOL: {liveQuote.rvol.toFixed(1)}×
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -1218,8 +1245,8 @@ if (!position || !metrics) return null;
                       {gauge.bottom.map(m => (
                         <div key={m.key} className="absolute flex flex-col items-center" style={{ right: `${m.pct}%`, transform: 'translateX(50%)', top: '100%', marginTop: '10px' }}>
                           <div className={`w-3 h-3 rounded-full border-2 border-white dark:border-slate-900 absolute -top-4 ${m.dot}`} />
-                          <div className={`w-0.5 absolute ${m.dot}`} style={{ height: 12 + m.level * 32, top: -12 }} />
-                          <div className="flex flex-col items-center" style={{ transform: `translateY(${m.level * 32}px)` }}>
+                          <div className={`w-0.5 absolute ${m.dot}`} style={{ height: 12 + m.level * 40, top: -12 }} />
+                          <div className="flex flex-col items-center whitespace-nowrap" style={{ transform: `translateY(${m.level * 40}px)` }}>
                             <span className={`text-[10px] font-black ${m.text}`}>{m.label}</span>
                             <span className="text-xs font-mono-num font-black text-slate-800 dark:text-slate-200">{m.value.toFixed(2)}</span>
                           </div>
@@ -1456,7 +1483,7 @@ if (!position || !metrics) return null;
           )}
 
           {/* COMPACT SINGLE-ROW FOOTER ACTIONS */}
-          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center gap-2">
+          <div className="mt-auto pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center gap-2">
             {metrics!.isOpen && (
               <button
                 onClick={() => setTxModalType('sellAll')}
