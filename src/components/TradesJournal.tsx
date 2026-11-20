@@ -126,7 +126,25 @@ export default memo(function TradesJournal({
   activeTradeIdProp?: string | null;
   onCloseActiveTrade?: () => void;
 }) {
-  const { positions, deletePosition, deleteTransaction, capitalInvestment, capitalSpeculation } = useTrades();
+  const { positions, deletePosition, deleteTransaction, capitalInvestment, capitalSpeculation, syncLiveMarketPrices } = useTrades();
+  const [syncingLive, setSyncingLive] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+
+  const handleLiveSync = async () => {
+    if (syncingLive) return;
+    setSyncingLive(true);
+    setSyncNotice(null);
+    try {
+      const res = await syncLiveMarketPrices();
+      setSyncNotice(`تم تحديث ${res.updated} من ${res.total} سهم + ATR/RSI`);
+      setTimeout(() => setSyncNotice(null), 4000);
+    } catch {
+      setSyncNotice('تعذر الاتصال بالبورصة حالياً');
+      setTimeout(() => setSyncNotice(null), 4000);
+    } finally {
+      setSyncingLive(false);
+    }
+  };
 
   const [viewMode, setViewMode] = useState<'cards' | 'table'>(() => {
     return (localStorage.getItem('egx_trades_view') as 'cards' | 'table') || 'cards';
@@ -435,14 +453,25 @@ export default memo(function TradesJournal({
             <span className="hidden sm:inline">إغلاق الجلسة (60ث)</span>
           </button>
 
+          {/* Free One-Click Live EGX Price + ATR + RSI Sync */}
+          <button
+            onClick={handleLiveSync}
+            disabled={syncingLive}
+            className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-black px-3.5 py-2.5 rounded-2xl border border-emerald-500/30 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1.5 text-xs whitespace-nowrap shadow-xs disabled:opacity-60"
+            title="تحديث الأسعار اللحظية و ATR و RSI والوقف المتحرك مباشرة من البورصة المصرية (مجاني بدون كوتا)"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncingLive ? 'animate-spin' : ''}`} />
+            <span>{syncingLive ? 'جاري التحديث...' : syncNotice ? syncNotice : 'تحديث مباشر ⚡'}</span>
+          </button>
+
           {/* Batch Price Updater Button */}
           <button
             onClick={() => setIsBatchPriceOpen(true)}
-            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-black px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1.5 text-xs whitespace-nowrap shadow-xs"
-            title="تحديث أسعار جميع الأسهم المفتوحة دفعة واحدة"
+            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-black px-3 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1.5 text-xs whitespace-nowrap shadow-xs"
+            title="تعديل الأسعار يدوياً دفعة واحدة"
           >
-            <RefreshCw className="w-3.5 h-3.5 text-blue-500" />
-            <span className="hidden sm:inline">تحديث الأسعار</span>
+            <PenTool className="w-3.5 h-3.5 text-blue-500" />
+            <span className="hidden xl:inline">تعديل يدوي</span>
           </button>
 
           {/* New Trade Button */}

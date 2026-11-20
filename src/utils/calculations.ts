@@ -83,12 +83,48 @@ export interface TickerPosition {
   };
   
   currentMarketPrice?: number;
+  dailyChangePct?: number;
+  lastPriceSyncAt?: number;
   sector?: string;
   coreShares?: number; // Core & Satellite: number of shares designated as long-term Core
+  archivedRounds?: ArchivedRound[]; // الجولات المؤرشفة عند بدء بداية نظيفة للسهم
   entryDate?: number;
   openedDate?: number;
   closedDate?: number;
   pnl?: number;
+}
+
+export interface ArchivedRound {
+  id: string;
+  archivedAt: number;
+  startDate: number;
+  endDate: number;
+  transactions: Transaction[];
+  netRealizedPnL: number;
+  totalBought: number;
+  totalSold: number;
+  note?: string;
+}
+
+/**
+ * ترتيب العمليات زمنياً مع ضمان تنفيذ الشراء قبل البيع في نفس اليوم
+ * لمنع الدورات الوهمية وأخطاء التوقيت الصفري (00:00).
+ */
+export function sortTransactionsChronologically(transactions: Transaction[] = []): Transaction[] {
+  const typePriority = (t: Transaction['type']) => {
+    if (t === 'buy') return 0;
+    if (t === 'split' || t === 'bonus') return 1;
+    if (t === 'sell') return 2;
+    return 3; // dividend
+  };
+  return [...transactions].sort((a, b) => {
+    const dayA = Math.floor(a.date / 86400000);
+    const dayB = Math.floor(b.date / 86400000);
+    if (dayA !== dayB) return dayA - dayB;
+    const pDiff = typePriority(a.type) - typePriority(b.type);
+    if (pDiff !== 0) return pDiff;
+    return a.date - b.date;
+  });
 }
 
 
@@ -114,7 +150,7 @@ export interface RealizedEvent {
 }
 
 export function simulatePositionMetrics(transactions: Transaction[] = [], commissionRate: number = 0.003, symbol: string = '') {
-  const sortedTxs = [...transactions].sort((a, b) => a.date - b.date);
+  const sortedTxs = sortTransactionsChronologically(transactions);
   let openLots: { shares: number; price: number; amount: number; txId: string; date: number; pType: 'investment' | 'speculation' }[] = [];
   
   let totalRealizedPnL = 0;
@@ -125,6 +161,7 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
   let totalRevenue = 0;
   let totalCommissionPaid = 0;
   let totalBuyCost = 0;
+  let unmatchedSellShares = 0;
   const txPnL: Record<string, number> = {};
   const realizedEvents: RealizedEvent[] = [];
 
@@ -177,6 +214,10 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
         if (lot.shares <= 0) {
           openLots.shift();
         }
+      }
+
+      if (sharesToSell > 0) {
+        unmatchedSellShares += sharesToSell;
       }
       
       totalRealizedPnL += txRealizedPnL;
@@ -233,6 +274,9 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
     }
   }
 
+  // ترتيب الدفعات المفتوحة دائماً من الأقل سعراً إلى الأعلى (قاعدة الأقل سعراً يُباع أولاً)
+  openLots.sort((a, b) => (a.price - b.price) || (a.date - b.date));
+
   const currentShares = openLots.reduce((sum, lot) => sum + lot.shares, 0);
   const totalCost = openLots.reduce((sum, lot) => sum + lot.amount + (lot.amount * commissionRate), 0);
   const avgEntry = currentShares > 0 ? openLots.reduce((sum, lot) => sum + lot.amount, 0) / currentShares : 0;
@@ -251,6 +295,7 @@ export function simulatePositionMetrics(transactions: Transaction[] = [], commis
     totalNetRealizedPnL, 
     totalDividends, 
     totalCommissionPaid, 
+    unmatchedSellShares,
     txPnL, 
     openLots,
     realizedEvents
@@ -275,19 +320,21 @@ export interface TradingCycle {
 
 export function computePositionCycles(transactions: Transaction[] = [], commissionRate: number = 0.003, symbol: string = ''): TradingCycle[] {
   if (!transactions || transactions.length === 0) return [];
-  const sorted = [...transactions].sort((a, b) => a.date - b.date);
+  const sorted = sortTransactionsChronologically(transactions);
   
   const cycles: TradingCycle[] = [];
   let currentCycleTxs: Transaction[] = [];
   let currentOpenShares = 0;
+  let hasBoughtInCycle = false;
   
   for (const tx of sorted) {
     currentCycleTxs.push(tx);
     if (tx.type === 'buy') {
       currentOpenShares += tx.shares;
+      hasBoughtInCycle = true;
     } else if (tx.type === 'sell') {
       currentOpenShares = Math.max(0, currentOpenShares - tx.shares);
-      if (currentOpenShares === 0) {
+      if (hasBoughtInCycle && currentOpenShares === 0) {
         // Cycle completed / closed!
         const cycleSim = simulatePositionMetrics(currentCycleTxs, commissionRate, symbol);
         const startDate = currentCycleTxs[0]?.date || tx.date;
@@ -312,6 +359,7 @@ export function computePositionCycles(transactions: Transaction[] = [], commissi
         
         currentCycleTxs = [];
         currentOpenShares = 0;
+        hasBoughtInCycle = false;
       }
     }
   }
@@ -360,13 +408,19 @@ export function computePositionMetrics(position: TickerPosition, commissionRate:
   const isFreeRide = isOpen && netPositionCapitalOutlay <= 0 && sim.openShares > 0;
   const freeRideSecuredGain = isFreeRide ? Math.abs(netPositionCapitalOutlay) : 0;
   const lowestCostOpenLot = sim.openLots.length > 0 ? sim.openLots[0] : null;
+  // نقطة التعادل الحقيقية للأسهم المتبقية بعد خصم الأرباح المحققة من المضاربة على الدفعات
+  const effectiveBreakEven = sim.openShares > 0
+    ? Math.max(0, (sim.totalCost - sim.totalNetRealizedPnL) / sim.openShares)
+    : 0;
 
   return {
     avgEntry: sim.avgEntry,
+    effectiveBreakEven,
     avgExit: sim.avgExit,
     totalBought: sim.totalBought,
     totalSold: sim.totalSold,
     openShares: sim.openShares,
+    unmatchedSellShares: sim.unmatchedSellShares,
     realizedPnL: sim.totalRealizedPnL,
     totalCommission: sim.totalCommissionPaid,
     netRealizedPnL: sim.totalNetRealizedPnL,
@@ -460,35 +514,18 @@ export interface OpenLot {
 }
 
 export function computeOpenLotsLowestPriceFirst(transactions: Transaction[] = []): OpenLot[] {
-  // Extract all buy transactions
-  let buys = transactions
-    .filter(t => t.type === 'buy')
-    .map(t => ({
-      id: t.id,
-      date: t.date,
-      price: t.price,
-      originalShares: t.shares,
-      remainingShares: t.shares
+  const sim = simulatePositionMetrics(transactions);
+  const origById = new Map(transactions.map(t => [t.id, t.shares]));
+  return sim.openLots
+    .filter(l => l.shares > 0)
+    .map(l => ({
+      id: l.txId,
+      date: l.date,
+      price: l.price,
+      originalShares: origById.get(l.txId) ?? l.shares,
+      remainingShares: l.shares,
     }))
-    .sort((a, b) => a.price - b.price); // Lowest price first!
-
-  // Subtract sells
-  const sells = transactions.filter(t => t.type === 'sell');
-  for (const sell of sells) {
-    let sharesToSell = sell.shares;
-    for (const buy of buys) {
-      if (sharesToSell <= 0) break;
-      if (buy.remainingShares > 0) {
-        const deducted = Math.min(buy.remainingShares, sharesToSell);
-        buy.remainingShares -= deducted;
-        sharesToSell -= deducted;
-      }
-    }
-  }
-
-  // Return only remaining lots, sorted by date (or keep lowest price first?)
-  // Let's sort by price ascending so the user sees the cheapest first to sell.
-  return buys.filter(b => b.remainingShares > 0).sort((a, b) => a.price - b.price);
+    .sort((a, b) => (a.price - b.price) || (a.date - b.date));
 }
 
 

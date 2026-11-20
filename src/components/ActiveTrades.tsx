@@ -40,7 +40,9 @@ import TransactionFormModal from './TransactionFormModal';
 
 export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; onClose?: () => void }) {
 
-  const { positions, updateTrailingStop, updatePosition, deletePosition, deleteTransaction, coreStats, capitalInvestment, capitalSpeculation, commissionRate, activeCapital } = useTrades();
+  const { positions, updateTrailingStop, updatePosition, deletePosition, deleteTransaction, archivePositionRound, coreStats, capitalInvestment, capitalSpeculation, commissionRate, activeCapital } = useTrades();
+  const [archivingRound, setArchivingRound] = useState(false);
+  const [showArchivedRounds, setShowArchivedRounds] = useState(false);
   const { theme } = useTheme();
   
   const position = positions.find(p => p.id === tradeId);
@@ -633,17 +635,27 @@ if (!position || !metrics) return null;
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                        {computeOpenLotsLowestPriceFirst(position!.transactions).map(lot => {
+                        {computeOpenLotsLowestPriceFirst(position!.transactions).map((lot, lotIdx) => {
                           const lotValue = lot.remainingShares * metrics!.currentPrice;
                           const lotCost = lot.remainingShares * lot.price;
                           const lotPnL = lotValue - lotCost;
                           const lotPnLPercent = lotCost > 0 ? (lotPnL / lotCost) * 100 : 0;
                           const isWinning = lotPnL > 0;
+                          const isNextToSell = lotIdx === 0;
                           
                           return (
-                            <tr key={lot.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors font-mono-num text-xs font-bold text-slate-700 dark:text-slate-300">
+                            <tr key={lot.id} className={`transition-colors font-mono-num text-xs font-bold text-slate-700 dark:text-slate-300 ${isNextToSell ? 'bg-emerald-500/[0.06] dark:bg-emerald-500/[0.08]' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'}`}>
                               <td className="py-3 px-2">{new Date(lot.date).toLocaleDateString('en-GB')}</td>
-                              <td className="py-3 px-2 text-blue-600 dark:text-blue-400">{lot.price.toFixed(2)}</td>
+                              <td className="py-3 px-2">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <span className="text-blue-600 dark:text-blue-400 font-black">{lot.price.toFixed(2)}</span>
+                                  {isNextToSell && (
+                                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                                      التالية للبيع
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                               <td className="py-3 px-2">{lot.remainingShares.toLocaleString()} سهم</td>
                               <td className={`py-3 px-2 ${isWinning ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
                                 {lotPnL > 0 ? '+' : ''}{lotPnL.toFixed(2)} ({lotPnLPercent.toFixed(1)}%)
@@ -670,13 +682,44 @@ if (!position || !metrics) return null;
                 </div>
               )}
 
+              {/* Data Integrity Warning if sells exceed buys */}
+              {metrics!.unmatchedSellShares > 0 && (
+                <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 flex items-center justify-between gap-3 text-xs font-black text-amber-800 dark:text-amber-200">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
+                    <span>تنبيه دقة: توجد {metrics!.unmatchedSellShares.toLocaleString()} سهم بيع بدون عملية شراء سابقة مسجلة. راجع تواريخ الشراء أو أرشف الجولة لبدء سجل نظيف.</span>
+                  </div>
+                </div>
+              )}
+
               {/* Trading Cycles Log */}
               <div className="space-y-6">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-base font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
                     <Target className="w-5 h-5 text-slate-400" />
                     دورات وجولات التداول (Trading Cycles)
                   </h3>
+                  {position!.transactions.length > 0 && (
+                    <button
+                      type="button"
+                      disabled={archivingRound}
+                      onClick={async () => {
+                        if (window.confirm(`هل تريد أرشفة جميع معاملات ${position!.symbol} الحالية في الأرشيف وبدء جولة جديدة نظيفة؟ (لن تُفقد أرباحك التاريخية)`)) {
+                          setArchivingRound(true);
+                          try {
+                            await archivePositionRound(position!.id);
+                          } finally {
+                            setArchivingRound(false);
+                          }
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[11px] font-black transition disabled:opacity-50"
+                      title="حفظ السجل الحالي كأرشيف مغلق وبدء دورة جديدة على بياض"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>{archivingRound ? 'جاري الأرشفة...' : 'أرشفة وبدء جولة نظيفة'}</span>
+                    </button>
+                  )}
                 </div>
 
                 {cycles.map((cycle) => {
@@ -787,6 +830,39 @@ if (!position || !metrics) return null;
                     </div>
                   );
                 })}
+
+                {/* Archived Historical Rounds (Collapsible) */}
+                {(position!.archivedRounds?.length ?? 0) > 0 && (
+                  <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 p-3 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowArchivedRounds(v => !v)}
+                      className="w-full flex items-center justify-between text-xs font-black text-slate-600 dark:text-slate-300"
+                    >
+                      <span>📦 الجولات المؤرشفة ({position!.archivedRounds!.length})</span>
+                      <span dir="ltr" className="text-[11px] font-mono-num">
+                        صافي الأرشيف:{' '}
+                        <b className={position!.archivedRounds!.reduce((a, r) => a + r.netRealizedPnL, 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}>
+                          {formatEGP(position!.archivedRounds!.reduce((a, r) => a + r.netRealizedPnL, 0))} EGP
+                        </b>
+                      </span>
+                    </button>
+                    {showArchivedRounds && (
+                      <div className="space-y-2 pt-2 border-t border-slate-200/70 dark:border-slate-700/60">
+                        {position!.archivedRounds!.map((ar, idx) => (
+                          <div key={ar.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white dark:bg-slate-900 px-3 py-2 border border-slate-100 dark:border-slate-800 text-[11px] font-bold">
+                            <span className="text-slate-700 dark:text-slate-200">
+                              أرشيف #{position!.archivedRounds!.length - idx} · {new Date(ar.startDate).toLocaleDateString('en-GB')} ← {new Date(ar.endDate).toLocaleDateString('en-GB')} ({ar.transactions.length} عملية)
+                            </span>
+                            <span dir="ltr" className={`font-black font-mono-num ${ar.netRealizedPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}`}>
+                              {ar.netRealizedPnL > 0 ? '+' : ''}{formatEGP(ar.netRealizedPnL)} EGP
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -822,9 +898,19 @@ if (!position || !metrics) return null;
                       {metrics!.isOpen ? 'مركز مفتوح' : 'مغلق'}
                     </span>
                   </div>
-                  <p className="text-slate-500 dark:text-slate-400 font-bold text-sm mt-1">
-                    متوسط سعر الدخول: <span className="text-blue-600 dark:text-blue-400 font-black">{metrics!.avgEntry.toFixed(2)} EGP</span>
-                  </p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-slate-500 dark:text-slate-400 font-bold text-sm mt-1">
+                    <span>
+                      متوسط الدفعات: <span className="text-blue-600 dark:text-blue-400 font-black">{metrics!.avgEntry.toFixed(2)} EGP</span>
+                    </span>
+                    {metrics!.isOpen && metrics!.netRealizedPnL !== 0 && metrics!.effectiveBreakEven > 0 && (
+                      <span
+                        title="نقطة التعادل الحقيقية للأسهم المتبقية بعد خصم الأرباح المحققة من المضاربة على الدفعات"
+                        className="text-xs px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-700 dark:text-amber-300 font-black"
+                      >
+                        التعادل الحقيقي: <b dir="ltr">{metrics!.effectiveBreakEven.toFixed(2)}</b>
+                      </span>
+                    )}
+                  </div>
                   {metrics!.isOpen && analytics && (() => {
                     const days = analytics.daysHeld;
                     const cost = metrics!.openShares * metrics!.avgEntry;

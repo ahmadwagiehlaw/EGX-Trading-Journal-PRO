@@ -7,6 +7,7 @@ import {
   type TickerPosition, 
   type Transaction, 
   type RealizedEvent,
+  type ArchivedRound,
   computePositionMetrics, 
   computeWeightedAvgEntry, 
   computeOpenShares, 
@@ -14,6 +15,7 @@ import {
   computeRealizedPnLByPortfolio,
   computeOpenInvestedCapitalByPortfolio
 } from '../utils/calculations';
+import { fetchEgxLiveQuotes } from '../utils/egxLivePrices';
 
 export type { TickerPosition, Transaction, RealizedEvent };
 
@@ -153,6 +155,10 @@ export interface TradeContextType {
 
   // Trailing Stop
   updateTrailingStop: (id: string, highestPrice: number, newStopLoss: number) => Promise<void>;
+
+  // Archive Round & Live Price Sync
+  archivePositionRound: (id: string, note?: string) => Promise<void>;
+  syncLiveMarketPrices: () => Promise<{ updated: number; total: number }>;
 
   // Legacy aliases for seamless migration
   addTrade: (trade: any) => Promise<any>;
@@ -812,6 +818,87 @@ const deleteWeeklyReview = async (id: string) => {
     });
   };
 
+  // Archive current transactions as a historical round & start fresh on the ticker
+  const archivePositionRound = async (id: string, note?: string) => {
+    const pos = positions.find(p => p.id === id);
+    if (!pos || !pos.transactions?.length) return;
+
+    const m = computePositionMetrics(pos, commissionRate);
+    const dates = pos.transactions.map(t => t.date).filter(Boolean);
+    const round: ArchivedRound = {
+      id: `round_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      archivedAt: Date.now(),
+      startDate: dates.length ? Math.min(...dates) : Date.now(),
+      endDate: dates.length ? Math.max(...dates) : Date.now(),
+      transactions: [...pos.transactions],
+      netRealizedPnL: m.netRealizedPnL,
+      totalBought: m.totalBought,
+      totalSold: m.totalSold,
+      ...(note ? { note } : {}),
+    };
+
+    const nextArchived = [round, ...(pos.archivedRounds || [])];
+    await updateDoc(doc(db, 'trades', id), {
+      archivedRounds: JSON.parse(JSON.stringify(nextArchived)),
+      transactions: [],
+      pnl: 0,
+      coreShares: 0,
+      status: 'active',
+    });
+  };
+
+  // One-click free live EGX price + ATR + RSI + EMA50 + Trailing Stop sync
+  const syncLiveMarketPrices = async (): Promise<{ updated: number; total: number }> => {
+    const activePos = positions.filter(p => p.status === 'active');
+    if (!activePos.length) return { updated: 0, total: 0 };
+
+    const quotes = await fetchEgxLiveQuotes(activePos.map(p => p.symbol));
+    let updated = 0;
+
+    await Promise.all(
+      activePos.map(async pos => {
+        const sym = pos.symbol.trim().toUpperCase().replace(/^EGX:/, '');
+        const q = quotes[sym];
+        if (!q || q.close <= 0) return;
+
+        const m = computePositionMetrics(pos, commissionRate);
+        const payload: Record<string, any> = {
+          currentMarketPrice: q.close,
+          dailyChangePct: q.change,
+          lastPriceSyncAt: q.updatedAt,
+        };
+
+        if (q.atr > 0) payload['plan.atr'] = q.atr;
+        if (q.rsi > 0) payload['plan.rsi'] = q.rsi;
+        if (q.ema50 > 0) payload['plan.ema50'] = q.ema50;
+
+        // Auto-ratchet trailing stop if today's high/close exceeds previous peak
+        const dayPeak = Math.max(q.close, q.high || q.close);
+        const prevPeak = pos.trailingStop?.highestReached || m.avgEntry || 0;
+        if (m.openShares > 0 && dayPeak > prevPeak && prevPeak > 0) {
+          const atr = q.atr > 0 ? q.atr : (pos.trailingStop?.atrAtEntry || pos.plan?.atr || 0);
+          const mult = pos.trailingStop?.atrMultiplier || 2;
+          const calcStop = atr > 0 ? dayPeak - mult * atr : dayPeak * 0.95;
+          const newStop = calcStop > m.currentStop && calcStop < q.close ? Number(calcStop.toFixed(2)) : m.currentStop;
+          payload.trailingStop = {
+            initial: pos.trailingStop?.initial || pos.plan?.stop || m.currentStop,
+            current: newStop,
+            highestReached: dayPeak,
+            atrAtEntry: atr,
+            ...(pos.trailingStop?.atrMultiplier ? { atrMultiplier: pos.trailingStop.atrMultiplier } : {}),
+          };
+          payload.highestPrice = dayPeak;
+          payload.currentStopLoss = newStop;
+        }
+
+        await updateDoc(doc(db, 'trades', pos.id), payload);
+        updated++;
+      })
+    );
+
+    return { updated, total: activePos.length };
+  };
+
   // Close Position completely by selling all remaining shares
   const closePosition = async (
     id: string, 
@@ -1069,6 +1156,8 @@ const deleteWeeklyReview = async (id: string) => {
     updateTransaction,
     deleteTransaction,
     updateTrailingStop,
+    archivePositionRound,
+    syncLiveMarketPrices,
     
     // Ledger
     ledger,
