@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, RefreshCw, CheckCircle2, TrendingUp } from 'lucide-react';
 import { useTrades } from '../context/TradeContext';
 import { computePositionMetrics } from '../utils/calculations';
+import { fetchEgxLiveQuotes } from '../utils/egxLivePrices';
 
 interface BatchPriceModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ export default function BatchPriceModal({ isOpen, onClose }: BatchPriceModalProp
   const { positions, updatePosition, commissionRate } = useTrades();
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [isFetchingLive, setIsFetchingLive] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const activePositions = positions.filter(p => {
@@ -35,6 +37,26 @@ export default function BatchPriceModal({ isOpen, onClose }: BatchPriceModalProp
 
   const handlePriceChange = (posId: string, val: string) => {
     setPrices(prev => ({ ...prev, [posId]: val }));
+  };
+
+  const handleFetchLive = async () => {
+    if (!activePositions.length || isFetchingLive) return;
+    setIsFetchingLive(true);
+    try {
+      const quotes = await fetchEgxLiveQuotes(activePositions.map(p => p.symbol));
+      setPrices(prev => {
+        const next = { ...prev };
+        activePositions.forEach(p => {
+          const q = quotes[p.symbol.trim().toUpperCase().replace(/^EGX:/, '')];
+          if (q && q.close > 0) next[p.id] = q.close.toFixed(2);
+        });
+        return next;
+      });
+    } catch {
+      alert('تعذر جلب الأسعار المباشرة من البورصة حالياً.');
+    } finally {
+      setIsFetchingLive(false);
+    }
   };
 
   const handleSaveAll = async () => {
@@ -102,12 +124,23 @@ export default function BatchPriceModal({ isOpen, onClose }: BatchPriceModalProp
               </p>
             </div>
           </div>
-          <button 
-            onClick={onClose} 
-            className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-xl transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleFetchLive}
+              disabled={isFetchingLive || activePositions.length === 0}
+              className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-black flex items-center gap-1.5 transition disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isFetchingLive ? 'animate-spin' : ''}`} />
+              <span>{isFetchingLive ? 'جاري الجلب...' : 'جلب مباشر ⚡'}</span>
+            </button>
+            <button 
+              onClick={onClose} 
+              className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-xl transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Content Table / Grid */}

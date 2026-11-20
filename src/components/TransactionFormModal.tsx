@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Plus, ArrowDownLeft, X, AlertCircle } from 'lucide-react';
 import { useTrades, type TickerPosition } from '../context/TradeContext';
 import type { Transaction } from '../utils/calculations';
-import { computePositionMetrics, formatEGP } from '../utils/calculations';
+import { computePositionMetrics, simulatePositionMetrics, formatEGP } from '../utils/calculations';
 
 interface TransactionFormModalProps {
   isOpen: boolean;
@@ -100,6 +100,42 @@ export default function TransactionFormModal({
     if (!position) return null;
     return computePositionMetrics(position, 0.003); // Assuming default 0.3% commission for display limits
   }, [position]);
+
+  // معاينة البيع الفورية حسب قاعدة الأقل سعراً يُباع أولاً (Pre-Sell Simulator)
+  const sellPreview = useMemo(() => {
+    if (!position || !currentMetrics || type !== 'sell' || transactionToEdit) return null;
+    const s = parseInt(sharesStr);
+    const p = parseFloat(priceStr);
+    if (!Number.isFinite(s) || s <= 0 || !Number.isFinite(p) || p <= 0 || s > currentMetrics.openShares) return null;
+
+    const previewTx: Transaction = {
+      id: '__preview_sell__',
+      type: 'sell',
+      date: new Date(dateStr).getTime() || Date.now(),
+      price: p,
+      shares: s,
+      amount: s * p,
+      portfolioType,
+    };
+    const afterSim = simulatePositionMetrics([...(position.transactions || []), previewTx], 0.003, position.symbol);
+    const ev = afterSim.realizedEvents.find(e => e.txId === '__preview_sell__');
+    const netPnL = ev?.netPnL ?? 0;
+    const matchedLots = ev?.lotsClosed ?? [];
+    const costClosed = matchedLots.reduce((a, l) => a + l.buyPrice * l.shares, 0);
+    const pnlPct = costClosed > 0 ? (netPnL / costClosed) * 100 : 0;
+    const newBreakEven = afterSim.openShares > 0
+      ? Math.max(0, (afterSim.totalCost - afterSim.totalNetRealizedPnL) / afterSim.openShares)
+      : 0;
+
+    return {
+      netPnL,
+      pnlPct,
+      matchedLots,
+      remainingShares: afterSim.openShares,
+      newAvgEntry: afterSim.avgEntry,
+      newBreakEven,
+    };
+  }, [position, currentMetrics, type, transactionToEdit, sharesStr, priceStr, dateStr, portfolioType]);
 
   if (!isOpen && !inline) return null;
   if (!position || !currentMetrics) return null;
@@ -343,6 +379,42 @@ export default function TransactionFormModal({
             <input type="number" step="0.001" required value={priceStr} onChange={e => setPriceStr(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 text-center font-bold" />
           </div>
         </div>
+
+        {/* Pre-Sell Simulator Preview (Lowest-Price First Live Impact) */}
+        {sellPreview && (
+          <div className={`rounded-2xl border p-3 space-y-2 text-xs ${
+            sellPreview.netPnL >= 0
+              ? 'bg-emerald-500/[0.06] border-emerald-500/30 text-emerald-900 dark:text-emerald-200'
+              : 'bg-rose-500/[0.06] border-rose-500/30 text-rose-900 dark:text-rose-200'
+          }`}>
+            <div className="flex items-center justify-between font-black">
+              <span>⚡ معاينة البيع (الأقل سعراً أولاً)</span>
+              <span dir="ltr" className={`font-mono-num text-sm ${sellPreview.netPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                {sellPreview.netPnL >= 0 ? '+' : ''}{formatEGP(sellPreview.netPnL)} EGP ({sellPreview.pnlPct >= 0 ? '+' : ''}{sellPreview.pnlPct.toFixed(1)}%)
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold opacity-90">
+              <span className="opacity-75">الدفعات المغلقة:</span>
+              {sellPreview.matchedLots.map((l, i) => (
+                <span key={i} dir="ltr" className="rounded-md bg-white/70 dark:bg-slate-900/60 px-1.5 py-0.5 font-mono-num border border-current/15">
+                  {l.shares} × {l.buyPrice.toFixed(2)}
+                </span>
+              ))}
+            </div>
+            <div className="flex items-center justify-between pt-1.5 border-t border-current/10 text-[11px] font-black">
+              {sellPreview.remainingShares > 0 ? (
+                <>
+                  <span>المتبقي: {sellPreview.remainingShares.toLocaleString()} سهم (م. {sellPreview.newAvgEntry.toFixed(2)})</span>
+                  <span className="text-amber-700 dark:text-amber-300">
+                    التعادل الحقيقي الجديد: <b dir="ltr">{sellPreview.newBreakEven.toFixed(2)}</b>
+                  </span>
+                </>
+              ) : (
+                <span>✓ سيتم إغلاق كامل المركز بالكامل</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Breakeven Ratchet Option */}
         {type === 'sell' && currentMetrics && currentMetrics.avgEntry > currentMetrics.currentStop && (

@@ -61,7 +61,7 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
   const [txModalType, setTxModalType] = useState<'buy' | 'sell' | 'sellAll' | 'edit' | null>(null);
   const [editingTx, setEditingTx] = useState<any | null>(null);
   const [rightPaneView, setRightPaneView] = useState<'ledger' | 'chart'>('ledger');
-  const [leftTab, setLeftTab] = useState<'advisor' | 'plan' | 'risk' | 'notes'>('advisor');
+  const [leftTab, setLeftTab] = useState<'advisor' | 'plan' | 'risk' | 'notes'>('risk');
   const [stockNote, setStockNote] = useState('');
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [isChartExpanded, setIsChartExpanded] = useState(false);
