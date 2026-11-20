@@ -8,7 +8,7 @@ import {
   CheckCircle, 
   Target,
   Trash2,
-  RotateCcw, RefreshCw, X, Pencil, Sparkles, Pin, TrendingUp, TrendingDown, Zap, Layers, History, LineChart
+  RotateCcw, RefreshCw, X, Pencil, Sparkles, Pin, TrendingUp, TrendingDown, Zap, Layers, History, LineChart, FlaskConical
 } from 'lucide-react';
 
 // Compact Arabic number format: 371,505 -> ["371.5", "ألف"], 2,400,000 -> ["2.40", "مليون"]
@@ -57,7 +57,11 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
   const [error, setError] = useState<string | null>(null);
   const [txModalType, setTxModalType] = useState<'buy' | 'sell' | 'sellAll' | 'edit' | null>(null);
   const [editingTx, setEditingTx] = useState<any | null>(null);
-  const [rightPaneView, setRightPaneView] = useState<'lots' | 'ledger' | 'chart'>('lots');
+  const [rightPaneView, setRightPaneView] = useState<'lots' | 'ledger' | 'sim' | 'chart'>('lots');
+  const [simMode, setSimMode] = useState<'buy' | 'sell'>('buy');
+  const [simShares, setSimShares] = useState<string>('');
+  const [simPrice, setSimPrice] = useState<string>('');
+  const [simPreset, setSimPreset] = useState<{ shares: string; price: string } | null>(null);
   const [leftTab, setLeftTab] = useState<'risk' | 'notes'>('risk');
   const [showPlanTools, setShowPlanTools] = useState(false);
   const [syncingSingle, setSyncingSingle] = useState(false);
@@ -67,6 +71,77 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
     return loadCachedLiveQuotes()[position.symbol.toUpperCase()] || null;
   }, [position?.symbol, quoteTick]);
   const openLots = useMemo(() => (position?.transactions ? computeOpenLotsLowestPriceFirst(position.transactions) : []), [position?.transactions]);
+
+  // What-If Trade Sandbox Simulation (Zero side-effects on real ledger)
+  const simResult = useMemo(() => {
+    if (!position || !metrics) return null;
+    const qty = parseInt(simShares) || 0;
+    const prc = parseFloat(simPrice) || metrics.currentPrice;
+    if (qty <= 0 || prc <= 0) return null;
+
+    if (simMode === 'buy') {
+      const addedCost = qty * prc;
+      const addedCostWithComm = addedCost * (1 + commissionRate);
+      const newShares = metrics.openShares + qty;
+      const newRawCost = (metrics.openShares * metrics.avgEntry) + addedCost;
+      const newAvg = newShares > 0 ? newRawCost / newShares : prc;
+      const newTotalCost = metrics.openInvested + addedCostWithComm;
+      const newBreakEven = newShares > 0 ? Math.max(0, (newTotalCost - metrics.netRealizedPnL) / newShares) : 0;
+      const newMarketValue = newShares * metrics.currentPrice;
+      const newWeightPct = activeCapital > 0 ? (newMarketValue / activeCapital) * 100 : 0;
+      const stopP = metrics.currentStop;
+      const newStopRisk = stopP > 0 && newAvg > stopP ? (newAvg - stopP) * newShares : 0;
+      return {
+        mode: 'buy' as const,
+        qty,
+        prc,
+        addedCost: addedCostWithComm,
+        newShares,
+        newAvg,
+        avgDelta: newAvg - metrics.avgEntry,
+        newBreakEven,
+        newWeightPct,
+        newStopRisk,
+      };
+    } else {
+      const sellQty = Math.min(qty, metrics.openShares);
+      if (sellQty <= 0) return null;
+      const lots = openLots.map(l => ({ ...l }));
+      let rem = sellQty;
+      let grossCost = 0;
+      const closed: { buyPrice: number; shares: number }[] = [];
+      for (const lot of lots) {
+        if (rem <= 0) break;
+        const take = Math.min(rem, lot.remainingShares);
+        closed.push({ buyPrice: lot.price, shares: take });
+        grossCost += take * lot.price;
+        lot.remainingShares -= take;
+        rem -= take;
+      }
+      const grossRev = sellQty * prc;
+      const buyComm = grossCost * commissionRate;
+      const sellComm = grossRev * commissionRate;
+      const netPnL = (grossRev - sellComm) - (grossCost + buyComm);
+      const pnlPct = grossCost > 0 ? (netPnL / grossCost) * 100 : 0;
+      const remLots = lots.filter(l => l.remainingShares > 0);
+      const remShares = remLots.reduce((a, l) => a + l.remainingShares, 0);
+      const remCost = remLots.reduce((a, l) => a + l.remainingShares * l.price, 0);
+      const newAvg = remShares > 0 ? remCost / remShares : 0;
+      const newNetRealized = metrics.netRealizedPnL + netPnL;
+      const newBreakEven = remShares > 0 ? Math.max(0, (remCost * (1 + commissionRate) - newNetRealized) / remShares) : 0;
+      return {
+        mode: 'sell' as const,
+        qty: sellQty,
+        prc,
+        closed,
+        netPnL,
+        pnlPct,
+        remShares,
+        newAvg,
+        newBreakEven,
+      };
+    }
+  }, [position, metrics, simMode, simShares, simPrice, commissionRate, activeCapital, openLots]);
   const [stockNote, setStockNote] = useState('');
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [isChartExpanded, setIsChartExpanded] = useState(false);
@@ -644,6 +719,21 @@ if (!position || !metrics) return null;
               </button>
               <button
                 type="button"
+                onClick={() => {
+                  setRightPaneView('sim');
+                  if (!simPrice && metrics!.currentPrice > 0) setSimPrice(metrics!.currentPrice.toFixed(2));
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+                  rightPaneView === 'sim'
+                    ? 'bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-300 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <FlaskConical className="w-3.5 h-3.5" />
+                <span>محاكاة</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setRightPaneView('chart')}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
                   rightPaneView === 'chart'
@@ -667,7 +757,7 @@ if (!position || !metrics) return null;
           </div>
 
           {/* Primary Buy / Sell Action Strip (only on Lots / Ledger views) */}
-          {rightPaneView !== 'chart' && (
+          {(rightPaneView === 'lots' || rightPaneView === 'ledger') && (
             <div className="flex items-center gap-2 px-4 pt-3 pb-2 bg-white dark:bg-slate-900">
               <button onClick={() => setTxModalType('buy')} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
                 + {metrics!.isOpen ? 'شراء دفعة' : 'بدء دورة شراء'}
@@ -922,7 +1012,186 @@ if (!position || !metrics) return null;
             </div>
           )}
 
-          {/* TAB 3: LIVE TRADINGVIEW CHART */}
+          {/* TAB 3: WHAT-IF TRADE SANDBOX (NO REAL DATA MODIFIED) */}
+          {rightPaneView === 'sim' && (
+            <div className="flex-1 overflow-y-auto px-4 pb-4 pt-3 space-y-3.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <FlaskConical className="w-4 h-4 text-purple-500" />
+                  <span className="text-xs font-black text-slate-700 dark:text-slate-200">مختبر السيناريو (بدون تسجيل حقيقي)</span>
+                </div>
+                <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setSimMode('buy')}
+                    className={`px-3 py-1 rounded-lg text-[11px] font-black transition ${simMode === 'buy' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500'}`}
+                  >
+                    + شراء افتراضي
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSimMode('sell')}
+                    disabled={!metrics!.isOpen}
+                    className={`px-3 py-1 rounded-lg text-[11px] font-black transition disabled:opacity-40 ${simMode === 'sell' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500'}`}
+                  >
+                    ↙ بيع افتراضي
+                  </button>
+                </div>
+              </div>
+
+              {/* Inputs */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500">عدد الأسهم</label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={simShares}
+                    onChange={e => setSimShares(e.target.value)}
+                    placeholder={simMode === 'sell' && openLots[0] ? String(openLots[0].remainingShares) : '500'}
+                    className="w-full bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-center font-black font-mono-num text-sm"
+                  />
+                  {simMode === 'sell' && metrics!.isOpen && (
+                    <div className="flex items-center gap-1 pt-0.5">
+                      {openLots[0] && (
+                        <button type="button" onClick={() => setSimShares(String(openLots[0].remainingShares))} className="flex-1 text-[9px] font-black py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                          أرخص دفعة
+                        </button>
+                      )}
+                      {[0.25, 0.5, 1].map(r => (
+                        <button key={r} type="button" onClick={() => setSimShares(String(r === 1 ? metrics!.openShares : Math.floor(metrics!.openShares * r)))} className="px-1.5 text-[9px] font-black py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                          {Math.round(r * 100)}%
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500">السعر الافتراضي (EGP)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={simPrice}
+                    onChange={e => setSimPrice(e.target.value)}
+                    placeholder={metrics!.currentPrice.toFixed(2)}
+                    className="w-full bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-center font-black font-mono-num text-sm"
+                  />
+                  <div className="flex items-center gap-1 pt-0.5">
+                    {[-0.05, 0, 0.05, 0.1].map(delta => (
+                      <button
+                        key={delta}
+                        type="button"
+                        onClick={() => setSimPrice((metrics!.currentPrice * (1 + delta)).toFixed(2))}
+                        className="flex-1 text-[9px] font-black py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                        dir="ltr"
+                      >
+                        {delta === 0 ? 'السوق' : `${delta > 0 ? '+' : ''}${Math.round(delta * 100)}%`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Impact Results */}
+              {simResult ? (
+                simResult.mode === 'buy' ? (
+                  <div className="rounded-2xl border border-blue-200 dark:border-blue-800/60 bg-blue-50/60 dark:bg-blue-950/20 p-3.5 space-y-2.5 text-xs">
+                    <div className="flex items-center justify-between font-black text-blue-900 dark:text-blue-200">
+                      <span>التكلفة الإجمالية (شامل العمولة):</span>
+                      <span dir="ltr" className="font-mono-num text-sm">{formatEGP(simResult.addedCost)} EGP</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div className="bg-white/80 dark:bg-slate-900/70 rounded-xl p-2 border border-blue-100 dark:border-blue-900/40">
+                        <span className="text-[10px] font-bold text-slate-500 block">المتوسط الجديد</span>
+                        <span className="text-sm font-black font-mono-num text-blue-700 dark:text-blue-300" dir="ltr">
+                          {simResult.newAvg.toFixed(2)}
+                          <span className={`text-[10px] mr-1 ${simResult.avgDelta <= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            ({simResult.avgDelta > 0 ? '+' : ''}{simResult.avgDelta.toFixed(2)})
+                          </span>
+                        </span>
+                      </div>
+                      <div className="bg-white/80 dark:bg-slate-900/70 rounded-xl p-2 border border-blue-100 dark:border-blue-900/40">
+                        <span className="text-[10px] font-bold text-slate-500 block">التعادل الحقيقي الجديد</span>
+                        <span className="text-sm font-black font-mono-num text-amber-600 dark:text-amber-400" dir="ltr">{simResult.newBreakEven.toFixed(2)}</span>
+                      </div>
+                      <div className="bg-white/80 dark:bg-slate-900/70 rounded-xl p-2 border border-blue-100 dark:border-blue-900/40">
+                        <span className="text-[10px] font-bold text-slate-500 block">وزن السهم الجديد</span>
+                        <span className={`text-sm font-black font-mono-num ${simResult.newWeightPct > 25 ? 'text-rose-600' : 'text-slate-800 dark:text-white'}`} dir="ltr">
+                          {simResult.newWeightPct.toFixed(1)}% {simResult.newWeightPct > 25 ? '⚠️' : ''}
+                        </span>
+                      </div>
+                      <div className="bg-white/80 dark:bg-slate-900/70 rounded-xl p-2 border border-blue-100 dark:border-blue-900/40">
+                        <span className="text-[10px] font-bold text-slate-500 block">الكمية الجديدة</span>
+                        <span className="text-sm font-black font-mono-num text-slate-800 dark:text-white" dir="ltr">{simResult.newShares.toLocaleString()} سهم</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSimPreset({ shares: String(simResult.qty), price: String(simResult.prc) });
+                        setTxModalType('buy');
+                      }}
+                      className="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs transition shadow-sm"
+                    >
+                      تحويل لعملية شراء فعلية ✓
+                    </button>
+                  </div>
+                ) : (
+                  <div className={`rounded-2xl border p-3.5 space-y-2.5 text-xs ${
+                    simResult.netPnL >= 0
+                      ? 'border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/60 dark:bg-emerald-950/20'
+                      : 'border-rose-200 dark:border-rose-800/60 bg-rose-50/60 dark:bg-rose-950/20'
+                  }`}>
+                    <div className="flex items-center justify-between font-black">
+                      <span>صافي ربح البيع (الأقل سعراً أولاً):</span>
+                      <span dir="ltr" className={`font-mono-num text-sm ${simResult.netPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                        {simResult.netPnL >= 0 ? '+' : ''}{formatEGP(simResult.netPnL)} EGP ({simResult.pnlPct >= 0 ? '+' : ''}{simResult.pnlPct.toFixed(1)}%)
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1 text-[10px] font-bold">
+                      <span className="text-slate-500">الدفعات المغلقة:</span>
+                      {simResult.closed.map((c, i) => (
+                        <span key={i} dir="ltr" className="px-1.5 py-0.5 rounded bg-white/80 dark:bg-slate-900/70 border border-current/15 font-mono-num">
+                          {c.shares} × {c.buyPrice.toFixed(2)}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div className="bg-white/80 dark:bg-slate-900/70 rounded-xl p-2 border border-slate-200/70 dark:border-slate-700/60">
+                        <span className="text-[10px] font-bold text-slate-500 block">المتبقي بعد البيع</span>
+                        <span className="text-sm font-black font-mono-num text-slate-800 dark:text-white" dir="ltr">
+                          {simResult.remShares > 0 ? `${simResult.remShares.toLocaleString()} سهم (م. ${simResult.newAvg.toFixed(2)})` : 'إغلاق كامل ✓'}
+                        </span>
+                      </div>
+                      <div className="bg-white/80 dark:bg-slate-900/70 rounded-xl p-2 border border-slate-200/70 dark:border-slate-700/60">
+                        <span className="text-[10px] font-bold text-slate-500 block">التعادل الحقيقي الجديد</span>
+                        <span className="text-sm font-black font-mono-num text-amber-600 dark:text-amber-400" dir="ltr">
+                          {simResult.remShares > 0 ? simResult.newBreakEven.toFixed(2) : '—'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSimPreset({ shares: String(simResult.qty), price: String(simResult.prc) });
+                        setTxModalType('sell');
+                      }}
+                      className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition shadow-sm"
+                    >
+                      تحويل لعملية بيع فعلية ✓
+                    </button>
+                  </div>
+                )
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 py-10 text-center text-xs font-bold text-slate-400">
+                  أدخل عدد الأسهم والسعر لمحاكاة التأثير الفوري على متوسطك وتعادل السهم دون أي تغيير في سجل صفقاتك.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: LIVE TRADINGVIEW CHART */}
           {rightPaneView === 'chart' && (
             <div className={`w-full ${isChartExpanded ? 'flex-1' : 'h-[560px]'}`}>
               <AdvancedRealTimeChart
@@ -1519,10 +1788,11 @@ if (!position || !metrics) return null;
       {/* Partial Transaction Modal */}
       <TransactionFormModal
         isOpen={!!txModalType}
-        onClose={() => { setTxModalType(null); setEditingTx(null); }}
+        onClose={() => { setTxModalType(null); setEditingTx(null); setSimPreset(null); }}
         position={position}
         defaultType={txModalType === 'sellAll' ? 'sell' : txModalType === 'edit' && editingTx ? editingTx.type : (txModalType as 'buy' | 'sell' | undefined) || 'buy'}
-        defaultShares={txModalType === 'sellAll' ? metrics!.openShares.toString() : ''}
+        defaultShares={txModalType === 'sellAll' ? metrics!.openShares.toString() : (simPreset?.shares || '')}
+        defaultPrice={simPreset?.price || ''}
         transactionToEdit={txModalType === 'edit' ? editingTx : null}
       />
     

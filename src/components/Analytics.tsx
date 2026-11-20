@@ -147,22 +147,41 @@ export default function Analytics() {
       revenge: { count: 0, won: 0, pnl: 0 },
     };
 
-    positionsWithRealizedPnL.forEach(p => {
-      const em = p.journal?.emotion || 'neutral';
-      const pnl = computePositionMetrics(p, commissionRate).netRealizedPnL;
-      if (!stats[em]) stats[em] = { count: 0, won: 0, pnl: 0 };
-      stats[em].count += 1;
-      stats[em].pnl += pnl;
-      if (pnl > 0) stats[em].won += 1;
+    // Transaction-level realized sells (true per-execution psychology)
+    let usedTxLevel = false;
+    filteredPositions.forEach(p => {
+      const m = computePositionMetrics(p, commissionRate);
+      const txMap = new Map((p.transactions || []).map(t => [t.id, t]));
+      (m.realizedEvents || []).forEach(ev => {
+        if (ev.type !== 'sell') return;
+        const sellTx = txMap.get(ev.txId);
+        const em = sellTx?.emotion || p.journal?.emotion || 'neutral';
+        usedTxLevel = true;
+        if (!stats[em]) stats[em] = { count: 0, won: 0, pnl: 0 };
+        stats[em].count += 1;
+        stats[em].pnl += ev.netPnL;
+        if (ev.netPnL > 0) stats[em].won += 1;
+      });
     });
+
+    if (!usedTxLevel) {
+      positionsWithRealizedPnL.forEach(p => {
+        const em = p.journal?.emotion || 'neutral';
+        const pnl = computePositionMetrics(p, commissionRate).netRealizedPnL;
+        if (!stats[em]) stats[em] = { count: 0, won: 0, pnl: 0 };
+        stats[em].count += 1;
+        stats[em].pnl += pnl;
+        if (pnl > 0) stats[em].won += 1;
+      });
+    }
 
     const labels: Record<string, string> = {
       confident: 'واثق ومنضبط 😎',
       neutral: 'طبيعي ومحايد 😐',
-      fomo: 'فومو وخوف ضياع الفرصة 😰',
+      fomo: 'تسرع / FOMO 🏃',
       fear: 'خوف وتردد 😨',
-      greed: 'طمع وتأخير جني الربح 🤑',
-      revenge: 'انتقام وتداول عاطفي 😡',
+      greed: 'طمع وجني متسرع 🤑',
+      revenge: 'تداول عاطفي / انتقام 😡',
     };
 
     return Object.keys(stats).map(key => ({
@@ -171,28 +190,104 @@ export default function Analytics() {
       count: stats[key].count,
       pnl: stats[key].pnl,
       winRate: stats[key].count > 0 ? (stats[key].won / stats[key].count) * 100 : 0,
-    })).filter(s => s.count > 0);
-  }, [positionsWithRealizedPnL, commissionRate]);
+    })).filter(s => s.count > 0).sort((a, b) => b.pnl - a.pnl);
+  }, [filteredPositions, positionsWithRealizedPnL, commissionRate]);
 
-  // Quantified Discipline & Emotion Impact Report
+  // Entry & Exit Reason Performance Matrix (Educational Mirror)
+  const reasonStats = useMemo(() => {
+    const entryLabels: Record<string, string> = {
+      support: 'دعم قوي',
+      breakout: 'اختراق',
+      retest: 'إعادة اختبار',
+      indicator: 'مؤشرات فنية',
+      avg_down: 'تعديل متوسط',
+      fomo: 'تسرع / FOMO',
+      tip: 'توصية عشوائية',
+    };
+    const exitLabels: Record<string, string> = {
+      target: 'تحقيق هدف',
+      stop: 'ضرب وقف',
+      trailing: 'وقف متحرك',
+      panic: 'خوف / هلع',
+      greed: 'جني سريع / طمع',
+    };
+    const entries: Record<string, { count: number; won: number; pnl: number }> = {};
+    const exits: Record<string, { count: number; won: number; pnl: number }> = {};
+    let ratedCount = 0;
+    let highRatingPnL = 0;
+    let lowRatingPnL = 0;
+
+    filteredPositions.forEach(p => {
+      const m = computePositionMetrics(p, commissionRate);
+      const txMap = new Map((p.transactions || []).map(t => [t.id, t]));
+      (m.realizedEvents || []).forEach(ev => {
+        if (ev.type !== 'sell') return;
+        const sellTx = txMap.get(ev.txId);
+        if (sellTx?.exitReason) {
+          const k = sellTx.exitReason;
+          if (!exits[k]) exits[k] = { count: 0, won: 0, pnl: 0 };
+          exits[k].count += 1;
+          exits[k].pnl += ev.netPnL;
+          if (ev.netPnL > 0) exits[k].won += 1;
+        }
+        const firstBuyId = ev.lotsClosed?.[0]?.buyTxId;
+        const buyTx = firstBuyId ? txMap.get(firstBuyId) : undefined;
+        if (buyTx?.entryReason) {
+          const k = buyTx.entryReason;
+          if (!entries[k]) entries[k] = { count: 0, won: 0, pnl: 0 };
+          entries[k].count += 1;
+          entries[k].pnl += ev.netPnL;
+          if (ev.netPnL > 0) entries[k].won += 1;
+        }
+        const rating = sellTx?.executionRating || buyTx?.executionRating || 0;
+        if (rating > 0) {
+          ratedCount++;
+          if (rating >= 4) highRatingPnL += ev.netPnL;
+          else lowRatingPnL += ev.netPnL;
+        }
+      });
+    });
+
+    const toArr = (map: Record<string, { count: number; won: number; pnl: number }>, labels: Record<string, string>) =>
+      Object.entries(map)
+        .map(([k, v]) => ({ key: k, label: labels[k] || k, count: v.count, pnl: v.pnl, winRate: v.count > 0 ? (v.won / v.count) * 100 : 0 }))
+        .sort((a, b) => b.pnl - a.pnl);
+
+    return {
+      entries: toArr(entries, entryLabels),
+      exits: toArr(exits, exitLabels),
+      ratedCount,
+      highRatingPnL,
+      lowRatingPnL,
+    };
+  }, [filteredPositions, commissionRate]);
+
+  // Quantified Discipline & Emotion Impact Report (Transaction-level + Position-level)
   const psychologyPnLReport = useMemo(() => {
     let disciplinedPnL = 0;
     let disciplinedCount = 0;
     let emotionalPnL = 0;
     let emotionalCount = 0;
 
-    positionsWithRealizedPnL.forEach(p => {
+    filteredPositions.forEach(p => {
       const metrics = computePositionMetrics(p, commissionRate);
-      const isRuleBreaker = p.journal?.isRuleBreaker;
-      const em = p.journal?.emotion || 'neutral';
-      const isEmotional = isRuleBreaker || em === 'fomo' || em === 'revenge' || em === 'fear';
-
-      if (isEmotional) {
-        emotionalCount++;
-        emotionalPnL += metrics.netRealizedPnL;
-      } else {
-        disciplinedCount++;
-        disciplinedPnL += metrics.netRealizedPnL;
+      const txMap = new Map((p.transactions || []).map(t => [t.id, t]));
+      const sellEvents = (metrics.realizedEvents || []).filter(e => e.type === 'sell');
+      if (sellEvents.length > 0) {
+        sellEvents.forEach(ev => {
+          const sellTx = txMap.get(ev.txId);
+          const buyTx = ev.lotsClosed?.[0]?.buyTxId ? txMap.get(ev.lotsClosed[0].buyTxId) : undefined;
+          const isRuleBreaker = Boolean(sellTx?.isRuleBreaker || buyTx?.isRuleBreaker || p.journal?.isRuleBreaker);
+          const em = sellTx?.emotion || buyTx?.emotion || p.journal?.emotion || 'neutral';
+          const isEmotional = isRuleBreaker || em === 'fomo' || em === 'revenge' || em === 'fear' || em === 'greed';
+          if (isEmotional) {
+            emotionalCount++;
+            emotionalPnL += ev.netPnL;
+          } else {
+            disciplinedCount++;
+            disciplinedPnL += ev.netPnL;
+          }
+        });
       }
     });
 
@@ -208,7 +303,7 @@ export default function Analytics() {
       emotionalCount,
       lostGrowthMultiplier
     };
-  }, [positionsWithRealizedPnL, commissionRate]);
+  }, [filteredPositions, commissionRate]);
 
   // Top Best and Worst Trades
   const bestTrade = useMemo(() => {
@@ -619,6 +714,69 @@ export default function Analytics() {
             </div>
 
           </div>
+
+          {/* Entry & Exit Reason Educational Mirror */}
+          {(reasonStats.entries.length > 0 || reasonStats.exits.length > 0) && (
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+                <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <Target className="w-4 h-4 text-blue-600" />
+                  أرباحك حسب سبب الدخول (ما الذي يكسبك فعلاً؟)
+                </h3>
+                {reasonStats.entries.length === 0 ? (
+                  <p className="text-xs text-slate-400 font-bold py-6 text-center">سجّل سبب الدخول في عملياتك لظهور المقارنة.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {reasonStats.entries.map(item => (
+                      <div key={item.key} className="p-3 bg-slate-50 dark:bg-slate-800/70 rounded-2xl border border-slate-100 dark:border-slate-700/60 space-y-1">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-black text-slate-800 dark:text-white">{item.label} <span className="text-[10px] text-slate-400">({item.count})</span></span>
+                          <span dir="ltr" className={`font-mono-num font-black ${item.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                            {item.pnl > 0 ? '+' : ''}{formatEGP(item.pnl)} ({item.winRate.toFixed(0)}% Win)
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${item.pnl >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} style={{ width: `${Math.max(6, item.winRate)}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+                <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-600" />
+                  نتائجك حسب سبب الخروج وجودة التنفيذ
+                </h3>
+                {reasonStats.exits.length === 0 ? (
+                  <p className="text-xs text-slate-400 font-bold py-6 text-center">سجّل سبب الخروج في عمليات البيع لظهور التحليل.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {reasonStats.exits.map(item => (
+                      <div key={item.key} className="p-3 bg-slate-50 dark:bg-slate-800/70 rounded-2xl border border-slate-100 dark:border-slate-700/60 space-y-1">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-black text-slate-800 dark:text-white">{item.label} <span className="text-[10px] text-slate-400">({item.count})</span></span>
+                          <span dir="ltr" className={`font-mono-num font-black ${item.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                            {item.pnl > 0 ? '+' : ''}{formatEGP(item.pnl)} ({item.winRate.toFixed(0)}% Win)
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${item.pnl >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} style={{ width: `${Math.max(6, item.winRate)}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {reasonStats.ratedCount > 0 && (
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] font-black">
+                    <span className="text-emerald-600 dark:text-emerald-400">تنفيذ 4-5 نجوم: <b dir="ltr">{reasonStats.highRatingPnL >= 0 ? '+' : ''}{formatEGP(reasonStats.highRatingPnL)}</b></span>
+                    <span className="text-rose-600 dark:text-rose-400">تنفيذ 1-3 نجوم: <b dir="ltr">{reasonStats.lowRatingPnL >= 0 ? '+' : ''}{formatEGP(reasonStats.lowRatingPnL)}</b></span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Notebook Lessons Learned Section */}
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm">
