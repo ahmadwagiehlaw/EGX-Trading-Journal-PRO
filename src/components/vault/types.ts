@@ -40,6 +40,11 @@ export interface VaultSettings {
   tags: { deposit: VaultTag[]; withdrawal: VaultTag[] };
   chartDirection?: 'rtl' | 'ltr'; // افتراضياً rtl
   bankRate?: number; // نسبة فائدة البنك المرجعية (افتراضياً 20%)
+  snapFields?: Record<string, AssetKey[]>; // تخصيص الحقول الظاهرة لكل محفظة في نافذة التسجيل
+  targetAlloc?: {
+    preset: 'growth' | 'balanced' | 'defensive' | 'custom';
+    weights: { stocks: number; cash: number; gold: number; fixed: number };
+  };
 }
 
 export interface VaultSnapshot {
@@ -48,6 +53,7 @@ export interface VaultSnapshot {
   date: string; // YYYY-MM-DD
   total: number;
   breakdown?: Breakdown;
+  goldGrams?: number; // وزن الذهب بالجرام (عيار 24 / سبائك) لمتابعة الثروة بالجرام
   note?: string;
   createdAt: number;
 }

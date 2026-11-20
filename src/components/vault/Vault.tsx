@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, BarChart3, CalendarDays, Layers, LineChart, PiggyBank, Plus, ScrollText, Settings2, Landmark, Sparkles } from 'lucide-react';
 import { VaultProvider, useVault } from './VaultContext';
-import { buildSeries, computeStats, partnerSplit } from './calc';
+import { buildSeries, computeStats, partnerSplit, scaleSeries } from './calc';
 import { Hero, MainChart, WealthGrowthDecomposition, KpiGrid } from './OverviewView';
 import { CalendarView } from './CalendarView';
 import { PortfoliosView } from './PortfoliosView';
@@ -40,17 +40,27 @@ function VaultInner() {
   const scopeIds = useMemo(() => (scope === 'all' || !active.some(p => p.id === scope) ? active.map(p => p.id) : [scope]), [scope, active]);
   const scopeP = active.find(p => p.id === scope);
 
-  const base = useMemo(() => buildSeries(snapshots, cashflows, scopeIds), [snapshots, cashflows, scopeIds]);
+  const fullBase = useMemo(() => buildSeries(snapshots, cashflows, active.map(p => p.id)), [snapshots, cashflows, active]);
+  const base = useMemo(
+    () => (scope === 'all' || !active.some(p => p.id === scope) ? fullBase : buildSeries(snapshots, cashflows, scopeIds)),
+    [scope, active, fullBase, snapshots, cashflows, scopeIds]
+  );
 
-  const split = useMemo(() => partnerSplit(base, settings.partner), [base, settings.partner]);
+  const fullSplit = useMemo(() => partnerSplit(fullBase, settings.partner), [fullBase, settings.partner]);
   const partnerOn = settings.partner.enabled;
   const effLens: Lens = partnerOn ? lens : 'total';
-  const pts = effLens === 'total' ? base : effLens === 'partner' ? split.partner : split.mine;
-  const lastNav = base[base.length - 1]?.nav ?? 0;
-  const pShare = lastNav > 0 ? Math.min(1, (split.partner[split.partner.length - 1]?.nav ?? 0) / lastNav) : 0;
+  const fullLastNav = fullBase[fullBase.length - 1]?.nav ?? 0;
+  const pShare = fullLastNav > 0 ? Math.min(1, (fullSplit.partner[fullSplit.partner.length - 1]?.nav ?? 0) / fullLastNav) : 0;
   const factor = effLens === 'total' ? 1 : effLens === 'partner' ? pShare : 1 - pShare;
+  const pts = useMemo(() => {
+    if (effLens === 'total') return base;
+    if (scope === 'all' || !active.some(p => p.id === scope)) {
+      return effLens === 'partner' ? fullSplit.partner : fullSplit.mine;
+    }
+    return scaleSeries(base, factor);
+  }, [effLens, scope, active, base, fullSplit, factor]);
   const stats = useMemo(() => computeStats(pts), [pts]);
-  const baseStats = useMemo(() => computeStats(buildSeries(snapshots, cashflows, active.map(p => p.id))), [snapshots, cashflows, active]);
+  const baseStats = useMemo(() => computeStats(fullBase), [fullBase]);
 
   const lensLabel = effLens === 'total' ? 'إجمالي' : effLens === 'mine' ? 'حصتي' : `حصة ${settings.partner.name}`;
   const hasData = snapshots.length > 0 || cashflows.length > 0;
@@ -214,7 +224,7 @@ function VaultInner() {
                 onFocusPortfolio={pid => setScope(pid)}
                 onOpenSnap={() => setSnapOpen(true)}
               />
-              <KpiGrid stats={stats} pts={pts} />
+              <KpiGrid stats={stats} pts={pts} scopeIds={scopeIds} />
             </div>
           )}
           {tab === 'calendar' && <CalendarView pts={pts} />}

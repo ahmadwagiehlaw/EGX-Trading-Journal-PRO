@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import type { VaultSettings, VaultSnapshot, VaultCashflow, VaultMonthProfit } from './types';
 import { DEFAULT_SETTINGS } from './types';
@@ -41,6 +41,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           partner: { ...DEFAULT_SETTINGS.partner, ...(v.partner ?? {}) },
           tags: { deposit: v.tags?.deposit ?? DEFAULT_SETTINGS.tags.deposit, withdrawal: v.tags?.withdrawal ?? DEFAULT_SETTINGS.tags.withdrawal },
           chartDirection: v.chartDirection ?? 'rtl',
+          bankRate: v.bankRate ?? DEFAULT_SETTINGS.bankRate ?? 20,
+          snapFields: v.snapFields,
+          targetAlloc: v.targetAlloc,
         });
       }
       setReady(r => ({ ...r, s: true }));
@@ -82,25 +85,27 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     },
     renameTag: async (type, from, to) => {
       const nt = { ...settings.tags, [type]: settings.tags[type].map(t => (t.label === from ? { ...t, label: to } : t)) };
-      await setDoc(doc(db, 'vault_settings', 'main'), JSON.parse(JSON.stringify({ ...settings, tags: nt })));
-      for (const c of cashflows.filter(x => x.type === type && x.tag === from)) await setDoc(doc(db, 'vault_cashflow', c.id), { tag: to }, { merge: true });
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'vault_settings', 'main'), JSON.parse(JSON.stringify({ ...settings, tags: nt })));
+      for (const c of cashflows.filter(x => x.type === type && x.tag === from)) {
+        batch.set(doc(db, 'vault_cashflow', c.id), { tag: to }, { merge: true });
+      }
+      await batch.commit();
     },
     saveMonth: async m => {
       await setDoc(doc(db, 'vault_months', m.id), JSON.parse(JSON.stringify({ ...m, updatedAt: Date.now() })));
     },
     deleteMonth: id => deleteDoc(doc(db, 'vault_months', id)),
     resetAllVaultData: async () => {
-      // Delete all snapshots
-      for (const s of snapshots) {
-        await deleteDoc(doc(db, 'vault_snapshots', s.id));
-      }
-      // Delete all cashflows
-      for (const c of cashflows) {
-        await deleteDoc(doc(db, 'vault_cashflow', c.id));
-      }
-      // Delete all months
-      for (const m of months) {
-        await deleteDoc(doc(db, 'vault_months', m.id));
+      const allRefs = [
+        ...snapshots.map(s => doc(db, 'vault_snapshots', s.id)),
+        ...cashflows.map(c => doc(db, 'vault_cashflow', c.id)),
+        ...months.map(m => doc(db, 'vault_months', m.id)),
+      ];
+      for (let i = 0; i < allRefs.length; i += 450) {
+        const batch = writeBatch(db);
+        allRefs.slice(i, i + 450).forEach(ref => batch.delete(ref));
+        await batch.commit();
       }
     },
   }), [ready, settings, snapshots, cashflows, months]);

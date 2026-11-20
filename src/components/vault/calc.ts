@@ -403,6 +403,7 @@ export interface PortfolioCashBreakdown {
   totalNav: number;
   cashAmount: number;
   goldAmount: number;
+  goldGrams: number;
   stocksAmount: number;
   otherAmount: number;
   investedAmount: number;
@@ -416,6 +417,8 @@ export interface CashAmmoSummary {
   totalNav: number;
   totalCash: number;
   totalGold: number;
+  totalGoldGrams: number;
+  impliedGoldGramPrice: number;
   totalInvested: number;
   cashPct: number;
   goldPct: number;
@@ -439,6 +442,7 @@ export function computeCashAmmo(
   let totalNav = 0;
   let totalCash = 0;
   let totalGold = 0;
+  let totalGoldGrams = 0;
 
   for (const p of activePorts) {
     const ps = snaps.filter(s => s.portfolioId === p.id).sort((a, b) => a.date.localeCompare(b.date));
@@ -448,6 +452,7 @@ export function computeCashAmmo(
     const rawNav = (snap ? snap.total : 0) + afterFlow;
     const rawSnapCash = snap?.breakdown?.cash ?? 0;
     const rawSnapGold = snap?.breakdown?.gold ?? 0;
+    const rawSnapGoldGrams = snap?.goldGrams ?? 0;
     const rawSnapOther = (snap?.breakdown?.fixedIncome ?? 0) + (snap?.breakdown?.clouds ?? 0) + (snap?.breakdown?.equityFunds ?? 0);
     // أي إيداع نقدي بعد آخر تقييم لم يتم تحديث تقييمه يُعامل كسيولة نقدية مضافة، وأي سحب يخصم من الكاش أولاً
     const rawCash = Math.max(0, Math.min(rawNav, rawSnapCash + afterFlow));
@@ -458,6 +463,7 @@ export function computeCashAmmo(
     const pNav = Math.round(rawNav * factor);
     const pCash = Math.round(rawCash * factor);
     const pGold = Math.round(rawGold * factor);
+    const pGoldGrams = Math.round(rawSnapGoldGrams * factor * 100) / 100;
     const pOther = Math.round(rawOther * factor);
     const pStocks = Math.round(rawStocks * factor);
     const pInvested = Math.max(0, pNav - pCash - pGold);
@@ -469,6 +475,7 @@ export function computeCashAmmo(
     totalNav += pNav;
     totalCash += pCash;
     totalGold += pGold;
+    totalGoldGrams += pGoldGrams;
 
     byPortfolio.push({
       portfolioId: p.id,
@@ -477,6 +484,7 @@ export function computeCashAmmo(
       totalNav: pNav,
       cashAmount: pCash,
       goldAmount: pGold,
+      goldGrams: pGoldGrams,
       stocksAmount: pStocks,
       otherAmount: pOther,
       investedAmount: pInvested,
@@ -490,6 +498,8 @@ export function computeCashAmmo(
   const totalInvested = Math.max(0, totalNav - totalCash - totalGold);
   const cashPct = totalNav > 0 ? (totalCash / totalNav) * 100 : 0;
   const goldPct = totalNav > 0 ? (totalGold / totalNav) * 100 : 0;
+  const roundedGrams = Math.round(totalGoldGrams * 100) / 100;
+  const impliedGoldGramPrice = roundedGrams > 0 ? Math.round(totalGold / roundedGrams) : 0;
 
   let posture: CashAmmoSummary['posture'] = 'optimal';
   let postureLabel = 'منطقة القنص المثالية 🎯';
@@ -520,6 +530,8 @@ export function computeCashAmmo(
     totalNav,
     totalCash,
     totalGold,
+    totalGoldGrams: roundedGrams,
+    impliedGoldGramPrice,
     totalInvested,
     cashPct,
     goldPct,
@@ -566,6 +578,7 @@ export interface AssetHistoryPoint {
   cash: number;
   gold: number;
   goldPct: number;
+  goldGrams: number;
   fixedIncome: number;
   clouds: number;
   equityFunds: number;
@@ -586,6 +599,7 @@ export function buildAssetHistory(
     let stocks = 0;
     let cash = 0;
     let gold = 0;
+    let goldGrams = 0;
     let fixedIncome = 0;
     let clouds = 0;
     let equityFunds = 0;
@@ -595,6 +609,7 @@ export function buildAssetHistory(
       for (const s of S) if (s.portfolioId === p && s.date <= d) snap = s;
       if (!snap) continue;
       total += snap.total;
+      goldGrams += snap.goldGrams ?? 0;
       const bd = snap.breakdown;
       if (bd && Object.keys(bd).length > 0) {
         const c = bd.cash ?? 0;
@@ -623,6 +638,7 @@ export function buildAssetHistory(
       cash: cash * factor,
       gold: scGold,
       goldPct: scTotal > 0 ? (scGold / scTotal) * 100 : 0,
+      goldGrams: Math.round(goldGrams * factor * 100) / 100,
       fixedIncome: fixedIncome * factor,
       clouds: clouds * factor,
       equityFunds: equityFunds * factor,

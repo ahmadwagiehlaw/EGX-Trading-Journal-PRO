@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Bar, CartesianGrid, Cell, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, CartesianGrid, Cell, ComposedChart, LabelList, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, ChartTip, Empty, Segmented, cx } from './ui';
 import type { Point, PeriodRet } from './calc';
@@ -102,22 +102,73 @@ export function CalendarView({ pts }: { pts: Point[] }) {
       </Card>
 
       <Card title="العائد الشهري والتراكمي">
-        <div dir="ltr" className="h-64 -mx-2">
+        {(() => {
+          const winCount = months.filter(m => m.gain >= 0).length;
+          const winPct = months.length ? Math.round((winCount / months.length) * 100) : 0;
+          const bestM = [...months].sort((a, b) => b.pct - a.pct)[0];
+          const worstM = [...months].sort((a, b) => a.pct - b.pct)[0];
+          const lastCum = chartData[chartData.length - 1]?.cum ?? 0;
+          return (
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2.5 border-b border-slate-200/60 dark:border-white/[0.06] text-[11px] font-bold text-slate-500 dark:text-slate-400">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="flex items-center gap-1.5">
+                  <span>التراكمي:</span>
+                  <b dir="ltr" className={cx('font-black tabular-nums', lastCum >= 0 ? 'text-indigo-500' : 'text-rose-500')}>
+                    {fmtPct(lastCum, 1)}
+                  </b>
+                </span>
+                <span className="text-slate-300 dark:text-slate-700">|</span>
+                <span className="flex items-center gap-1.5">
+                  <span>شهور رابحة:</span>
+                  <b className="font-black text-emerald-500 tabular-nums">{winCount}/{months.length} ({winPct}%)</b>
+                </span>
+                {bestM && (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <span>الأفضل: <b dir="ltr" className="font-black text-emerald-500 tabular-nums">{fmtPct(bestM.pct, 1)}</b></span>
+                  </>
+                )}
+                {worstM && worstM.pct < 0 && (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <span>الأضعف: <b dir="ltr" className="font-black text-rose-500 tabular-nums">{fmtPct(worstM.pct, 1)}</b></span>
+                  </>
+                )}
+              </div>
+              <div className="flex items-center gap-3 text-[10px] font-bold">
+                <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-sm bg-emerald-500" />شهري (يمين)</span>
+                <span className="flex items-center gap-1 text-indigo-500"><i className="w-3 h-0.5 bg-indigo-500" />تراكمي (يسار)</span>
+              </div>
+            </div>
+          );
+        })()}
+        <div dir="ltr" className="h-72 -mx-2">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <ComposedChart data={chartData} margin={{ top: 18, right: 8, left: 0, bottom: 8 }}>
               <CartesianGrid stroke="currentColor" strokeOpacity={0.07} vertical={false} />
-              <XAxis dataKey="key" tickFormatter={(k: string) => MONTHS_EN[+k.slice(5, 7) - 1]} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <YAxis orientation="right" tickFormatter={(v: number) => `${v.toFixed(0)}%`} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={40} />
-              <ReferenceLine y={0} stroke="#94a3b8" strokeOpacity={0.5} />
+              <XAxis dataKey="key" tickFormatter={(k: string) => `${MONTHS_EN[+k.slice(5, 7) - 1]} ${k.slice(2, 4)}`} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="monthly" orientation="right" tickFormatter={(v: number) => `${v.toFixed(0)}%`} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={42} />
+              <YAxis yAxisId="cum" orientation="left" tickFormatter={(v: number) => `${v.toFixed(0)}%`} tick={{ fontSize: 10, fill: '#818cf8' }} axisLine={false} tickLine={false} width={42} />
+              <ReferenceLine yAxisId="monthly" y={0} stroke="#94a3b8" strokeOpacity={0.45} strokeDasharray="3 3" />
               <Tooltip cursor={{ fill: 'rgba(148,163,184,0.1)' }} content={<ChartTip labelFmt={monthLabel} rows={p => [
                 { name: 'عائد الشهر', value: fmtPct(+p.pct), color: +p.pct >= 0 ? '#34d399' : '#fb7185' },
                 { name: 'الربح', value: fmtSigned(+p.gain), color: '#fbbf24' },
                 { name: 'التراكمي', value: fmtPct(+p.cum), color: '#818cf8' },
               ]} />} />
-              <Bar dataKey="pct" radius={[6, 6, 0, 0]} maxBarSize={36}>
+              <Bar yAxisId="monthly" dataKey="pct" radius={[6, 6, 0, 0]} maxBarSize={34}>
                 {chartData.map(d => <Cell key={d.key} fill={d.pct >= 0 ? '#10b981' : '#f43f5e'} />)}
+                <LabelList
+                  dataKey="pct"
+                  position="top"
+                  formatter={(v: any) => {
+                    const n = Number(v);
+                    if (!Number.isFinite(n) || Math.abs(n) < 0.4) return '';
+                    return `${n > 0 ? '+' : ''}${n.toFixed(1)}%`;
+                  }}
+                  style={{ fontSize: 9, fontWeight: 800, fill: '#94a3b8' }}
+                />
               </Bar>
-              <Line type="monotone" dataKey="cum" stroke="#818cf8" strokeWidth={2.5} dot={{ r: 3 }} />
+              <Line yAxisId="cum" type="monotone" dataKey="cum" stroke="#818cf8" strokeWidth={2.6} dot={{ r: 3, fill: '#818cf8', stroke: '#ffffff', strokeWidth: 1.2 }} activeDot={{ r: 5.5 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>

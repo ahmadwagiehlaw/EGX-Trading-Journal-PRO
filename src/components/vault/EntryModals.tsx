@@ -108,7 +108,7 @@ function PortfolioPills({ value, onChange }: { value: string; onChange: (id: str
 
 /* ───────── Snapshot (market value) ───────── */
 export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { open: boolean; onClose: () => void; initialPortfolio?: string; editDate?: string }) {
-  const { settings, snapshots, saveSnapshot, deleteSnapshot } = useVault();
+  const { settings, snapshots, saveSnapshot, deleteSnapshot, saveSettings } = useVault();
   const active = useMemo(() => settings.portfolios.filter(p => p.active), [settings.portfolios]);
   const latestDbSnapDate = useMemo(() => {
     if (!snapshots.length) return undefined;
@@ -118,11 +118,19 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
   const [date, setDate] = useState(() => editDate || getLastDate('snapshot', latestDbSnapDate));
   const [totals, setTotals] = useState<Record<string, string>>({});
   const [portfolioBreakdowns, setPortfolioBreakdowns] = useState<Record<string, Record<string, string>>>({});
-  const [visibleFieldsMap, setVisibleFieldsMap] = useState<Record<string, AssetKey[]>>(() => loadVisibleFieldsMap());
+  const [goldGramsMap, setGoldGramsMap] = useState<Record<string, string>>({});
+  const [visibleFieldsMap, setVisibleFieldsMap] = useState<Record<string, AssetKey[]>>(() => settings.snapFields ?? loadVisibleFieldsMap());
   const [customizingPid, setCustomizingPid] = useState<string | null>(null);
   const [totalManuallySet, setTotalManuallySet] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (settings.snapFields && Object.keys(settings.snapFields).length > 0) {
+      setVisibleFieldsMap(settings.snapFields);
+      saveVisibleFieldsMap(settings.snapFields);
+    }
+  }, [settings.snapFields]);
 
   useEffect(() => {
     if (open && !editDate) {
@@ -156,6 +164,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
       }
       const updated = { ...prev, [pid]: next };
       saveVisibleFieldsMap(updated);
+      saveSettings({ ...settings, snapFields: updated }).catch(() => {});
       return updated;
     });
   };
@@ -165,11 +174,13 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
     if (!open) return;
     const t: Record<string, string> = {};
     const bds: Record<string, Record<string, string>> = {};
+    const grams: Record<string, string> = {};
 
     active.forEach(p => {
       const e = snapshots.find(s => s.portfolioId === p.id && s.date === date);
       if (e) {
         t[p.id] = String(e.total);
+        if (e.goldGrams) grams[p.id] = String(e.goldGrams);
         if (e.breakdown && Object.keys(e.breakdown).length > 0) {
           const bdMap: Record<string, string> = {};
           ASSET_KEYS.forEach(k => {
@@ -187,6 +198,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
 
     setTotals(t);
     setPortfolioBreakdowns(bds);
+    setGoldGramsMap(grams);
     setTotalManuallySet({});
     setCustomizingPid(null);
     setSuccessMsg(null);
@@ -253,6 +265,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
     const l = latest(pid);
     if (!l) return;
     setTotals(prev => ({ ...prev, [pid]: String(l.total) }));
+    if (l.goldGrams) setGoldGramsMap(prev => ({ ...prev, [pid]: String(l.goldGrams) }));
     if (l.breakdown && Object.keys(l.breakdown).length > 0) {
       const bdMap: Record<string, string> = {};
       ASSET_KEYS.forEach(k => {
@@ -267,10 +280,12 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
   const fillAllLatest = () => {
     const t: Record<string, string> = { ...totals };
     const bds: Record<string, Record<string, string>> = { ...portfolioBreakdowns };
+    const grams: Record<string, string> = { ...goldGramsMap };
     active.forEach(p => {
       const l = latest(p.id);
       if (l) {
         t[p.id] = String(l.total);
+        if (l.goldGrams) grams[p.id] = String(l.goldGrams);
         if (l.breakdown && Object.keys(l.breakdown).length > 0) {
           const bdMap: Record<string, string> = {};
           ASSET_KEYS.forEach(k => {
@@ -284,6 +299,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
     });
     setTotals(t);
     setPortfolioBreakdowns(bds);
+    setGoldGramsMap(grams);
   };
 
   const warnings = useMemo(() => {
@@ -334,11 +350,13 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
           bd = { stocks: val };
         }
 
+        const gGrams = num(goldGramsMap[p.id] ?? '');
         await saveSnapshot({
           portfolioId: p.id,
           date,
           total: val,
           breakdown: bd,
+          ...(gGrams > 0 ? { goldGrams: gGrams } : {}),
           note: prev?.note,
         });
       }
@@ -356,6 +374,7 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
   const grandTotal = useMemo(() => active.reduce((sum, p) => sum + num(totals[p.id] ?? ''), 0), [active, totals]);
   const totalCashEntered = useMemo(() => active.reduce((sum, p) => sum + num(portfolioBreakdowns[p.id]?.cash ?? ''), 0), [active, portfolioBreakdowns]);
   const totalGoldEntered = useMemo(() => active.reduce((sum, p) => sum + num(portfolioBreakdowns[p.id]?.gold ?? ''), 0), [active, portfolioBreakdowns]);
+  const totalGoldGramsEntered = useMemo(() => active.reduce((sum, p) => sum + num(goldGramsMap[p.id] ?? ''), 0), [active, goldGramsMap]);
   const canSave = Object.values(totals).some(v => v !== '');
 
   return (
@@ -420,10 +439,11 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
               )}
               {totalGoldEntered > 0 && (
                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-l from-amber-500/25 to-yellow-500/15 border border-amber-400/40 px-2 py-0.5 text-amber-300">
-                  <GoldBarIcon className="w-3.5 h-3.5" />
+                  <GoldBarIcon className="w-4 h-3.5" />
                   <span>الذهب</span>
                   <b dir="ltr" className="tabular-nums text-amber-200">
                     {fmt(totalGoldEntered)} ({((totalGoldEntered / grandTotal) * 100).toFixed(1)}%)
+                    {totalGoldGramsEntered > 0 ? ` · ${totalGoldGramsEntered.toFixed(2).replace(/\.00$/, '')} جم` : ''}
                   </b>
                 </span>
               )}
@@ -559,6 +579,20 @@ export function SnapshotModal({ open, onClose, initialPortfolio, editDate }: { o
                             k === 'gold' && 'focus:!border-amber-400'
                           )}
                         />
+                        {k === 'gold' && (
+                          <div className="flex items-center gap-1 pt-0.5">
+                            <input
+                              inputMode="decimal"
+                              dir="ltr"
+                              value={goldGramsMap[p.id] ?? ''}
+                              onChange={e => setGoldGramsMap(prev => ({ ...prev, [p.id]: e.target.value }))}
+                              placeholder="جرام"
+                              title="عدد جرامات الذهب (اختياري)"
+                              className="w-full rounded-lg border border-amber-400/35 bg-amber-500/[0.06] px-1.5 py-0.5 text-[10px] font-black text-amber-700 dark:text-amber-300 text-left tabular-nums focus:outline-none focus:border-amber-400"
+                            />
+                            <span className="text-[9px] font-black text-amber-600/80 dark:text-amber-300/80 shrink-0">جم</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -709,21 +743,36 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
         : (label || (isDep ? 'إيداع' : 'سحب'));
       const isPartner = party === 'partner';
 
-      // إذا كانت الحركة تخص زيادة أو تخفيض رأس المال، نقوم بتحديث رأس المال المرجعي المحفوظ للشريك أو المستخدم
-      let nextPartnerSettings = settings.partner;
-      if (!isDiv && label === 'زيادة رأس المال') {
-        if (isPartner) {
-          nextPartnerSettings = { ...settings.partner, partnerCapital: currentPartnerCap + numAmount };
-        } else {
-          nextPartnerSettings = { ...settings.partner, myCapital: currentMyCap + numAmount };
-        }
-      } else if (!isDiv && label === 'تخفيض رأس المال') {
-        if (isPartner) {
-          nextPartnerSettings = { ...settings.partner, partnerCapital: Math.max(0, currentPartnerCap - numAmount) };
-        } else {
-          nextPartnerSettings = { ...settings.partner, myCapital: Math.max(0, currentMyCap - numAmount) };
+      // عكس أثر الحركة القديمة أولاً عند التعديل لمنع الازدواجية، ثم تطبيق أثر الحركة الجديدة
+      let adjPartnerCap = currentPartnerCap;
+      let adjMyCap = currentMyCap;
+      let capChanged = false;
+
+      if (editing && editing.type !== 'dividend') {
+        if (editing.tag === 'زيادة رأس المال') {
+          if (editing.partner) adjPartnerCap = Math.max(0, adjPartnerCap - editing.amount);
+          else adjMyCap = Math.max(0, adjMyCap - editing.amount);
+          capChanged = true;
+        } else if (editing.tag === 'تخفيض رأس المال') {
+          if (editing.partner) adjPartnerCap += editing.amount;
+          else adjMyCap += editing.amount;
+          capChanged = true;
         }
       }
+
+      if (!isDiv && label === 'زيادة رأس المال') {
+        if (isPartner) adjPartnerCap += numAmount;
+        else adjMyCap += numAmount;
+        capChanged = true;
+      } else if (!isDiv && label === 'تخفيض رأس المال') {
+        if (isPartner) adjPartnerCap = Math.max(0, adjPartnerCap - numAmount);
+        else adjMyCap = Math.max(0, adjMyCap - numAmount);
+        capChanged = true;
+      }
+
+      const nextPartnerSettings = capChanged
+        ? { ...settings.partner, partnerCapital: adjPartnerCap, myCapital: adjMyCap }
+        : settings.partner;
 
       if (nextPartnerSettings !== settings.partner || nextTags !== settings.tags) {
         await saveSettings({
@@ -940,6 +989,18 @@ export function CashflowModal({ open, onClose, initialType = 'deposit', editing 
                 if (window.confirm('هل تريد حذف هذه الحركة بالتأكيد؟')) {
                   setBusy(true);
                   try {
+                    if (editing.type !== 'dividend' && (editing.tag === 'زيادة رأس المال' || editing.tag === 'تخفيض رأس المال')) {
+                      let nextP = currentPartnerCap;
+                      let nextM = currentMyCap;
+                      if (editing.tag === 'زيادة رأس المال') {
+                        if (editing.partner) nextP = Math.max(0, nextP - editing.amount);
+                        else nextM = Math.max(0, nextM - editing.amount);
+                      } else {
+                        if (editing.partner) nextP += editing.amount;
+                        else nextM += editing.amount;
+                      }
+                      await saveSettings({ ...settings, partner: { ...settings.partner, partnerCapital: nextP, myCapital: nextM } });
+                    }
                     await deleteCashflow(editing.id);
                     onClose();
                   } finally {

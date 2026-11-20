@@ -282,17 +282,24 @@ export function Hero({ pts, stats, scopeLabel, lensLabel, scopeIds, factor }: { 
                   {/* 2. Gold Reserve Card (Long-term Metallic Gold Highlight — shown when Gold > 0) */}
                   {heroCash.totalGold > 0 && (
                     <div
-                      title={`الذهب: ${fmt(heroCash.totalGold)} ج.م (${heroCash.goldPct.toFixed(1)}% من المحفظة)`}
+                      title={`الذهب: ${fmt(heroCash.totalGold)} ج.م (${heroCash.goldPct.toFixed(1)}%)${heroCash.totalGoldGrams > 0 ? ` · ${heroCash.totalGoldGrams} جم` : ''}`}
                       className="group relative shrink-0 overflow-hidden rounded-2xl border border-amber-400/35 bg-gradient-to-r from-amber-500/[0.16] via-yellow-400/[0.08] to-amber-500/[0.12] px-3.5 py-2 backdrop-blur-md shadow-lg shadow-amber-500/10 w-[220px]"
                     >
-                      <div className="flex items-center justify-between gap-2.5">
-                        <div className="flex items-center gap-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
                           <div className="flex h-8 w-8 items-center justify-center rounded-full shrink-0 bg-gradient-to-br from-amber-300/30 via-yellow-400/25 to-amber-500/20 border border-amber-300/30 shadow-md">
-                            <GoldBarIcon className="w-5 h-5" />
+                            <GoldBarIcon className="w-5 h-4" />
                           </div>
-                          <span className="text-lg sm:text-xl font-black tabular-nums tracking-tight bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-100 bg-clip-text text-transparent">
-                            {fmt(heroCash.totalGold)}
-                          </span>
+                          <div className="leading-tight">
+                            <span className="text-lg sm:text-xl font-black tabular-nums tracking-tight bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-100 bg-clip-text text-transparent block">
+                              {fmt(heroCash.totalGold)}
+                            </span>
+                            {heroCash.totalGoldGrams > 0 && (
+                              <span className="text-[9px] font-black text-amber-300/90 tabular-nums">
+                                {heroCash.totalGoldGrams}g
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <span className="text-[10px] font-black rounded-full px-2 py-0.5 bg-amber-400/20 text-amber-200 border border-amber-300/35">
                           {heroCash.goldPct.toFixed(1)}%
@@ -1928,7 +1935,11 @@ export function WealthGrowthDecomposition({
                 <div dir="ltr" className="text-base sm:text-lg font-black tabular-nums text-amber-900 dark:text-amber-100 leading-tight">
                   {fmt(cashAmmo.totalGold)} <span className="text-[9px] font-bold text-amber-600/70 dark:text-amber-300/70">ج.م</span>
                 </div>
-                {onOpenSnap && (
+                {cashAmmo.totalGoldGrams > 0 ? (
+                  <span dir="ltr" className="text-[10px] font-black text-amber-700 dark:text-amber-300 tabular-nums">
+                    {cashAmmo.totalGoldGrams} جم
+                  </span>
+                ) : onOpenSnap && (
                   <button
                     type="button"
                     onClick={onOpenSnap}
@@ -2190,7 +2201,7 @@ export function WealthGrowthDecomposition({
   );
 }
 
-export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
+export function KpiGrid({ stats, pts, scopeIds }: { stats: Stats; pts?: Point[]; scopeIds?: string[] }) {
   const { settings, cashflows } = useVault();
   const s = stats;
 
@@ -2227,8 +2238,9 @@ export function KpiGrid({ stats, pts }: { stats: Stats; pts?: Point[] }) {
   }, [s.vol, s.avgMonth]);
 
   const withdrawn = useMemo(() => {
-    return computeWithdrawnProfits(cashflows, s.profit);
-  }, [cashflows, s.profit]);
+    const scopedFlows = scopeIds && scopeIds.length ? cashflows.filter(f => scopeIds.includes(f.portfolioId)) : cashflows;
+    return computeWithdrawnProfits(scopedFlows, s.profit);
+  }, [cashflows, scopeIds, s.profit]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

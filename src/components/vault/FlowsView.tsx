@@ -8,7 +8,7 @@ import { dayNum, flowsByMonth, flowsByTag, fmt, fmtCompact, fmtDate, fmtSigned, 
 type Filter = 'all' | 'deposit' | 'withdrawal' | 'dividend' | 'nav';
 
 export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: string[]; onEditFlow: (c: import('./types').VaultCashflow) => void; onEditSnap: (pid: string, date: string) => void }) {
-  const { settings, cashflows, snapshots, deleteCashflow, deleteSnapshot } = useVault();
+  const { settings, cashflows, snapshots, deleteCashflow, deleteSnapshot, saveSettings } = useVault();
   const [filter, setFilter] = useState<Filter>('all');
   const [partyFilter, setPartyFilter] = useState<'all' | 'me' | 'partner'>('all');
   const [tagFilter, setTagFilter] = useState<string>('');
@@ -536,6 +536,19 @@ export function FlowsView({ scopeIds, onEditFlow, onEditSnap }: { scopeIds: stri
                                 await deleteSnapshot(`${it.pid}_${r.date}`);
                               }
                             } else {
+                              const cf = cashflows.find(x => x.id === r.id);
+                              if (cf && cf.type !== 'dividend' && (cf.tag === 'زيادة رأس المال' || cf.tag === 'تخفيض رأس المال')) {
+                                let nextP = settings.partner?.partnerCapital ?? 570000;
+                                let nextM = settings.partner?.myCapital ?? 330000;
+                                if (cf.tag === 'زيادة رأس المال') {
+                                  if (cf.partner) nextP = Math.max(0, nextP - cf.amount);
+                                  else nextM = Math.max(0, nextM - cf.amount);
+                                } else {
+                                  if (cf.partner) nextP += cf.amount;
+                                  else nextM += cf.amount;
+                                }
+                                await saveSettings({ ...settings, partner: { ...settings.partner, partnerCapital: nextP, myCapital: nextM } });
+                              }
                               await deleteCashflow(r.id);
                             }
                             setConfirm(null);

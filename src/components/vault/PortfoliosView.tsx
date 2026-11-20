@@ -46,12 +46,12 @@ function loadTargetState(): { preset: AllocPreset; weights: TargetWeights } {
 }
 
 export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; scopeIds: string[]; onFocus: (id: string) => void }) {
-  const { settings, snapshots, cashflows } = useVault();
+  const { settings, snapshots, cashflows, saveSettings } = useVault();
   const [period, setPeriod] = useState<Period>('All');
   const [chartTab, setChartTab] = useState<ChartTab>('race');
-  const [goldUnit, setGoldUnit] = useState<'egp' | 'pct'>('egp');
+  const [goldUnit, setGoldUnit] = useState<'egp' | 'pct' | 'grams'>('egp');
   const [assetView, setAssetView] = useState<'history' | 'donut'>('history');
-  const [allocState, setAllocState] = useState<{ preset: AllocPreset; weights: TargetWeights }>(loadTargetState);
+  const [allocState, setAllocState] = useState<{ preset: AllocPreset; weights: TargetWeights }>(() => settings.targetAlloc ?? loadTargetState());
   const ports = useMemo(() => settings.portfolios.filter(p => p.active), [settings.portfolios]);
 
   const selectPreset = (preset: AllocPreset) => {
@@ -59,6 +59,7 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
     const next = { preset, weights };
     setAllocState(next);
     try { localStorage.setItem(TARGET_ALLOC_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+    saveSettings({ ...settings, targetAlloc: next }).catch(() => {});
   };
 
   const updateCustomWeight = (k: keyof TargetWeights, val: number) => {
@@ -66,6 +67,7 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
     const next = { preset: 'custom' as AllocPreset, weights: { ...allocState.weights, [k]: clamped } };
     setAllocState(next);
     try { localStorage.setItem(TARGET_ALLOC_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+    saveSettings({ ...settings, targetAlloc: next }).catch(() => {});
   };
 
   const rows = useMemo(() => comparePortfolios(snapshots, cashflows, ports), [snapshots, cashflows, ports]);
@@ -315,7 +317,16 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
           <div className="flex flex-wrap items-center gap-2">
             {chartTab === 'race' && <Segmented size="sm" value={period} onChange={setPeriod} options={PERIODS.map(p => ({ v: p, label: p === 'All' ? 'الكل' : p }))} />}
             {chartTab === 'gold' && (
-              <Segmented size="sm" value={goldUnit} onChange={setGoldUnit} options={[{ v: 'egp', label: 'بالجنيه (ج.م)' }, { v: 'pct', label: 'الوزن (%)' }]} />
+              <Segmented
+                size="sm"
+                value={goldUnit}
+                onChange={setGoldUnit}
+                options={[
+                  { v: 'egp', label: 'ج.م' },
+                  { v: 'pct', label: 'الوزن %' },
+                  { v: 'grams', label: 'جرام' },
+                ]}
+              />
             )}
             {chartTab === 'assets' && (
               <Segmented size="sm" value={assetView} onChange={setAssetView} options={[{ v: 'history', label: 'التطور الزمني' }, { v: 'donut', label: 'التوزيع الحالي' }]} />
@@ -386,7 +397,9 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
           }
           const curGold = goldHistory[goldHistory.length - 1];
           const firstNonZero = goldHistory.find(g => g.gold > 0) ?? curGold;
-          const peakGold = Math.max(...goldHistory.map(g => (goldUnit === 'egp' ? g.gold : g.goldPct)));
+          const peakGold = Math.max(
+            ...goldHistory.map(g => (goldUnit === 'egp' ? g.gold : goldUnit === 'pct' ? g.goldPct : g.goldGrams))
+          );
           const goldDelta = curGold.gold - firstNonZero.gold;
           const goldDeltaPct = firstNonZero.gold > 0 ? (goldDelta / firstNonZero.gold) * 100 : 0;
 
@@ -400,9 +413,25 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                     {fmt(curGold.gold)} ج.م
                   </b>
                   <span dir="ltr" className="rounded-md bg-amber-400/15 border border-amber-400/30 px-1.5 py-0.5 text-[10px] font-black text-amber-700 dark:text-amber-300 tabular-nums">
-                    {curGold.goldPct.toFixed(1)}% من الخزنة
+                    {curGold.goldPct.toFixed(1)}%
                   </span>
                 </div>
+                {cashAmmo.totalGoldGrams > 0 && (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <div className="flex items-center gap-1.5">
+                      <span>الوزن:</span>
+                      <b dir="ltr" className="text-sm font-black text-amber-600 dark:text-amber-300 tabular-nums">
+                        {cashAmmo.totalGoldGrams} جم
+                      </b>
+                      {cashAmmo.impliedGoldGramPrice > 0 && (
+                        <span dir="ltr" className="text-[10px] text-slate-400 tabular-nums">
+                          ({fmt(cashAmmo.impliedGoldGramPrice)} ج.م/جم)
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
                 {goldHistory.length > 2 && Math.abs(goldDelta) >= 1 && (
                   <>
                     <span className="text-slate-300 dark:text-slate-700">|</span>
@@ -418,7 +447,7 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                 <div className="flex items-center gap-1">
                   <span>القمة:</span>
                   <b dir="ltr" className="tabular-nums font-black text-amber-500">
-                    {goldUnit === 'egp' ? `${fmt(peakGold)} ج.م` : `${peakGold.toFixed(1)}%`}
+                    {goldUnit === 'egp' ? `${fmt(peakGold)} ج.م` : goldUnit === 'pct' ? `${peakGold.toFixed(1)}%` : `${peakGold} جم`}
                   </b>
                 </div>
               </div>
@@ -440,7 +469,7 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                     <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} minTickGap={30} />
                     <YAxis
                       orientation="right"
-                      tickFormatter={goldUnit === 'egp' ? fmtCompact : (v: number) => `${v.toFixed(1)}%`}
+                      tickFormatter={goldUnit === 'egp' ? fmtCompact : goldUnit === 'pct' ? (v: number) => `${v.toFixed(1)}%` : (v: number) => `${v.toFixed(1)}g`}
                       tick={{ fontSize: 10, fill: '#94a3b8' }}
                       axisLine={false}
                       tickLine={false}
@@ -456,6 +485,7 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                           labelFmt={fmtDate}
                           rows={p => [
                             { name: 'قيمة الذهب', value: `${fmt(+p.gold)} ج.م`, color: '#eab308' },
+                            ...(+p.goldGrams > 0 ? [{ name: 'الوزن بالجرام', value: `${+p.goldGrams} جم`, color: '#fde047' }] : []),
                             { name: 'الوزن بالمحفظة', value: `${(+p.goldPct).toFixed(2)}%`, color: '#facc15' },
                             { name: 'إجمالي الخزنة', value: `${fmt(+p.total)} ج.م`, color: '#94a3b8' },
                           ]}
@@ -464,7 +494,7 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                     />
                     <Area
                       type="monotone"
-                      dataKey={goldUnit === 'egp' ? 'gold' : 'goldPct'}
+                      dataKey={goldUnit === 'egp' ? 'gold' : goldUnit === 'pct' ? 'goldPct' : 'goldGrams'}
                       stroke="#eab308"
                       strokeWidth={3.2}
                       filter="url(#goldLineGlow)"
@@ -890,11 +920,13 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
           <table className="w-full min-w-[760px] text-xs font-bold" dir="rtl">
             <thead>
               <tr className="text-[10px] text-slate-400 border-b border-slate-100 dark:border-slate-800">
-                {['#', 'المحفظة', 'القيمة', 'صافي الإيداع', 'العوائد', 'العائد الزمني', 'سنوي', 'أقصى هبوط', 'شهور رابحة', 'التذبذب', 'من الأرباح', 'التقييم'].map(h => <th key={h} className="px-2 py-2.5 text-right font-black">{h}</th>)}
+                {['#', 'المحفظة', 'القيمة', 'صافي الإيداع', 'العوائد', 'العائد الزمني', 'سنوي', 'أقصى هبوط', 'شهور رابحة', 'التذبذب', 'الكاش %', 'التقييم'].map(h => <th key={h} className="px-2 py-2.5 text-right font-black">{h}</th>)}
               </tr>
             </thead>
             <tbody>
-              {ranked.map((r, i) => (
+              {ranked.map((r, i) => {
+                const pCashPct = cashAmmo.byPortfolio.find(c => c.portfolioId === r.portfolio.id)?.cashPct ?? 0;
+                return (
                 <tr key={r.portfolio.id} className="border-b border-slate-50 dark:border-slate-800/60 last:border-0 tabular-nums">
                   <td className="px-2 py-3 text-slate-400">{i + 1}</td>
                   <td className="px-2 py-3"><span className="flex items-center gap-2 font-black text-slate-800 dark:text-slate-100"><i className="w-2.5 h-2.5 rounded-full" style={{ background: r.portfolio.color }} />{r.portfolio.name}</span></td>
@@ -906,10 +938,11 @@ export function PortfoliosView({ factor, scopeIds, onFocus }: { factor: number; 
                   <td className="px-2 py-3 text-rose-500" dir="ltr">{r.stats.maxDD.toFixed(1)}%</td>
                   <td className="px-2 py-3" dir="ltr">{r.stats.winRate === null ? '—' : `${r.stats.winRate.toFixed(0)}%`}</td>
                   <td className="px-2 py-3" dir="ltr">{r.stats.vol === null ? '—' : `±${r.stats.vol.toFixed(1)}%`}</td>
-                  <td className="px-2 py-3" dir="ltr">{r.profitShare.toFixed(0)}%</td>
+                  <td className="px-2 py-3 text-sky-600 dark:text-sky-400" dir="ltr">{pCashPct.toFixed(0)}%</td>
                   <td className="px-2 py-3"><span className="rounded-full px-2.5 py-0.5 text-[10px] font-black text-white" style={{ background: r.portfolio.color }}>{r.score}</span></td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
