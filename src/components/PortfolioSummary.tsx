@@ -31,7 +31,7 @@ const Amt = ({ v, plus = false, className = '' }: { v: number; plus?: boolean; c
   );
 };
 
-export default function PortfolioSummary() {
+export default function PortfolioSummary({ onSelectTrade }: { onSelectTrade?: (id: string) => void } = {}) {
   const { 
     filteredPositions, 
     commissionRate, 
@@ -43,6 +43,7 @@ export default function PortfolioSummary() {
   } = useTrades();
 
   const [allocTab, setAllocTab] = useState<'stocks' | 'sectors' | 'strategy'>('stocks');
+  const [hoveredAlloc, setHoveredAlloc] = useState<{ name: string; val: number; pct: number } | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     return localStorage.getItem('egx_portfolio_summary_collapsed') === 'true';
   });
@@ -66,11 +67,15 @@ export default function PortfolioSummary() {
     const tickerAlloc: Record<string, number> = {};
     const sectorAlloc: Record<string, number> = {};
     const strategyAlloc: Record<string, number> = {};
-    const liveStockPerformances: { symbol: string; uPnL: number; uPct: number; val: number }[] = [];
+    const liveStockPerformances: { id: string; symbol: string; uPnL: number; uPct: number; val: number; nearStop: boolean; nearTarget: boolean }[] = [];
+    const realizedTimeline: { date: number; pnl: number }[] = [];
 
     filteredPositions.forEach(p => {
       const m = computePositionMetrics(p, commissionRate);
       rPnL += m.netRealizedPnL;
+      (m.realizedEvents || []).forEach(ev => {
+        realizedTimeline.push({ date: ev.date, pnl: ev.netPnL });
+      });
 
       if (m.isOpen) {
         openCount++;
@@ -82,11 +87,19 @@ export default function PortfolioSummary() {
         tickerAlloc[p.symbol] = val;
 
         const uPct = m.openInvested > 0 ? (m.netUnrealizedPnL / m.openInvested) * 100 : 0;
+        const stopP = m.currentStop || 0;
+        const targetP = (p.plan as any)?.targetPrice || (p.plan as any)?.target || 0;
+        const nearStop = stopP > 0 && m.currentPrice > 0 && ((m.currentPrice - stopP) / m.currentPrice) <= 0.025;
+        const nearTarget = targetP > 0 && m.currentPrice > 0 && ((targetP - m.currentPrice) / targetP) <= 0.03;
+
         liveStockPerformances.push({
+          id: p.id,
           symbol: p.symbol,
           uPnL: m.netUnrealizedPnL,
           uPct,
-          val
+          val,
+          nearStop,
+          nearTarget,
         });
 
         // Sector
@@ -99,6 +112,16 @@ export default function PortfolioSummary() {
         strategyAlloc[strategy] = (strategyAlloc[strategy] || 0) + val;
       }
     });
+
+    // Cumulative realized equity curve for mini sparkline
+    realizedTimeline.sort((a, b) => a.date - b.date);
+    const equityCurve: number[] = [0];
+    let running = 0;
+    realizedTimeline.forEach(ev => {
+      running += ev.pnl;
+      equityCurve.push(running);
+    });
+    if (uPnL !== 0) equityCurve.push(running + uPnL);
 
     // Sort live stock performances: highest gainers to losers
     liveStockPerformances.sort((a, b) => b.uPct - a.uPct);
@@ -126,6 +149,7 @@ export default function PortfolioSummary() {
       risk,
       riskPct,
       openCount,
+      equityCurve,
       liveStockPerformances,
       allocList: mapAlloc(tickerAlloc),
       sectorAllocList: mapAlloc(sectorAlloc),
@@ -220,13 +244,45 @@ export default function PortfolioSummary() {
                 </span>
               </div>
 
-              <div className="flex items-baseline justify-between mb-3">
-                <div className={`text-3xl font-black tracking-tight ${
-                  stats.netTotal > 0 ? 'text-emerald-400' : stats.netTotal < 0 ? 'text-rose-400' : 'text-slate-200'
-                }`}>
-                  <Amt v={stats.netTotal} plus />
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <div className={`text-3xl font-black tracking-tight ${
+                    stats.netTotal > 0 ? 'text-emerald-400' : stats.netTotal < 0 ? 'text-rose-400' : 'text-slate-200'
+                  }`}>
+                    <Amt v={stats.netTotal} plus />
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-500">من رأس المال</span>
                 </div>
-                <span className="text-[11px] font-bold text-slate-500">من رأس المال</span>
+
+                {/* Mini Equity Sparkline */}
+                {stats.equityCurve.length >= 2 && (() => {
+                  const pts = stats.equityCurve;
+                  const min = Math.min(...pts);
+                  const max = Math.max(...pts);
+                  const span = max - min || 1;
+                  const w = 104, h = 38;
+                  const coords = pts.map((v, idx) => {
+                    const x = (idx / (pts.length - 1)) * w;
+                    const y = h - 4 - ((v - min) / span) * (h - 8);
+                    return `${x.toFixed(1)},${y.toFixed(1)}`;
+                  });
+                  const linePath = `M ${coords.join(' L ')}`;
+                  const areaPath = `${linePath} L ${w},${h} L 0,${h} Z`;
+                  const isPos = stats.netTotal >= 0;
+                  const stroke = isPos ? '#34d399' : '#fb7185';
+                  return (
+                    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="shrink-0 overflow-visible">
+                      <defs>
+                        <linearGradient id="eqSparkGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={stroke} stopOpacity="0.35" />
+                          <stop offset="100%" stopColor={stroke} stopOpacity="0.0" />
+                        </linearGradient>
+                      </defs>
+                      <path d={areaPath} fill="url(#eqSparkGrad)" />
+                      <path d={linePath} fill="none" stroke={stroke} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  );
+                })()}
               </div>
 
               <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-slate-700/40 text-xs font-bold">
@@ -258,48 +314,59 @@ export default function PortfolioSummary() {
                 </span>
               </div>
 
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between gap-2 mb-3">
                 <div className="text-3xl font-black tracking-tight text-slate-100">
                   <Amt v={stats.mv} />
                 </div>
-                
-                {/* Visual Circular Exposure Mini Gauge */}
-                <div className="relative w-10 h-10 flex items-center justify-center shrink-0">
-                  <svg className="w-10 h-10 transform -rotate-90">
-                    <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3.5" fill="none" className="text-slate-800" />
-                    <circle 
-                      cx="20" 
-                      cy="20" 
-                      r="16" 
-                      stroke="currentColor" 
-                      strokeWidth="3.5" 
-                      fill="none" 
-                      className="text-blue-500" 
-                      strokeDasharray="100.5" 
-                      strokeDashoffset={100.5 * (1 - Math.min(stats.exposurePct, 100) / 100)} 
-                    />
-                  </svg>
-                  <span className="absolute text-[9px] font-black text-white" dir="ltr">{stats.exposurePct.toFixed(0)}%</span>
-                </div>
+
+                {/* Semi-Circular Exposure Arc Gauge */}
+                {(() => {
+                  const pct = Math.min(100, Math.max(0, stats.exposurePct));
+                  const arcLen = 100.53; // pi * r (r=32)
+                  const strokeColor = pct > 80 ? '#f59e0b' : pct >= 50 ? '#3b82f6' : '#10b981';
+                  const zoneLabel = pct > 80 ? 'هجومي' : pct >= 50 ? 'متوازن' : 'آمن';
+                  return (
+                    <div className="relative w-20 h-12 flex flex-col items-center justify-end shrink-0">
+                      <svg viewBox="0 0 80 44" className="w-20 h-11 overflow-visible">
+                        <path d="M 8 40 A 32 32 0 0 1 72 40" fill="none" stroke="#1e293b" strokeWidth="6" strokeLinecap="round" />
+                        <path
+                          d="M 8 40 A 32 32 0 0 1 72 40"
+                          fill="none"
+                          stroke={strokeColor}
+                          strokeWidth="6"
+                          strokeLinecap="round"
+                          strokeDasharray={arcLen}
+                          strokeDashoffset={arcLen * (1 - pct / 100)}
+                          style={{ filter: `drop-shadow(0 0 6px ${strokeColor}66)` }}
+                        />
+                      </svg>
+                      <span className="absolute bottom-0 text-[10px] font-black text-slate-200 leading-none" dir="ltr">
+                        {pct.toFixed(0)}% <span className="text-[8px] font-bold text-slate-400">{zoneLabel}</span>
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-slate-700/40 text-xs font-bold">
-                <div className="bg-slate-900/70 p-2 rounded-xl flex flex-col border border-slate-800/60">
-                  <span className="text-[10px] text-slate-400 mb-0.5 flex items-center gap-1">
+              <div className={`grid ${stats.fixedIncome > 0 ? 'grid-cols-2' : 'grid-cols-1'} gap-2 pt-2.5 border-t border-slate-700/40 text-xs font-bold`}>
+                <div className="bg-slate-900/70 p-2 rounded-xl flex items-center justify-between border border-slate-800/60">
+                  <span className="text-[10px] text-slate-400 flex items-center gap-1">
                     <Wallet className="w-3 h-3 text-emerald-400" /> كاش اقتناص حر
                   </span>
                   <span className="font-black text-sm text-emerald-400">
                     <Amt v={stats.freeCash} />
                   </span>
                 </div>
-                <div className="bg-slate-900/70 p-2 rounded-xl flex flex-col border border-slate-800/60">
-                  <span className="text-[10px] text-slate-400 mb-0.5 flex items-center gap-1">
-                    <Lock className="w-3 h-3 text-teal-400" /> دخل ثابت / شهادات
-                  </span>
-                  <span className="font-black text-sm text-teal-300">
-                    <Amt v={stats.fixedIncome} />
-                  </span>
-                </div>
+                {stats.fixedIncome > 0 && (
+                  <div className="bg-slate-900/70 p-2 rounded-xl flex items-center justify-between border border-slate-800/60">
+                    <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                      <Lock className="w-3 h-3 text-teal-400" /> دخل ثابت
+                    </span>
+                    <span className="font-black text-sm text-teal-300">
+                      <Amt v={stats.fixedIncome} />
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -314,15 +381,35 @@ export default function PortfolioSummary() {
                 </span>
               </div>
 
-              <div className="flex items-baseline justify-between mb-3">
-                <div className="text-3xl font-black tracking-tight text-amber-400">
-                  {stats.risk > 0 ? (
-                    <span>-<Amt v={stats.risk} /></span>
-                  ) : (
-                    '0 EGP'
-                  )}
+              <div className="mb-2.5 space-y-2">
+                <div className="flex items-baseline justify-between">
+                  <div className="text-3xl font-black tracking-tight text-amber-400">
+                    {stats.risk > 0 ? (
+                      <span>-<Amt v={stats.risk} /></span>
+                    ) : (
+                      '0 EGP'
+                    )}
+                  </div>
+                  {(() => {
+                    const heatState = stats.riskPct <= 2 ? { label: 'آمن 🟢', cls: 'text-emerald-400' }
+                      : stats.riskPct <= 5 ? { label: 'متوسط 🟡', cls: 'text-amber-400' }
+                      : { label: 'مرتفع 🔴', cls: 'text-rose-400' };
+                    return <span className={`text-[10px] font-black ${heatState.cls}`}>حرارة المحفظة: {heatState.label}</span>;
+                  })()}
                 </div>
-                <span className="text-[10px] font-bold text-slate-500">أقصى خسارة لو ضُربت الوقوف</span>
+                {/* Portfolio Heat Bar (vs 5% safe ceiling) */}
+                <div className="space-y-1">
+                  <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${stats.riskPct <= 2 ? 'bg-emerald-500' : stats.riskPct <= 5 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                      style={{ width: `${Math.min(100, Math.max(4, (stats.riskPct / 5) * 100))}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[9px] font-bold text-slate-500">
+                    <span>سقف الأمان المقترح: 5%</span>
+                    <span dir="ltr">{stats.riskPct.toFixed(2)}% / 5.0%</span>
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-slate-700/40 text-xs font-bold">
@@ -376,26 +463,41 @@ export default function PortfolioSummary() {
                 </div>
               </div>
 
-              {/* Progress Allocation Bar */}
-              <div className="w-full h-3 rounded-full flex overflow-hidden bg-slate-950 shadow-inner">
-                <div 
-                  style={{ width: `${activeCapital > 0 ? (stats.freeCash / activeCapital) * 100 : 0}%` }} 
-                  className="bg-slate-600 border-r border-slate-900 hover:opacity-80 transition-opacity" 
-                  title={`سيولة حرة: ${(activeCapital > 0 ? (stats.freeCash / activeCapital) * 100 : 0).toFixed(1)}%`} 
-                />
-                <div 
-                  style={{ width: `${activeCapital > 0 ? (stats.fixedIncome / activeCapital) * 100 : 0}%` }} 
-                  className="bg-teal-500 border-r border-slate-900 hover:opacity-80 transition-opacity" 
-                  title={`دخل ثابت: ${(activeCapital > 0 ? (stats.fixedIncome / activeCapital) * 100 : 0).toFixed(1)}%`} 
-                />
-                {currentAllocList.map((a, i) => (
-                  <div 
-                    key={a.name} 
-                    style={{ width: `${a.pct}%` }} 
-                    className={`${colors[i % colors.length]} border-r border-slate-900 last:border-0 hover:opacity-80 transition-opacity`} 
-                    title={`${a.name}: ${a.pct.toFixed(1)}%`} 
+              {/* Progress Allocation Bar with Interactive Hover Details */}
+              <div className="space-y-1.5">
+                <div className="w-full h-3.5 rounded-full flex overflow-hidden bg-slate-950 shadow-inner ring-1 ring-slate-800/80">
+                  <div
+                    style={{ width: `${activeCapital > 0 ? (stats.freeCash / activeCapital) * 100 : 0}%` }}
+                    onMouseEnter={() => setHoveredAlloc({ name: 'كاش حر', val: stats.freeCash, pct: activeCapital > 0 ? (stats.freeCash / activeCapital) * 100 : 0 })}
+                    onMouseLeave={() => setHoveredAlloc(null)}
+                    className="bg-slate-600 border-r border-slate-900 hover:brightness-125 transition-all cursor-pointer"
                   />
-                ))}
+                  {stats.fixedIncome > 0 && (
+                    <div
+                      style={{ width: `${activeCapital > 0 ? (stats.fixedIncome / activeCapital) * 100 : 0}%` }}
+                      onMouseEnter={() => setHoveredAlloc({ name: 'دخل ثابت', val: stats.fixedIncome, pct: activeCapital > 0 ? (stats.fixedIncome / activeCapital) * 100 : 0 })}
+                      onMouseLeave={() => setHoveredAlloc(null)}
+                      className="bg-teal-500 border-r border-slate-900 hover:brightness-125 transition-all cursor-pointer"
+                    />
+                  )}
+                  {currentAllocList.map((a, i) => (
+                    <div
+                      key={a.name}
+                      style={{ width: `${a.pct}%` }}
+                      onMouseEnter={() => setHoveredAlloc(a)}
+                      onMouseLeave={() => setHoveredAlloc(null)}
+                      className={`${colors[i % colors.length]} border-r border-slate-900 last:border-0 hover:brightness-125 transition-all cursor-pointer`}
+                    />
+                  ))}
+                </div>
+                {hoveredAlloc && (
+                  <div className="flex items-center justify-between text-[11px] font-black bg-slate-900/90 border border-slate-700/70 rounded-xl px-3 py-1 text-slate-200">
+                    <span>{hoveredAlloc.name}</span>
+                    <span dir="ltr" className="font-mono-num text-blue-400">
+                      <Amt v={hoveredAlloc.val} /> ({hoveredAlloc.pct.toFixed(1)}%)
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Badges */}
@@ -452,8 +554,26 @@ export default function PortfolioSummary() {
                     const barWidth = Math.min(100, (Math.abs(st.uPct) / maxAbsPct) * 100);
 
                     return (
-                      <div key={st.symbol} className="flex items-center gap-3 text-xs">
-                        <span className="w-12 font-black text-slate-200 shrink-0" dir="ltr">{st.symbol}</span>
+                      <button
+                        key={st.symbol}
+                        type="button"
+                        onClick={() => onSelectTrade?.(st.id)}
+                        className="w-full flex items-center gap-2.5 text-xs hover:bg-slate-800/70 px-2 py-1 rounded-xl transition-colors text-right"
+                        title={`اضغط لفتح تفاصيل ${st.symbol}`}
+                      >
+                        <div className="w-24 flex items-center gap-1.5 shrink-0">
+                          <span className="font-black text-slate-100 font-mono-num" dir="ltr">{st.symbol}</span>
+                          {st.nearStop && (
+                            <span className="text-[9px] font-black px-1 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 whitespace-nowrap">
+                              قرب الوقف
+                            </span>
+                          )}
+                          {!st.nearStop && st.nearTarget && (
+                            <span className="text-[9px] font-black px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
+                              قرب الهدف
+                            </span>
+                          )}
+                        </div>
                         
                         {/* Diverging bar track with centerline */}
                         <div className="flex-1 h-2 bg-slate-950 rounded-full overflow-hidden relative flex items-center">
@@ -475,15 +595,15 @@ export default function PortfolioSummary() {
                           </div>
                         </div>
 
-                        <div className="w-24 text-left flex items-center justify-end gap-1.5 shrink-0" dir="ltr">
-                          <span className={`font-black ${isWin ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        <div className="text-left flex items-center justify-end gap-1.5 shrink-0 whitespace-nowrap" dir="ltr">
+                          <span className={`font-black font-mono-num ${isWin ? 'text-emerald-400' : 'text-rose-400'}`}>
                             {isWin ? '+' : ''}{st.uPct.toFixed(1)}%
                           </span>
-                          <span className="text-[10px] text-slate-500 font-bold">
+                          <span className="text-[10px] text-slate-400 font-bold whitespace-nowrap">
                             (<Amt v={st.uPnL} plus />)
                           </span>
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>

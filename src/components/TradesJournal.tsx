@@ -332,7 +332,7 @@ export default memo(function TradesJournal({
     <div className="w-full space-y-5" dir="rtl">
 
       {/* Aggregated portfolio performance */}
-      <PortfolioSummary />
+      <PortfolioSummary onSelectTrade={(id) => setSelectedTradeId(id)} />
 
       {/* Header Controls & Filters */}
       <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/80 dark:border-slate-800 p-4 rounded-3xl shadow-sm">
@@ -444,14 +444,14 @@ export default memo(function TradesJournal({
             </button>
           </div>
 
-          {/* EOD 60-Second Review Button */}
+          {/* Evening Review Button */}
           <button
             onClick={() => setIsEODOpen(true)}
             className="bg-indigo-600 hover:bg-indigo-700 text-white font-black px-3.5 py-2.5 rounded-2xl shadow-md shadow-indigo-500/20 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1.5 text-xs whitespace-nowrap"
-            title="مراجعة إغلاق الجلسة وتحديث الأسعار وتقييم الانضباط في 60 ثانية"
+            title="المراجعة المسائية وتحديث الأسعار وتقييم الانضباط اليومي"
           >
             <Moon className="w-3.5 h-3.5 text-amber-300 fill-current" />
-            <span className="hidden sm:inline">إغلاق الجلسة (60ث)</span>
+            <span className="hidden sm:inline">المراجعة المسائية</span>
           </button>
 
           {/* Free One-Click Live EGX Price + ATR + RSI Sync */}
