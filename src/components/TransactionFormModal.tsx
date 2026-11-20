@@ -64,6 +64,7 @@ export default function TransactionFormModal({
   const [checklist, setChecklist] = useState({ majorSR: false, bos: false, retest: false });
   const [isRuleBreaker, setIsRuleBreaker] = useState(false);
   const [executionRating, setExecutionRating] = useState<number>(0);
+  const [showExtraJournal, setShowExtraJournal] = useState(false);
 
   useEffect(() => {
     if (transactionToEdit) {
@@ -436,117 +437,122 @@ export default function TransactionFormModal({
           </label>
         )}
 
-        <div className="space-y-1.5">
-          <label className="text-xs font-black text-slate-500">ملاحظات حرة (اختياري)</label>
-          <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="مثال: اشتريت الحمد لله في قاع الجلسة..." className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 font-bold" />
-        </div>
-
         {type === 'buy' && (
-          <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <div className="space-y-2">
-              <label className="text-xs font-black text-slate-500">نوع المحفظة</label>
-              <div className="grid grid-cols-2 bg-slate-50 dark:bg-slate-800/50 p-1 rounded-xl">
-                <button type="button" onClick={() => setPortfolioType('investment')} className={`py-2 rounded-lg font-bold text-sm transition-all ${portfolioType === 'investment' ? 'bg-blue-500 text-white shadow' : 'text-slate-500 hover:text-slate-700'}`}>استثمار</button>
-                <button type="button" onClick={() => setPortfolioType('speculation')} className={`py-2 rounded-lg font-bold text-sm transition-all ${portfolioType === 'speculation' ? 'bg-blue-500 text-white shadow' : 'text-slate-500 hover:text-slate-700'}`}>مضاربة</button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-black text-slate-500">سبب الدخول الرئيسي</label>
-              <div className="flex flex-wrap gap-2">
+          <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-slate-500">سبب الدخول</label>
+              <div className="flex flex-wrap gap-1.5">
                 {[
                   { id: 'support', label: 'دعم قوي' },
                   { id: 'breakout', label: 'اختراق' },
                   { id: 'retest', label: 'إعادة اختبار' },
                   { id: 'indicator', label: 'مؤشرات فنية' },
-                  { id: 'fomo', label: 'تسرع / FOMO' },
-                  { id: 'tip', label: 'توصية عشوائية' },
                   { id: 'avg_down', label: 'تعديل متوسط' },
-                  { id: 'other', label: 'سبب آخر (اكتب)' }
+                  { id: 'fomo', label: 'تسرع / FOMO' },
+                  { id: 'other', label: 'أخرى' }
                 ].map(r => (
-                  <button key={r.id} type="button" onClick={() => setEntryReason(r.id)} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${entryReason === r.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600'}`}>{r.label}</button>
+                  <button key={r.id} type="button" onClick={() => setEntryReason(r.id)} className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all border ${entryReason === r.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>{r.label}</button>
                 ))}
               </div>
               {entryReason === 'other' && (
-                <input type="text" value={customEntryReason} onChange={e => setCustomEntryReason(e.target.value)} placeholder="اكتب سبب الدخول..." className="w-full mt-2 bg-white border border-slate-200 rounded-xl py-2 px-3 text-sm font-bold" autoFocus />
+                <input type="text" value={customEntryReason} onChange={e => setCustomEntryReason(e.target.value)} placeholder="اكتب سبب الدخول..." className="w-full mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-xs font-bold" autoFocus />
               )}
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-black text-slate-500">قائمة التحقق 3MS</label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { key: 'majorSR', label: 'دعم/مقاومة' },
-                  { key: 'bos', label: 'كسر هيكل' },
-                  { key: 'retest', label: 'إعادة اختبار' }
-                ].map(item => (
-                  <label key={item.key} className={`flex items-center justify-center p-2 rounded-xl cursor-pointer transition-all border text-xs font-bold ${checklist[item.key as keyof typeof checklist] ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white border-slate-200 text-slate-500'}`}>
-                    <input type="checkbox" className="hidden" checked={checklist[item.key as keyof typeof checklist]} onChange={e => setChecklist(prev => ({ ...prev, [item.key]: e.target.checked }))} />
-                    {item.label}
-                  </label>
-                ))}
-              </div>
             </div>
           </div>
         )}
 
         {type === 'sell' && (
-           <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-             <div className="space-y-2">
-               <label className="text-xs font-black text-slate-500">سبب الخروج الرئيسي</label>
-               <div className="flex flex-wrap gap-2">
-                 {[
-                   { id: 'target', label: 'تحقيق هدف' },
-                   { id: 'stop', label: 'ضرب وقف خسارة' },
-                   { id: 'trailing', label: 'وقف متحرك' },
-                   { id: 'panic', label: 'خوف / هلع' },
-                   { id: 'greed', label: 'طمع مفرط' }
-                 ].map(r => (
-                   <button key={r.id} type="button" onClick={() => setExitReason(r.id)} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${exitReason === r.id ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200 text-slate-600'}`}>{r.label}</button>
-                 ))}
-               </div>
+           <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+             <label className="text-xs font-black text-slate-500">سبب الخروج</label>
+             <div className="flex flex-wrap gap-1.5">
+               {[
+                 { id: 'target', label: 'تحقيق هدف' },
+                 { id: 'stop', label: 'ضرب وقف' },
+                 { id: 'trailing', label: 'وقف متحرك' },
+                 { id: 'panic', label: 'خوف / هلع' },
+                 { id: 'greed', label: 'جني سريع' }
+               ].map(r => (
+                 <button key={r.id} type="button" onClick={() => setExitReason(r.id)} className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all border ${exitReason === r.id ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>{r.label}</button>
+               ))}
              </div>
            </div>
         )}
 
-        {(type === 'buy' || type === 'sell') && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-xs font-black text-slate-500 block">الحالة النفسية والتركيز</label>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { id: 'neutral', label: '😐 محايد' },
-                  { id: 'fomo', label: '🏃 تسرع' },
-                  { id: 'fear', label: '😨 خوف' },
-                  { id: 'greed', label: '🤑 طمع' },
-                  { id: 'confident', label: '😎 واثق' }
-                ].map(emo => (
-                  <button key={emo.id} type="button" onClick={() => setEmotion(emo.id as any)} className={`py-1.5 px-2 rounded-xl text-[11px] font-black transition-all border ${emotion === emo.id ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-500'}`}>
-                    {emo.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            
-            <div className="space-y-2 flex flex-col justify-between">
-              <label className="text-xs font-black text-slate-500 block">تقييم جودة التنفيذ (اليمين لليسار)</label>
-              <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700 h-full flex-row-reverse" dir="ltr">
-                {[1, 2, 3, 4, 5].map(star => (
-                  <button key={star} type="button" onClick={() => setExecutionRating(star)} className={`text-2xl transition-all transform hover:scale-125 ${executionRating >= star ? 'text-amber-400 drop-shadow-sm' : 'text-slate-300 grayscale opacity-40'}`}>
-                    ⭐
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Collapsible Optional Journal (Notes, Portfolio Type, 3MS, Psychology, Rating, Rule Breaker) */}
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowExtraJournal(v => !v)}
+            className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-black text-slate-600 dark:text-slate-300 hover:bg-slate-100/70 dark:hover:bg-slate-800/50 transition"
+          >
+            <span>+ ملاحظات وتقييم نفسي (اختياري)</span>
+            <span className="text-[10px] text-slate-400">{showExtraJournal ? 'إخفاء ▲' : 'عرض ▼'}</span>
+          </button>
 
-        {(type === 'buy' || type === 'sell') && (
-          <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${isRuleBreaker ? 'bg-red-50 border-red-200 text-red-700' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
-            <input type="checkbox" className="w-4 h-4 rounded text-red-600 focus:ring-red-500" checked={isRuleBreaker} onChange={e => setIsRuleBreaker(e.target.checked)} />
-            <span className="text-xs font-bold">هل خالفت الخطة أو قواعد التداول؟ (تسجيل مخالفة)</span>
-          </label>
-        )}
+          {showExtraJournal && (
+            <div className="p-3.5 pt-2 space-y-3 border-t border-slate-200/70 dark:border-slate-800">
+              <div className="space-y-1">
+                <label className="text-[11px] font-black text-slate-500">ملاحظة سريعة</label>
+                <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="مثال: شراء قرب دعم قوي..." className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-2 px-3 text-xs font-bold" />
+              </div>
+
+              {type === 'buy' && (
+                <>
+                  <div className="grid grid-cols-2 bg-white dark:bg-slate-800/50 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <button type="button" onClick={() => setPortfolioType('investment')} className={`py-1.5 rounded-lg font-bold text-xs transition-all ${portfolioType === 'investment' ? 'bg-blue-500 text-white shadow' : 'text-slate-500'}`}>استثمار</button>
+                    <button type="button" onClick={() => setPortfolioType('speculation')} className={`py-1.5 rounded-lg font-bold text-xs transition-all ${portfolioType === 'speculation' ? 'bg-blue-500 text-white shadow' : 'text-slate-500'}`}>مضاربة</button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { key: 'majorSR', label: 'دعم/مقاومة' },
+                      { key: 'bos', label: 'كسر هيكل' },
+                      { key: 'retest', label: 'إعادة اختبار' }
+                    ].map(item => (
+                      <label key={item.key} className={`flex items-center justify-center p-1.5 rounded-lg cursor-pointer transition-all border text-[11px] font-bold ${checklist[item.key as keyof typeof checklist] ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500'}`}>
+                        <input type="checkbox" className="hidden" checked={checklist[item.key as keyof typeof checklist]} onChange={e => setChecklist(prev => ({ ...prev, [item.key]: e.target.checked }))} />
+                        {item.label}
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {(type === 'buy' || type === 'sell') && (
+                <>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { id: 'neutral', label: '😐 محايد' },
+                      { id: 'confident', label: '😎 واثق' },
+                      { id: 'fomo', label: '🏃 تسرع' },
+                      { id: 'fear', label: '😨 خوف' },
+                      { id: 'greed', label: '🤑 طمع' }
+                    ].map(emo => (
+                      <button key={emo.id} type="button" onClick={() => setEmotion(emo.id as any)} className={`py-1 px-2 rounded-lg text-[11px] font-black transition-all border ${emotion === emo.id ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500'}`}>
+                        {emo.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between bg-white dark:bg-slate-900 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <span className="text-[11px] font-black text-slate-500">جودة التنفيذ</span>
+                    <div className="flex items-center gap-1 flex-row-reverse" dir="ltr">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <button key={star} type="button" onClick={() => setExecutionRating(star)} className={`text-lg transition-all ${executionRating >= star ? 'text-amber-400' : 'text-slate-300 grayscale opacity-40'}`}>
+                          ⭐
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className={`flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors ${isRuleBreaker ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                    <input type="checkbox" className="w-3.5 h-3.5 rounded text-red-600 focus:ring-red-500" checked={isRuleBreaker} onChange={e => setIsRuleBreaker(e.target.checked)} />
+                    <span className="text-[11px] font-bold">مخالفة خطة التداول</span>
+                  </label>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         {error && (
           <div className="p-3 bg-red-50 text-red-700 text-xs font-bold rounded-xl flex items-start gap-2">

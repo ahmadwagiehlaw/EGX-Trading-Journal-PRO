@@ -1,18 +1,14 @@
 import ConfirmModal from './ConfirmModal';
 import { useState, useMemo } from 'react';
 import { 
-  ArrowDownToLine, 
   Lock, 
   Maximize2,
   Minimize2,
   ShieldAlert, 
-   
   CheckCircle, 
-    
-  Target
-,
-  Trash2
-, RotateCcw, X, Pencil, Sparkles, Pin, TrendingUp, TrendingDown, Zap, Wallet, Landmark, Banknote, Clock
+  Target,
+  Trash2,
+  RotateCcw, RefreshCw, X, Pencil, Sparkles, Pin, TrendingUp, TrendingDown, Zap, Layers, History, LineChart
 } from 'lucide-react';
 
 // Compact Arabic number format: 371,505 -> ["371.5", "ألف"], 2,400,000 -> ["2.40", "مليون"]
@@ -36,6 +32,7 @@ import { AdvancedRealTimeChart } from "react-ts-tradingview-widgets";
 import { useTrades } from '../context/TradeContext';
 import { useTheme } from '../context/ThemeContext';
 import { computePositionMetrics, computeOpenLotsLowestPriceFirst, computeStopAnalytics, computePositionCycles, formatEGP, type TrailingStopState } from '../utils/calculations';
+import { fetchEgxLiveQuotes } from '../utils/egxLivePrices';
 import TransactionFormModal from './TransactionFormModal';
 
 export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; onClose?: () => void }) {
@@ -60,8 +57,11 @@ export default function ActiveTrades({ tradeId, onClose }: { tradeId: string; on
   const [error, setError] = useState<string | null>(null);
   const [txModalType, setTxModalType] = useState<'buy' | 'sell' | 'sellAll' | 'edit' | null>(null);
   const [editingTx, setEditingTx] = useState<any | null>(null);
-  const [rightPaneView, setRightPaneView] = useState<'ledger' | 'chart'>('ledger');
-  const [leftTab, setLeftTab] = useState<'advisor' | 'plan' | 'risk' | 'notes'>('risk');
+  const [rightPaneView, setRightPaneView] = useState<'lots' | 'ledger' | 'chart'>('lots');
+  const [leftTab, setLeftTab] = useState<'risk' | 'notes'>('risk');
+  const [showPlanTools, setShowPlanTools] = useState(false);
+  const [syncingSingle, setSyncingSingle] = useState(false);
+  const openLots = useMemo(() => (position?.transactions ? computeOpenLotsLowestPriceFirst(position.transactions) : []), [position?.transactions]);
   const [stockNote, setStockNote] = useState('');
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [isChartExpanded, setIsChartExpanded] = useState(false);
@@ -499,11 +499,67 @@ if (!position || !metrics) return null;
   };
 
 
+  const isAnomalousStop = metrics!.isOpen && (currentStop > metrics!.currentPrice * 1.15 || currentHighest > metrics!.currentPrice * 1.4);
+
+  const handleResetAnomalousStop = async () => {
+    const safeHigh = Math.max(metrics!.currentPrice, metrics!.avgEntry);
+    const atrVal = position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0;
+    const baseStop = position!.plan?.stop && position!.plan.stop < metrics!.currentPrice
+      ? position!.plan.stop
+      : atrVal > 0 ? +(safeHigh - 2 * atrVal).toFixed(2) : +(safeHigh * 0.94).toFixed(2);
+    await updatePosition(position!.id, {
+      trailingStop: {
+        initial: position!.trailingStop?.initial || baseStop,
+        atrAtEntry: atrVal,
+        atrMultiplier: position!.trailingStop?.atrMultiplier || 2,
+        highestReached: safeHigh,
+        current: baseStop,
+      } as TrailingStopState,
+    });
+  };
+
+  const handleQuickLiveSync = async () => {
+    if (syncingSingle) return;
+    setSyncingSingle(true);
+    try {
+      const map = await fetchEgxLiveQuotes([position!.symbol]);
+      const q = map[position!.symbol.toUpperCase()];
+      if (q && q.close > 0) {
+        const prevHigh = position!.trailingStop?.highestReached || 0;
+        const newHigh = Math.max(prevHigh, q.close);
+        const mult = position!.trailingStop?.atrMultiplier || 2;
+        const atrVal = q.atr || position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0;
+        const nextUpdates: any = { currentMarketPrice: q.close };
+        if (q.atr || q.rsi) {
+          nextUpdates.plan = {
+            ...(position!.plan || {}),
+            ...(q.atr ? { atr: q.atr } : {}),
+            ...(q.rsi ? { rsi: q.rsi } : {}),
+          };
+        }
+        if (q.close > prevHigh && atrVal > 0) {
+          const ratcheted = Math.max(position!.trailingStop?.current || 0, +(newHigh - mult * atrVal).toFixed(2));
+          nextUpdates.trailingStop = {
+            initial: position!.trailingStop?.initial || ratcheted,
+            atrMultiplier: mult,
+            highestReached: newHigh,
+            current: ratcheted,
+            atrAtEntry: atrVal,
+          };
+        }
+        await updatePosition(position!.id, nextUpdates);
+      }
+    } finally {
+      setSyncingSingle(false);
+    }
+  };
+
   // --- Plan gauge layout: scale always covers ALL markers; clustered labels are stacked ---
   const gaugeStop = position!.plan?.stop || 0;
   const gaugeTarget = position!.plan?.target || 0;
   const gaugeValid = gaugeStop > 0 && gaugeTarget > 0;
-  const gaugeVals = [gaugeStop, gaugeTarget, metrics!.avgEntry, currentStop, metrics!.currentPrice].filter(v => v > 0);
+  const trailIsSane = currentStop > 0 && (!gaugeTarget || currentStop <= gaugeTarget * 1.35) && currentStop <= metrics!.currentPrice * 1.35;
+  const gaugeVals = [gaugeStop, gaugeTarget, metrics!.avgEntry, trailIsSane ? currentStop : 0, metrics!.currentPrice].filter(v => v > 0);
   const gLo = Math.min(...gaugeVals);
   const gHi = Math.max(...gaugeVals);
   const gPad = (gHi - gLo) * 0.04 || 1;
@@ -525,7 +581,7 @@ if (!position || !metrics) return null;
     { key: 'target', label: 'الهدف', value: gaugeTarget, dot: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' },
     { key: 'entry', label: 'الدخول', value: metrics!.avgEntry, dot: 'bg-blue-500', text: 'text-blue-600 dark:text-blue-400' },
   ]);
-  const trailDistinct = currentStop > 0 && Math.abs(currentStop - gaugeStop) > 0.005;
+  const trailDistinct = trailIsSane && Math.abs(currentStop - gaugeStop) > 0.005;
   const gaugeBottom = stackItems([
     ...(trailDistinct ? [{ key: 'trail', label: 'وقف متحرك', value: currentStop, dot: 'bg-orange-500', text: 'text-orange-600 dark:text-orange-400' }] : []),
     { key: 'price', label: 'السوق', value: metrics!.currentPrice, dot: 'bg-slate-800 dark:bg-white', text: 'text-slate-600 dark:text-slate-300' },
@@ -542,883 +598,855 @@ if (!position || !metrics) return null;
     <div className="w-full space-y-6" dir="rtl">
       <div className={isChartExpanded ? "flex flex-col" : "grid lg:grid-cols-2 gap-6 items-start"}>
         
-        {/* Right Column: Live TradingView Chart OR Ledger */}
-        <div className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col relative z-10 transition-all duration-300 ${isChartExpanded ? 'h-[80vh]' : 'min-h-[520px]'}`}>
+        {/* Right Column: Tabbed Open Lots | Transaction Ledger | Live Chart */}
+        <div className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col relative z-10 transition-all duration-300 ${isChartExpanded ? 'h-[82vh]' : ''}`}>
           
-          <div className="absolute top-4 right-4 z-50 flex gap-2">
-            <button 
+          {/* Integrated Top Bar: 3 Crisp Tabs + Expand */}
+          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80">
+            <div className="flex items-center gap-1 bg-slate-200/60 dark:bg-slate-800 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setRightPaneView('lots')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+                  rightPaneView === 'lots'
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>سلم الدفعات</span>
+                {metrics!.isOpen && (
+                  <span className="px-1.5 py-0.2 rounded-md bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-mono-num">
+                    {openLots.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightPaneView('ledger')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+                  rightPaneView === 'ledger'
+                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <History className="w-3.5 h-3.5" />
+                <span>سجل العمليات</span>
+                <span className="px-1.5 py-0.2 rounded-md bg-slate-500/15 text-slate-600 dark:text-slate-300 text-[10px] font-mono-num">
+                  {position!.transactions.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightPaneView('chart')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+                  rightPaneView === 'chart'
+                    ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-300 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <LineChart className="w-3.5 h-3.5" />
+                <span>الشارت</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
               onClick={() => setIsChartExpanded(!isChartExpanded)}
-              className="p-2.5 bg-white/90 dark:bg-slate-800/90 hover:bg-white dark:hover:bg-slate-700 backdrop-blur-md rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-all flex items-center gap-2"
+              className="p-2 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-all"
               title={isChartExpanded ? "تصغير" : "تكبير"}
             >
-              {isChartExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </button>
-            <button 
-              onClick={() => setRightPaneView(rightPaneView === 'ledger' ? 'chart' : 'ledger')}
-              className="px-4 py-2 bg-white/90 dark:bg-slate-800/90 hover:bg-white dark:hover:bg-slate-700 backdrop-blur-md rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 transition-all flex items-center gap-2 font-black text-xs"
-            >
-              {rightPaneView === 'ledger' ? 'الشارت الفني' : 'سجل صفقات السهم'}
+              {isChartExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </button>
           </div>
 
-          {rightPaneView === 'ledger' ? (
-            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-900/50 mt-14">
-              
-              {/* Action Buttons */}
-              <div className="flex flex-wrap items-center gap-2 mb-6">
-                <button onClick={() => setTxModalType('buy')} className="flex-1 min-w-[140px] py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
-                  + {metrics!.isOpen ? 'تمركز إضافي (شراء)' : 'بدء دورة جديدة (شراء)'}
+          {/* Primary Buy / Sell Action Strip (only on Lots / Ledger views) */}
+          {rightPaneView !== 'chart' && (
+            <div className="flex items-center gap-2 px-4 pt-3 pb-2 bg-white dark:bg-slate-900">
+              <button onClick={() => setTxModalType('buy')} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
+                + {metrics!.isOpen ? 'شراء دفعة' : 'بدء دورة شراء'}
+              </button>
+              {metrics!.isOpen && (
+                <button onClick={() => setTxModalType('sell')} className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
+                  ↙ بيع جزئي (جني ربح)
                 </button>
-                {metrics!.isOpen && (
-                  <button onClick={() => setTxModalType('sell')} className="flex-1 min-w-[140px] py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
-                    ↙ بيع جزئي (جني ربح)
-                  </button>
-                )}
-                {position?.transactions && position.transactions.length > 0 && (
+              )}
+            </div>
+          )}
+
+          {/* TAB 1: OPEN LOTS (LOWEST-PRICE FIRST) */}
+          {rightPaneView === 'lots' && (
+            <div className={`flex-1 overflow-y-auto px-4 pb-4 pt-2 ${isChartExpanded ? '' : 'max-h-[560px]'}`}>
+              {metrics!.unmatchedSellShares > 0 && (
+                <div className="mb-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5 flex items-center gap-2 text-[11px] font-black text-amber-800 dark:text-amber-200">
+                  <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span>تنبيه: {metrics!.unmatchedSellShares.toLocaleString()} سهم بيع بدون شراء سابق — راجع السجل أو أرشف الجولة.</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-xs font-black text-slate-600 dark:text-slate-300">الدفعات المفتوحة ({openLots.length})</span>
+                <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 px-2 py-0.5 rounded-md border border-indigo-200/70 dark:border-indigo-800/50">
+                  الأقل سعراً يُباع أولاً
+                </span>
+              </div>
+
+              <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+                <table className="w-full text-xs text-center">
+                  <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold text-[10px] sticky top-0">
+                    <tr>
+                      <th className="py-2.5 px-2">التاريخ</th>
+                      <th className="py-2.5 px-2">سعر الدفعة</th>
+                      <th className="py-2.5 px-2">الكمية</th>
+                      <th className="py-2.5 px-2">الربح/الخسارة</th>
+                      <th className="py-2.5 px-2">إجراء</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                    {openLots.map((lot, lotIdx) => {
+                      const lotValue = lot.remainingShares * metrics!.currentPrice;
+                      const lotCost = lot.remainingShares * lot.price;
+                      const lotPnL = lotValue - lotCost;
+                      const lotPnLPercent = lotCost > 0 ? (lotPnL / lotCost) * 100 : 0;
+                      const isWinning = lotPnL > 0;
+                      const isNextToSell = lotIdx === 0;
+                      return (
+                        <tr key={lot.id} className={`transition-colors font-mono-num text-xs font-bold text-slate-700 dark:text-slate-300 ${isNextToSell ? 'bg-emerald-500/[0.07] dark:bg-emerald-500/[0.09]' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'}`}>
+                          <td className="py-2.5 px-2 text-[11px] text-slate-500 dark:text-slate-400">{new Date(lot.date).toLocaleDateString('en-GB')}</td>
+                          <td className="py-2.5 px-2">
+                            <div className="flex items-center justify-center gap-1">
+                              <span className="text-blue-600 dark:text-blue-400 font-black">{lot.price.toFixed(2)}</span>
+                              {isNextToSell && (
+                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                                  التالية
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-2">{lot.remainingShares.toLocaleString()}</td>
+                          <td className={`py-2.5 px-2 ${isWinning ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
+                            {lotPnL > 0 ? '+' : ''}{formatEGP(lotPnL)} ({lotPnLPercent.toFixed(1)}%)
+                          </td>
+                          <td className="py-2.5 px-2">
+                            <button
+                              onClick={() => setTxModalType('sell')}
+                              className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-2.5 py-1 rounded-lg font-black hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors border border-emerald-200 dark:border-emerald-800/50"
+                            >
+                              بيع
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {openLots.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-10 text-slate-400 text-xs font-bold">لا توجد دفعات مفتوحة حالياً.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: TRADING CYCLES & ARCHIVE */}
+          {rightPaneView === 'ledger' && (
+            <div className={`flex-1 overflow-y-auto px-4 pb-4 pt-2 space-y-3 ${isChartExpanded ? '' : 'max-h-[560px]'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-black text-slate-600 dark:text-slate-300">
+                  دورات التداول ({cycles.length})
+                </span>
+                {position!.transactions.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setIsResetModalOpen(true)}
-                    title="تصفير ومسح المعاملات المتشابكة للبدء على نظيف"
-                    className="py-2.5 px-3 bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:hover:bg-amber-900/40 dark:text-amber-400 rounded-xl font-black text-xs transition-colors border border-amber-200 dark:border-amber-800/40 shadow-xs flex items-center justify-center gap-1.5 shrink-0"
+                    disabled={archivingRound}
+                    onClick={async () => {
+                      if (window.confirm(`هل تريد أرشفة جميع معاملات ${position!.symbol} الحالية في الأرشيف وبدء جولة جديدة نظيفة؟ (لن تُفقد أرباحك التاريخية)`)) {
+                        setArchivingRound(true);
+                        try {
+                          await archivePositionRound(position!.id);
+                        } finally {
+                          setArchivingRound(false);
+                        }
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[11px] font-black transition disabled:opacity-50"
+                    title="حفظ السجل الحالي كأرشيف مغلق وبدء دورة جديدة على بياض"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>تصفير المعاملات</span>
+                    <RotateCcw className="w-3 h-3" />
+                    <span>{archivingRound ? 'جاري الأرشفة...' : 'أرشفة وبدء جولة نظيفة'}</span>
                   </button>
                 )}
               </div>
 
-              {/* All-Time Historical Performance Ribbon */}
-              {cycles.length > 0 && (
-                <div className="bg-gradient-to-l from-slate-900 to-indigo-950 text-white p-4 rounded-2xl border border-slate-800 shadow-sm mb-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 bg-white/10 rounded-xl">
-                      <Target className="w-5 h-5 text-indigo-300" />
+              {cycles.map((cycle) => {
+                const isActiveCycle = cycle.status === 'active';
+                return (
+                  <div
+                    key={cycle.cycleIndex}
+                    className={`rounded-2xl border p-3 ${
+                      isActiveCycle
+                        ? 'bg-white dark:bg-slate-900 border-blue-200/80 dark:border-blue-900/60'
+                        : 'bg-slate-50/80 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
+                          isActiveCycle
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                        }`}>
+                          دورة {cycle.cycleIndex} {isActiveCycle ? '● نشطة' : '✓ مغلقة'}
+                        </span>
+                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                          {new Date(cycle.startDate).toLocaleDateString('en-GB')} ({cycle.durationDays} يوم)
+                        </span>
+                      </div>
+                      <span className={`text-xs font-black font-mono-num ${cycle.netRealizedPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
+                        {cycle.netRealizedPnL > 0 ? '+' : ''}{formatEGP(cycle.netRealizedPnL)} EGP
+                      </span>
                     </div>
-                    <div>
-                      <h4 className="font-black text-xs text-slate-300">سجل الأداء التاريخي للسهم</h4>
-                      <p className="text-[11px] text-slate-400 font-bold mt-0.5">
-                        {cycles.length} {cycles.length === 1 ? 'دورة تداول' : 'دورات تداول'} مسجلة
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-left flex items-center gap-2">
-                    <span className="text-[11px] font-bold text-slate-400">إجمالي الأرباح المحققة:</span>
-                    <span className={`text-base font-black font-mono-num ${metrics!.netRealizedPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} dir="ltr">
-                      {metrics!.netRealizedPnL > 0 ? '+' : ''}{formatEGP(metrics!.netRealizedPnL)} EGP
-                    </span>
-                  </div>
-                </div>
-              )}
 
-              {/* Open Lots (Lowest Price First) Table — only when position is open */}
-              {metrics!.isOpen && (
-                <div className="mb-8">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <Target className="w-5 h-5 text-indigo-500" />
-                      <h3 className="text-base font-black text-slate-800 dark:text-slate-200">الدفعات المفتوحة الحالية (Open Lots)</h3>
-                    </div>
-                    <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 px-2 py-1 rounded-md border border-indigo-200 dark:border-indigo-800/50">
-                      قاعدة: الأقل سعراً أولاً (Lowest-Price First)
-                    </span>
-                  </div>
-                  
-                  <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 mb-6">
-                    <table className="w-full text-xs text-center">
-                      <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold text-[11px]">
-                        <tr>
-                          <th className="py-3 px-2 rounded-r-xl">تاريخ الشراء</th>
-                          <th className="py-3 px-2">سعر الشراء</th>
-                          <th className="py-3 px-2">الكمية المتبقية</th>
-                          <th className="py-3 px-2">الربح/الخسارة</th>
-                          <th className="py-3 px-2 rounded-l-xl">إجراء</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                        {computeOpenLotsLowestPriceFirst(position!.transactions).map((lot, lotIdx) => {
-                          const lotValue = lot.remainingShares * metrics!.currentPrice;
-                          const lotCost = lot.remainingShares * lot.price;
-                          const lotPnL = lotValue - lotCost;
-                          const lotPnLPercent = lotCost > 0 ? (lotPnL / lotCost) * 100 : 0;
-                          const isWinning = lotPnL > 0;
-                          const isNextToSell = lotIdx === 0;
-                          
-                          return (
-                            <tr key={lot.id} className={`transition-colors font-mono-num text-xs font-bold text-slate-700 dark:text-slate-300 ${isNextToSell ? 'bg-emerald-500/[0.06] dark:bg-emerald-500/[0.08]' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'}`}>
-                              <td className="py-3 px-2">{new Date(lot.date).toLocaleDateString('en-GB')}</td>
-                              <td className="py-3 px-2">
-                                <div className="flex items-center justify-center gap-1.5">
-                                  <span className="text-blue-600 dark:text-blue-400 font-black">{lot.price.toFixed(2)}</span>
-                                  {isNextToSell && (
-                                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
-                                      التالية للبيع
-                                    </span>
-                                  )}
-                                </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[11px] text-center">
+                        <thead className="bg-slate-100/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold text-[10px]">
+                          <tr>
+                            <th className="py-2 px-1.5 rounded-r-lg">العملية</th>
+                            <th className="py-2 px-1.5">التاريخ</th>
+                            <th className="py-2 px-1.5">الكمية</th>
+                            <th className="py-2 px-1.5">السعر</th>
+                            <th className="py-2 px-1.5">المحقق</th>
+                            <th className="py-2 px-1.5 rounded-l-lg">إجراء</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                          {[...cycle.transactions].sort((a, b) => b.date - a.date).map(tx => (
+                            <tr key={tx.id} className="hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors font-mono-num">
+                              <td className="py-2 px-1.5">
+                                <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-black ${
+                                  tx.type === 'buy'
+                                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
+                                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                }`}>
+                                  {tx.type === 'buy' ? 'شراء' : 'بيع'}
+                                </span>
                               </td>
-                              <td className="py-3 px-2">{lot.remainingShares.toLocaleString()} سهم</td>
-                              <td className={`py-3 px-2 ${isWinning ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
-                                {lotPnL > 0 ? '+' : ''}{lotPnL.toFixed(2)} ({lotPnLPercent.toFixed(1)}%)
+                              <td className="py-2 px-1.5 font-bold text-slate-600 dark:text-slate-300">
+                                {new Date(tx.date).toLocaleDateString('en-GB')}
                               </td>
-                              <td className="py-3 px-2">
-                                <button 
-                                  onClick={() => setTxModalType('sell')}
-                                  className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-3 py-1.5 rounded-lg font-black hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors border border-emerald-200 dark:border-emerald-800/50"
+                              <td className="py-2 px-1.5 font-black text-slate-800 dark:text-white">
+                                {tx.shares.toLocaleString()}
+                              </td>
+                              <td className="py-2 px-1.5 font-black text-slate-800 dark:text-white">
+                                {tx.price.toFixed(2)}
+                              </td>
+                              <td className="py-2 px-1.5">
+                                {tx.type === 'sell' && tx.id ? (
+                                  <span className={`font-black ${(metrics!.txPnL?.[tx.id] || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
+                                    {(metrics!.txPnL?.[tx.id] || 0) >= 0 ? '+' : ''}{formatEGP(metrics!.txPnL?.[tx.id] || 0)}
+                                  </span>
+                                ) : <span className="text-slate-300 dark:text-slate-600">—</span>}
+                              </td>
+                              <td className="py-2 px-1.5 flex justify-center gap-1">
+                                <button
+                                  onClick={() => { setTxModalType('edit'); setEditingTx(tx); }}
+                                  className="p-1 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
+                                  title="تعديل"
                                 >
-                                  جني ربح
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => setConfirmTxId(tx.id)}
+                                  className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded transition-colors"
+                                  title="حذف"
+                                >
+                                  <Trash2 className="w-3 h-3" />
                                 </button>
                               </td>
                             </tr>
-                          );
-                        })}
-                        {computeOpenLotsLowestPriceFirst(position!.transactions).length === 0 && (
-                          <tr>
-                            <td colSpan={5} className="py-6 text-slate-400 text-xs font-bold">لا توجد دفعات مفتوحة حالياً.</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })}
 
-              {/* Data Integrity Warning if sells exceed buys */}
-              {metrics!.unmatchedSellShares > 0 && (
-                <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 flex items-center justify-between gap-3 text-xs font-black text-amber-800 dark:text-amber-200">
-                  <div className="flex items-center gap-2">
-                    <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
-                    <span>تنبيه دقة: توجد {metrics!.unmatchedSellShares.toLocaleString()} سهم بيع بدون عملية شراء سابقة مسجلة. راجع تواريخ الشراء أو أرشف الجولة لبدء سجل نظيف.</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Trading Cycles Log */}
-              <div className="space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-base font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                    <Target className="w-5 h-5 text-slate-400" />
-                    دورات وجولات التداول (Trading Cycles)
-                  </h3>
-                  {position!.transactions.length > 0 && (
-                    <button
-                      type="button"
-                      disabled={archivingRound}
-                      onClick={async () => {
-                        if (window.confirm(`هل تريد أرشفة جميع معاملات ${position!.symbol} الحالية في الأرشيف وبدء جولة جديدة نظيفة؟ (لن تُفقد أرباحك التاريخية)`)) {
-                          setArchivingRound(true);
-                          try {
-                            await archivePositionRound(position!.id);
-                          } finally {
-                            setArchivingRound(false);
-                          }
-                        }
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[11px] font-black transition disabled:opacity-50"
-                      title="حفظ السجل الحالي كأرشيف مغلق وبدء دورة جديدة على بياض"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>{archivingRound ? 'جاري الأرشفة...' : 'أرشفة وبدء جولة نظيفة'}</span>
-                    </button>
+              {(position!.archivedRounds?.length ?? 0) > 0 && (
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 p-3 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowArchivedRounds(v => !v)}
+                    className="w-full flex items-center justify-between text-xs font-black text-slate-600 dark:text-slate-300"
+                  >
+                    <span>📦 الجولات المؤرشفة ({position!.archivedRounds!.length})</span>
+                    <span dir="ltr" className="text-[11px] font-mono-num">
+                      <b className={position!.archivedRounds!.reduce((a, r) => a + r.netRealizedPnL, 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}>
+                        {formatEGP(position!.archivedRounds!.reduce((a, r) => a + r.netRealizedPnL, 0))} EGP
+                      </b>
+                    </span>
+                  </button>
+                  {showArchivedRounds && (
+                    <div className="space-y-1.5 pt-2 border-t border-slate-200/70 dark:border-slate-700/60">
+                      {position!.archivedRounds!.map((ar, idx) => (
+                        <div key={ar.id} className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-slate-900 px-3 py-2 border border-slate-100 dark:border-slate-800 text-[11px] font-bold">
+                          <span className="text-slate-700 dark:text-slate-200">
+                            أرشيف #{position!.archivedRounds!.length - idx} · {new Date(ar.startDate).toLocaleDateString('en-GB')} ← {new Date(ar.endDate).toLocaleDateString('en-GB')} ({ar.transactions.length})
+                          </span>
+                          <span dir="ltr" className={`font-black font-mono-num ${ar.netRealizedPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}`}>
+                            {ar.netRealizedPnL > 0 ? '+' : ''}{formatEGP(ar.netRealizedPnL)} EGP
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-
-                {cycles.map((cycle) => {
-                  const isActiveCycle = cycle.status === 'active';
-                  return (
-                    <div 
-                      key={cycle.cycleIndex}
-                      className={`rounded-2xl border transition-all p-4 ${
-                        isActiveCycle 
-                          ? 'bg-white dark:bg-slate-900 border-blue-200 dark:border-blue-900/60 shadow-sm' 
-                          : 'bg-slate-50/80 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 opacity-90'
-                      }`}
-                    >
-                      {/* Cycle Header */}
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-100 dark:border-slate-800">
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2.5 py-1 rounded-lg text-xs font-black ${
-                            isActiveCycle 
-                              ? 'bg-blue-600 text-white' 
-                              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
-                          }`}>
-                            الدورة {cycle.cycleIndex} {isActiveCycle ? '(نشطة حالياً 🟢)' : '(أرشيف مغلق ✓)'}
-                          </span>
-                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                            {new Date(cycle.startDate).toLocaleDateString('en-GB')}
-                            {cycle.endDate ? ` ← ${new Date(cycle.endDate).toLocaleDateString('en-GB')}` : ' ← مستمرة'}
-                            {` (${cycle.durationDays} يوم)`}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-3 text-xs font-bold font-mono-num">
-                          <span className="text-slate-500">
-                            م. دخول: <b className="text-slate-800 dark:text-slate-200">{cycle.avgEntry.toFixed(2)}</b>
-                            {cycle.avgExit > 0 && ` | م. خروج: ${cycle.avgExit.toFixed(2)}`}
-                          </span>
-                          <span className={`font-black ${cycle.netRealizedPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
-                            {cycle.netRealizedPnL > 0 ? '+' : ''}{formatEGP(cycle.netRealizedPnL)} EGP
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Cycle Transactions Table */}
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs text-center">
-                          <thead className="bg-slate-100/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold text-[10px]">
-                            <tr>
-                              <th className="py-2.5 px-2 rounded-r-lg">العملية</th>
-                              <th className="py-2.5 px-2">التاريخ</th>
-                              <th className="py-2.5 px-2">الكمية</th>
-                              <th className="py-2.5 px-2">السعر</th>
-                              <th className="py-2.5 px-2">الإجمالي</th>
-                              <th className="py-2.5 px-2">الربح المحقق</th>
-                              <th className="py-2.5 px-2 rounded-l-lg">إجراءات</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                            {[...cycle.transactions].sort((a,b)=>b.date - a.date).map(tx => (
-                              <tr key={tx.id} className="hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors font-mono-num">
-                                <td className="py-2.5 px-2">
-                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black ${
-                                    tx.type === 'buy' 
-                                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' 
-                                      : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                                  }`}>
-                                    {tx.type === 'buy' ? 'شراء' : 'بيع'}
-                                  </span>
-                                </td>
-                                <td className="py-2.5 px-2 font-bold text-slate-600 dark:text-slate-300 text-[11px]">
-                                  {new Date(tx.date).toLocaleDateString('en-GB')}
-                                </td>
-                                <td className="py-2.5 px-2 font-black text-slate-800 dark:text-white">
-                                  {tx.shares.toLocaleString()}
-                                </td>
-                                <td className="py-2.5 px-2 font-black text-slate-800 dark:text-white">
-                                  {tx.price.toFixed(2)}
-                                </td>
-                                <td className="py-2.5 px-2 font-black text-slate-800 dark:text-white">
-                                  {formatEGP(tx.amount)}
-                                </td>
-                                <td className="py-2.5 px-2">
-                                  {tx.type === 'sell' && tx.id ? (
-                                    <span className={`font-black ${(metrics!.txPnL?.[tx.id] || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
-                                      {(metrics!.txPnL?.[tx.id] || 0) >= 0 ? '+' : ''}{(metrics!.txPnL?.[tx.id] || 0).toFixed(2)}
-                                    </span>
-                                  ) : <span className="text-slate-300 dark:text-slate-600">-</span>}
-                                </td>
-                                <td className="py-2.5 px-2 flex justify-center gap-1">
-                                   <button 
-                                     onClick={() => { setTxModalType('edit'); setEditingTx(tx); }}
-                                     className="p-1 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors" 
-                                     title="تعديل المعاملة"
-                                   >
-                                     <Pencil className="w-3.5 h-3.5"/>
-                                   </button>
-                                   <button 
-                                     onClick={() => setConfirmTxId(tx.id)}
-                                     className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded transition-colors" 
-                                     title="حذف المعاملة"
-                                   >
-                                     <Trash2 className="w-3.5 h-3.5"/>
-                                   </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Archived Historical Rounds (Collapsible) */}
-                {(position!.archivedRounds?.length ?? 0) > 0 && (
-                  <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 p-3 space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowArchivedRounds(v => !v)}
-                      className="w-full flex items-center justify-between text-xs font-black text-slate-600 dark:text-slate-300"
-                    >
-                      <span>📦 الجولات المؤرشفة ({position!.archivedRounds!.length})</span>
-                      <span dir="ltr" className="text-[11px] font-mono-num">
-                        صافي الأرشيف:{' '}
-                        <b className={position!.archivedRounds!.reduce((a, r) => a + r.netRealizedPnL, 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}>
-                          {formatEGP(position!.archivedRounds!.reduce((a, r) => a + r.netRealizedPnL, 0))} EGP
-                        </b>
-                      </span>
-                    </button>
-                    {showArchivedRounds && (
-                      <div className="space-y-2 pt-2 border-t border-slate-200/70 dark:border-slate-700/60">
-                        {position!.archivedRounds!.map((ar, idx) => (
-                          <div key={ar.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white dark:bg-slate-900 px-3 py-2 border border-slate-100 dark:border-slate-800 text-[11px] font-bold">
-                            <span className="text-slate-700 dark:text-slate-200">
-                              أرشيف #{position!.archivedRounds!.length - idx} · {new Date(ar.startDate).toLocaleDateString('en-GB')} ← {new Date(ar.endDate).toLocaleDateString('en-GB')} ({ar.transactions.length} عملية)
-                            </span>
-                            <span dir="ltr" className={`font-black font-mono-num ${ar.netRealizedPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}`}>
-                              {ar.netRealizedPnL > 0 ? '+' : ''}{formatEGP(ar.netRealizedPnL)} EGP
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
-          ) : (
-            <AdvancedRealTimeChart 
-              symbol={`EGX:${position!.symbol}`}
-              interval="D"
-              theme={theme === 'dark' ? 'dark' : 'light'}
-              locale="ar_AE"
-              autosize
-              allow_symbol_change={false}
-              hide_side_toolbar={false}
-              details={true}
-              save_image={true}
-              timezone="Africa/Cairo"
-            />
+          )}
+
+          {/* TAB 3: LIVE TRADINGVIEW CHART */}
+          {rightPaneView === 'chart' && (
+            <div className={`w-full ${isChartExpanded ? 'flex-1' : 'h-[560px]'}`}>
+              <AdvancedRealTimeChart
+                symbol={`EGX:${position!.symbol}`}
+                interval="D"
+                theme={theme === 'dark' ? 'dark' : 'light'}
+                locale="ar_AE"
+                autosize
+                allow_symbol_change={false}
+                hide_side_toolbar={false}
+                details={true}
+                save_image={true}
+                timezone="Africa/Cairo"
+              />
+            </div>
           )}
         </div>
 
-        {/* Left Column: Trailing Stop Engine & Ledger Control */}
-        <div className={`bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 flex-col space-y-6 shadow-sm ${isChartExpanded ? 'hidden' : 'flex'}`}>
+        {/* Left Column: Hero Price, Executive Summary & Focused Risk Panel */}
+        <div className={`bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-3xl p-5 md:p-6 border border-slate-200 dark:border-slate-800 flex-col space-y-4 shadow-sm ${isChartExpanded ? 'hidden' : 'flex'}`}>
 
-          {/* Header / Ticker Summary */}
-            <div className="mb-4">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight" dir="ltr">{position!.symbol}</h3>
-                    <span className={`px-2.5 py-0.5 rounded-lg text-xs font-black border ${
-                      metrics!.isOpen 
-                        ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' 
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                    }`}>
-                      {metrics!.isOpen ? 'مركز مفتوح' : 'مغلق'}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-slate-500 dark:text-slate-400 font-bold text-sm mt-1">
-                    <span>
-                      متوسط الدفعات: <span className="text-blue-600 dark:text-blue-400 font-black">{metrics!.avgEntry.toFixed(2)} EGP</span>
-                    </span>
-                    {metrics!.isOpen && metrics!.netRealizedPnL !== 0 && metrics!.effectiveBreakEven > 0 && (
-                      <span
-                        title="نقطة التعادل الحقيقية للأسهم المتبقية بعد خصم الأرباح المحققة من المضاربة على الدفعات"
-                        className="text-xs px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-700 dark:text-amber-300 font-black"
-                      >
-                        التعادل الحقيقي: <b dir="ltr">{metrics!.effectiveBreakEven.toFixed(2)}</b>
+          {/* HERO HEADER: Ticker + Dominant Live Market Price + Open Position */}
+          <div className="flex flex-wrap justify-between items-start gap-3">
+            <div>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight" dir="ltr">{position!.symbol}</h3>
+
+                {/* Dominant Live Market Price Box */}
+                <div className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-950 px-3 py-1.5 shadow-sm">
+                  <div
+                    onClick={() => { setIsEditingMarketPrice(true); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); }}
+                    className="cursor-text flex items-baseline gap-1"
+                    title="اضغط لتعديل سعر السوق يدوياً"
+                  >
+                    {isEditingMarketPrice ? (
+                      <input
+                        type="number" step="any"
+                        value={marketPriceInput}
+                        onChange={(e) => setMarketPriceInput(e.target.value)}
+                        onBlur={handleUpdateMarketPrice}
+                        onKeyDown={e => e.key === 'Enter' && handleUpdateMarketPrice()}
+                        className="w-20 bg-transparent text-xl font-black outline-none text-left font-mono-num"
+                        dir="ltr" autoFocus
+                        placeholder={metrics!.currentPrice.toFixed(2)}
+                      />
+                    ) : (
+                      <span className="text-xl font-black font-mono-num tracking-tight" dir="ltr">
+                        {metrics!.currentPrice.toFixed(2)}
                       </span>
                     )}
+                    <span className="text-[10px] font-bold opacity-70">EGP</span>
                   </div>
-                  {metrics!.isOpen && analytics && (() => {
-                    const days = analytics.daysHeld;
-                    const cost = metrics!.openShares * metrics!.avgEntry;
-                    const uPct = cost > 0 ? (metrics!.netUnrealizedPnL / cost) * 100 : 0;
-                    const perDay = days && days > 0 ? uPct / days : null;
-                    const R = analytics.rMultiple;
-                    const chip = 'inline-flex items-center gap-1 whitespace-nowrap rounded-lg border px-2 py-1 text-[11px] font-black';
-                    const tone = (good: boolean | null) => good === null ? 'bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
-                      : good ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-400'
-                      : 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-400';
-                    const overTime = position!.plan?.timeStopDays && days !== null && days > position!.plan.timeStopDays;
-                    return (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {days !== null && (
-                          <span className={`${chip} ${overTime ? tone(false) : tone(null)}`} title="مدة الاحتفاظ ومتوسط العائد غير المحقق لكل يوم">
-                            <Clock className="w-3.5 h-3.5" />
-                            <span>{days === 0 ? 'اليوم' : days + ' يوم'}</span>
-                            {perDay !== null && <span dir="ltr" className={perDay >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>({perDay > 0 ? '+' : ''}{perDay.toFixed(2)}%/يوم)</span>}
-                          </span>
-                        )}
-                        {R !== null && (
-                          <span className={`${chip} ${tone(R >= 0)}`} title="الربح أو الخسارة مقاسة بوحدات المخاطرة الأولية (R)">
-                            <Target className="w-3.5 h-3.5" />
-                            <span dir="ltr">{R > 0 ? '+' : ''}{R.toFixed(2)}R</span>
-                          </span>
-                        )}
-                        {analytics.stopDistancePct > 0 && (
-                          <span className={`${chip} ${tone(analytics.status === 'near' ? false : null)}`} title="المسافة بين السعر الحالي والوقف">
-                            <ShieldAlert className="w-3.5 h-3.5" />
-                            <span>الوقف يبعد</span>
-                            <span dir="ltr">{analytics.stopDistancePct.toFixed(1)}%</span>
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })()}
+                  <button
+                    type="button"
+                    onClick={handleQuickLiveSync}
+                    disabled={syncingSingle}
+                    title="تحديث السعر والمؤشرات لحظياً"
+                    className="p-1 rounded-lg bg-white/15 dark:bg-slate-900/10 hover:bg-white/25 transition disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncingSingle ? 'animate-spin' : ''}`} />
+                  </button>
                 </div>
-                <div className="text-left flex flex-col items-start">
-                  <p className="text-slate-400 font-bold text-xs mb-0.5">الكمية المفتوحة</p>
-                  <p className="text-3xl font-black text-indigo-600 dark:text-indigo-400 drop-shadow-sm">{metrics!.openShares.toLocaleString()} <span className="text-lg">سهم</span></p>
-                  {metrics!.isOpen && (() => {
-                    const u = metrics!.netUnrealizedPnL;
-                    const cost = metrics!.openShares * metrics!.avgEntry;
-                    const uPct = cost > 0 ? (u / cost) * 100 : 0;
-                    const tone = u > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-400'
-                      : u < 0 ? 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-400'
-                      : 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400';
-                    return (
-                      <div className={`mt-1.5 inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-2 py-1 text-[11px] font-black ${tone}`} title={u < 0 ? 'خسارة غير محققة (صافي بعد العمولات)' : 'ربح غير محقق (صافي بعد العمولات)'}>
-                        {u < 0 ? <TrendingDown className="w-3.5 h-3.5" /> : <TrendingUp className="w-3.5 h-3.5" />}
-                        <span className="font-bold opacity-80">{u < 0 ? 'خسارة غير محققة' : 'ربح غير محقق'}</span>
-                        <span className="inline-flex items-center gap-1"><Amt v={u} plus /><span dir="ltr">({u > 0 ? '+' : ''}{uPct.toFixed(1)}%)</span></span>
-                      </div>
-                    );
-                  })()}
+
+                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black border ${
+                  metrics!.isOpen
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                    : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                }`}>
+                  {metrics!.isOpen ? 'مفتوح' : 'مغلق'}
+                </span>
+              </div>
+            </div>
+
+            <div className="text-left flex flex-col items-end">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 font-mono-num">{metrics!.openShares.toLocaleString()}</span>
+                <span className="text-xs font-bold text-slate-400">سهم</span>
+              </div>
+              {metrics!.isOpen && (() => {
+                const u = metrics!.netUnrealizedPnL;
+                const cost = metrics!.openShares * metrics!.avgEntry;
+                const uPct = cost > 0 ? (u / cost) * 100 : 0;
+                const tone = u > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-400'
+                  : u < 0 ? 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-400'
+                  : 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400';
+                return (
+                  <div className={`mt-1 inline-flex items-center gap-1 whitespace-nowrap rounded-lg border px-2 py-0.5 text-[11px] font-black ${tone}`} title="صافي الربح/الخسارة غير المحققة بعد العمولات">
+                    {u < 0 ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
+                    <Amt v={u} plus />
+                    <span dir="ltr">({u > 0 ? '+' : ''}{uPct.toFixed(1)}%)</span>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* 4-METRIC EXECUTIVE STRIP */}
+          {metrics!.isOpen && (() => {
+            const marketValue = metrics!.openShares * metrics!.currentPrice;
+            const totalCost = metrics!.openShares * metrics!.avgEntry;
+            const costPct = activeCapital > 0 ? (totalCost / activeCapital) * 100 : 0;
+            const rp = metrics!.netRealizedPnL;
+            const rTone = rp > 0 ? 'text-emerald-600 dark:text-emerald-400' : rp < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-200';
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-700/60">
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-slate-500 block">متوسط الدفعات</span>
+                  <span className="text-sm font-black font-mono-num text-blue-600 dark:text-blue-400" dir="ltr">{metrics!.avgEntry.toFixed(2)}</span>
+                </div>
+                <div className="min-w-0" title="نقطة التعادل الحقيقية بعد خصم الأرباح المحققة من المضاربة">
+                  <span className="text-[10px] font-bold text-slate-500 block">التعادل الحقيقي</span>
+                  <span className="text-sm font-black font-mono-num text-amber-600 dark:text-amber-400" dir="ltr">
+                    {(metrics!.effectiveBreakEven > 0 ? metrics!.effectiveBreakEven : metrics!.avgEntry).toFixed(2)}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-slate-500 block">القيمة السوقية</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-sm font-black text-slate-800 dark:text-slate-100"><Amt v={marketValue} /></span>
+                    {costPct > 0 && <span className="text-[9px] font-bold text-slate-400" dir="ltr">({costPct.toFixed(0)}%)</span>}
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-slate-500 block">الربح المحقق</span>
+                  <span className={`text-sm font-black ${rTone}`}><Amt v={rp} plus /></span>
                 </div>
               </div>
+            );
+          })()}
 
-              {/* Key Financial Metrics Strip */}
-              {metrics!.isOpen && (() => {
-                const totalCost = metrics!.openShares * metrics!.avgEntry;
-                const marketValue = metrics!.openShares * metrics!.currentPrice;
-                const costPct = activeCapital > 0 ? (totalCost / activeCapital) * 100 : 0;
-                let realizedPct = 0;
-                if ((metrics! as any).totalSold > 0) {
-                  const revenue = (metrics! as any).totalSold * (metrics! as any).avgExit;
-                  const costOfSold = revenue - metrics!.realizedPnL;
-                  if (costOfSold > 0) realizedPct = (metrics!.netRealizedPnL / costOfSold) * 100;
-                }
-                const rp = metrics!.netRealizedPnL;
-                const rTone = rp > 0 ? 'text-emerald-600 dark:text-emerald-400' : rp < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300';
+          {/* SLIM TECHNICAL STRIP (Peak / ATR / RSI) */}
+          {metrics!.isOpen && (
+            <div className="grid grid-cols-3 gap-2">
+              <div
+                className="flex items-center justify-between bg-blue-50/70 dark:bg-blue-900/20 border border-blue-200/70 dark:border-blue-800/50 rounded-xl px-2.5 py-1.5 cursor-text"
+                onClick={() => { setIsEditingHighestPrice(true); setIsEditingMarketPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); }}
+              >
+                <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> القمة
+                </span>
+                {isEditingHighestPrice ? (
+                  <input
+                    type="number" step="any"
+                    value={newHighestPrice}
+                    onChange={(e) => { setNewHighestPrice(e.target.value); setError(null); }}
+                    onBlur={handleUpdateTrailingStop}
+                    onKeyDown={e => e.key === 'Enter' && handleUpdateTrailingStop()}
+                    className="w-14 bg-transparent text-xs font-black outline-none text-left text-blue-900 dark:text-blue-100 font-mono-num"
+                    dir="ltr" autoFocus
+                    placeholder={currentHighest.toFixed(2)}
+                  />
+                ) : (
+                  <span className="text-xs font-black text-blue-800 dark:text-blue-200 font-mono-num" dir="ltr">
+                    {currentHighest.toFixed(2)}
+                  </span>
+                )}
+              </div>
+
+              <div
+                className="flex items-center justify-between bg-purple-50/70 dark:bg-purple-900/20 border border-purple-200/70 dark:border-purple-800/50 rounded-xl px-2.5 py-1.5 cursor-text"
+                onClick={() => { setIsEditingAtr(true); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingRsi(false); }}
+              >
+                <span className="text-[10px] font-bold text-purple-700 dark:text-purple-400">ATR</span>
+                {isEditingAtr ? (
+                  <input
+                    type="number" step="any"
+                    value={atrInput}
+                    onChange={(e) => setAtrInput(e.target.value)}
+                    onBlur={handleUpdateAtr}
+                    onKeyDown={e => e.key === 'Enter' && handleUpdateAtr()}
+                    className="w-14 bg-transparent text-xs font-black outline-none text-left text-purple-900 dark:text-purple-100 font-mono-num"
+                    dir="ltr" autoFocus
+                    placeholder={((position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0)).toFixed(2)}
+                  />
+                ) : (
+                  <span className="text-xs font-black text-purple-800 dark:text-purple-200 font-mono-num" dir="ltr">
+                    {((position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0)).toFixed(2)}
+                  </span>
+                )}
+              </div>
+
+              <div
+                className="flex items-center justify-between bg-indigo-50/70 dark:bg-indigo-900/20 border border-indigo-200/70 dark:border-indigo-800/50 rounded-xl px-2.5 py-1.5 cursor-text"
+                onClick={() => { setIsEditingRsi(true); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); }}
+              >
+                <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400">RSI</span>
+                {isEditingRsi ? (
+                  <input
+                    type="number" step="any"
+                    value={rsiInput}
+                    onChange={(e) => setRsiInput(e.target.value)}
+                    onBlur={handleUpdateRsi}
+                    onKeyDown={e => e.key === 'Enter' && handleUpdateRsi()}
+                    className="w-14 bg-transparent text-xs font-black outline-none text-left text-indigo-900 dark:text-indigo-100 font-mono-num"
+                    dir="ltr" autoFocus
+                    placeholder={((position!.plan?.rsi || 0)).toFixed(1)}
+                  />
+                ) : (
+                  <span className="text-xs font-black text-indigo-800 dark:text-indigo-200 font-mono-num" dir="ltr">
+                    {((position!.plan?.rsi || 0)).toFixed(1)}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {error && isEditingHighestPrice && (
+            <p className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 px-2.5 py-1.5 rounded-lg">
+              {error}
+            </p>
+          )}
+
+          {/* ANOMALOUS STALE STOP GUARD */}
+          {isAnomalousStop && (
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] font-black text-amber-800 dark:text-amber-200">
+              <span>⚠️ القمة المسجلة ({currentHighest.toFixed(2)}) أو الوقف ({currentStop.toFixed(2)}) غير متسقة مع سعر السوق الحالي.</span>
+              <button
+                type="button"
+                onClick={handleResetAnomalousStop}
+                className="shrink-0 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black transition"
+              >
+                إعادة ضبط
+              </button>
+            </div>
+          )}
+
+          {/* 2 CLEAN TABS HEADER */}
+          <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800">
+            <button
+              onClick={() => setLeftTab('risk')}
+              className={`pb-2.5 px-3 font-black text-xs whitespace-nowrap border-b-2 transition-colors flex items-center gap-1.5 ${
+                leftTab === 'risk'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5" /> المخاطرة والخطة
+            </button>
+            <button
+              onClick={() => setLeftTab('notes')}
+              className={`pb-2.5 px-3 font-black text-xs whitespace-nowrap border-b-2 transition-colors flex items-center gap-1.5 ${
+                leftTab === 'notes'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" /> الملاحظات والتنبيهات
+              {insights.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 text-[10px] font-mono-num">
+                  {insights.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* TAB 1: FOCUSED RISK & PLAN */}
+          {leftTab === 'risk' && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              {/* 4 Essential Risk KPIs */}
+              {analytics && metrics!.isOpen && (() => {
+                const R = analytics.rMultiple;
+                const tone = {
+                  good: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-300',
+                  bad: 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/50 text-rose-700 dark:text-rose-300',
+                  warn: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50 text-amber-700 dark:text-amber-300',
+                  neutral: 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200',
+                } as const;
+                const cards: { label: string; value: string; tone: keyof typeof tone; hint: string }[] = [
+                  { label: 'R الحالي', value: R === null ? '—' : (R >= 0 ? '+' : '') + R.toFixed(2) + 'R', tone: R === null ? 'neutral' : R >= 1 ? 'good' : R < 0 ? 'bad' : 'neutral', hint: '(السوق − الدخول) ÷ مخاطرة الخطة' },
+                  (!isAnomalousStop && analytics.lockedProfit > 0)
+                    ? { label: 'ربح مؤمَّن 🔒', value: '+' + formatEGP(analytics.lockedProfit), tone: 'good', hint: 'الوقف أعلى من متوسط الدخول' }
+                    : { label: 'مخاطرة الوقف', value: analytics.capitalAtRisk > 0 ? formatEGP(analytics.capitalAtRisk) : (metrics!.currentStop > 0 ? '🔒 صفر' : '—'), tone: analytics.capitalAtRisk > analytics.riskAmountAllowed && analytics.riskAmountAllowed > 0 ? 'bad' : 'neutral', hint: 'الخسارة لو ضُرب الوقف' },
+                  { label: 'وزن المحفظة', value: analytics.weightPct === null ? '—' : analytics.weightPct.toFixed(1) + '%', tone: analytics.weightPct !== null && analytics.weightPct > 25 ? 'warn' : 'neutral', hint: 'قيمة المركز ÷ رأس المال' },
+                  { label: 'أيام الاحتفاظ', value: analytics.daysHeld === null ? '—' : analytics.daysHeld + ' يوم', tone: position!.plan?.timeStopDays && analytics.daysHeld !== null && analytics.daysHeld > position!.plan.timeStopDays ? 'warn' : 'neutral', hint: 'منذ أول شراء في الدورة' },
+                ];
                 return (
-                  <div className="grid grid-cols-3 gap-2 mb-4 bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60">
-                    <div className="flex flex-col gap-1 min-w-0 border-l border-slate-200 dark:border-slate-700 pl-2">
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500 whitespace-nowrap"><Wallet className="w-3 h-3 text-slate-400" />التكلفة</span>
-                      <div className="flex items-baseline gap-1 whitespace-nowrap">
-                        <span className="text-sm font-black text-slate-800 dark:text-slate-100"><Amt v={totalCost} /></span>
-                        {costPct > 0 && <span className="text-[10px] font-bold text-slate-400" dir="ltr">({costPct.toFixed(1)}%)</span>}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {cards.map(c => (
+                      <div key={c.label} className={`rounded-xl border px-2.5 py-2 text-center ${tone[c.tone]}`} title={c.hint}>
+                        <div className="text-[10px] font-bold opacity-75">{c.label}</div>
+                        <div className="text-xs font-black tracking-tight mt-0.5 font-mono-num" dir="ltr">{c.value}</div>
                       </div>
-                    </div>
-                    <div className="flex flex-col gap-1 min-w-0 border-l border-slate-200 dark:border-slate-700 pl-2">
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500 whitespace-nowrap"><Landmark className="w-3 h-3 text-blue-400" />القيمة السوقية</span>
-                      <div className="flex items-baseline gap-1 whitespace-nowrap">
-                        <span className="text-sm font-black text-slate-800 dark:text-slate-100"><Amt v={marketValue} /></span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500 whitespace-nowrap"><Banknote className="w-3 h-3 text-emerald-400" />الربح المحقق</span>
-                      <div className="flex items-baseline gap-1 whitespace-nowrap">
-                        <span className={`text-sm font-black ${rTone}`}><Amt v={rp} plus /></span>
-                        {(metrics! as any).totalSold > 0 && <span className={`text-[10px] font-bold ${rTone} opacity-80`} dir="ltr">({realizedPct > 0 ? '+' : ''}{realizedPct.toFixed(1)}%)</span>}
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 );
               })()}
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full">
-                    {/* Market Price Pill */}
-                    <div 
-                      className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
-                      onClick={() => { setIsEditingMarketPrice(true); setIsEditingHighestPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); }}
-                    >
-                      <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">السوق:</span>
-                      {isEditingMarketPrice ? (
-                          <input 
-                            type="number" step="any"
-                            value={marketPriceInput}
-                            onChange={(e) => setMarketPriceInput(e.target.value)}
-                            onBlur={handleUpdateMarketPrice}
-                            onKeyDown={e => e.key === 'Enter' && handleUpdateMarketPrice()}
-                            className="w-14 bg-transparent text-xs font-black outline-none text-left text-slate-900 dark:text-white font-mono-num"
-                            dir="ltr" autoFocus
-                            placeholder={metrics!.currentPrice.toFixed(2)}
-                          />
-                      ) : (
-                        <span className="text-xs font-black text-slate-800 dark:text-slate-200 font-mono-num" dir="ltr">
-                          {metrics!.currentPrice.toFixed(2)}
-                        </span>
-                      )}
-                    </div>
-  
-                    {/* Highest Price Pill (Trailing Stop) */}
-                    {metrics!.isOpen && (
-                    <div 
-                      className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
-                      onClick={() => { setIsEditingHighestPrice(true); setIsEditingMarketPrice(false); setIsEditingAtr(false); setIsEditingRsi(false); }}
-                    >
-                      <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 whitespace-nowrap flex items-center gap-1">
-                        <Lock className="w-3 h-3" /> القمة:
-                      </span>
-                      {isEditingHighestPrice ? (
-                          <input 
-                            type="number" step="any"
-                            value={newHighestPrice}
-                            onChange={(e) => { setNewHighestPrice(e.target.value); setError(null); }}
-                            onBlur={handleUpdateTrailingStop}
-                            onKeyDown={e => e.key === 'Enter' && handleUpdateTrailingStop()}
-                            className="w-14 bg-transparent text-xs font-black outline-none text-left text-blue-900 dark:text-blue-100 font-mono-num"
-                            dir="ltr" autoFocus
-                            placeholder={currentHighest.toFixed(2)}
-                          />
-                      ) : (
-                        <span className="text-xs font-black text-blue-800 dark:text-blue-200 font-mono-num" dir="ltr">
-                          {currentHighest.toFixed(2)}
-                        </span>
-                      )}
-                    </div>
-                    )}
-  
-                    {/* ATR Pill */}
-                    {metrics!.isOpen && (
-                    <div 
-                      className="flex items-center justify-between bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-purple-300 dark:hover:border-purple-700 transition-colors"
-                      onClick={() => { setIsEditingAtr(true); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); setIsEditingRsi(false); }}
-                    >
-                      <span className="text-[10px] font-bold text-purple-700 dark:text-purple-400 whitespace-nowrap">ATR:</span>
-                      {isEditingAtr ? (
-                          <input 
-                            type="number" step="any"
-                            value={atrInput}
-                            onChange={(e) => setAtrInput(e.target.value)}
-                            onBlur={handleUpdateAtr}
-                            onKeyDown={e => e.key === 'Enter' && handleUpdateAtr()}
-                            className="w-14 bg-transparent text-xs font-black outline-none text-left text-purple-900 dark:text-purple-100 font-mono-num"
-                            dir="ltr" autoFocus
-                            placeholder={((position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0)).toFixed(2)}
-                          />
-                      ) : (
-                        <span className="text-xs font-black text-purple-800 dark:text-purple-200 font-mono-num" dir="ltr">
-                          {((position!.trailingStop?.atrAtEntry || position!.plan?.atr || 0)).toFixed(2)}
-                        </span>
-                      )}
-                    </div>
-                    )}
-
-                    {/* RSI Pill */}
-                    {metrics!.isOpen && (
-                    <div 
-                      className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-lg overflow-hidden shadow-sm px-2 py-1.5 cursor-text hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors"
-                      onClick={() => { setIsEditingRsi(true); setIsEditingAtr(false); setIsEditingHighestPrice(false); setIsEditingMarketPrice(false); }}
-                    >
-                      <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 whitespace-nowrap">RSI:</span>
-                      {isEditingRsi ? (
-                          <input 
-                            type="number" step="any"
-                            value={rsiInput}
-                            onChange={(e) => setRsiInput(e.target.value)}
-                            onBlur={handleUpdateRsi}
-                            onKeyDown={e => e.key === 'Enter' && handleUpdateRsi()}
-                            className="w-14 bg-transparent text-xs font-black outline-none text-left text-indigo-900 dark:text-indigo-100 font-mono-num"
-                            dir="ltr" autoFocus
-                            placeholder={((position!.plan?.rsi || 0)).toFixed(1)}
-                          />
-                      ) : (
-                        <span className="text-xs font-black text-indigo-800 dark:text-indigo-200 font-mono-num" dir="ltr">
-                          {((position!.plan?.rsi || 0)).toFixed(1)}
-                        </span>
-                      )}
-                    </div>
-                    )}
-
+              {/* Clean Price-to-Plan Visual Gauge */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 px-5 py-7 rounded-2xl border border-slate-200/80 dark:border-slate-700/60">
+                <div className="relative h-12 w-full flex items-center" style={{ marginTop: gauge.mt - 10, marginBottom: gauge.mb }}>
+                  <div className="absolute w-full h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                    {position!.plan?.target && position!.plan?.stop ? (
+                      <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-blue-400 to-rose-500 opacity-90 w-full" />
+                    ) : null}
                   </div>
-                  {error && isEditingHighestPrice && (
-                  <p className="text-[10px] font-bold text-rose-600 dark:text-rose-400 mt-2 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded inline-block w-full max-w-sm">
-                    {error}
-                  </p>
-                )}
+
+                  {gauge.valid ? (
+                    <>
+                      {gauge.top.map(m => (
+                        <div key={m.key} className="absolute flex flex-col items-center" style={{ right: `${m.pct}%`, transform: 'translateX(50%)', bottom: '100%', marginBottom: '10px' }}>
+                          <div className="flex flex-col items-center" style={{ transform: `translateY(-${m.level * 32}px)` }}>
+                            <span className={`text-[10px] font-black flex items-center gap-0.5 ${m.text}`}>{m.label}</span>
+                            <span className="text-xs font-mono-num font-black text-slate-800 dark:text-slate-200">{m.value.toFixed(2)}</span>
+                          </div>
+                          <div className={`w-0.5 absolute ${m.dot}`} style={{ height: 12 + m.level * 32, bottom: -12 }} />
+                          <div className={`w-3 h-3 rounded-full border-2 border-white dark:border-slate-900 absolute -bottom-4 ${m.dot}`} />
+                        </div>
+                      ))}
+                      {gauge.bottom.map(m => (
+                        <div key={m.key} className="absolute flex flex-col items-center" style={{ right: `${m.pct}%`, transform: 'translateX(50%)', top: '100%', marginTop: '10px' }}>
+                          <div className={`w-3 h-3 rounded-full border-2 border-white dark:border-slate-900 absolute -top-4 ${m.dot}`} />
+                          <div className={`w-0.5 absolute ${m.dot}`} style={{ height: 12 + m.level * 32, top: -12 }} />
+                          <div className="flex flex-col items-center" style={{ transform: `translateY(${m.level * 32}px)` }}>
+                            <span className={`text-[10px] font-black ${m.text}`}>{m.label}</span>
+                            <span className="text-xs font-mono-num font-black text-slate-800 dark:text-slate-200">{m.value.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="text-center w-full text-[11px] text-slate-500 font-bold mt-6">أضف هدفاً ووقف خسارة من إعدادات الخطة بالأسفل</div>
+                  )}
+                </div>
               </div>
 
+              {/* Collapsible Plan Tools (Targets, Supports, Chandelier Stop, Core Shares) */}
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowPlanTools(v => !v)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-black text-slate-700 dark:text-slate-200 hover:bg-slate-100/70 dark:hover:bg-slate-800/50 transition"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-indigo-500" />
+                    إعدادات الأهداف والوقف المتحرك والكور
+                  </span>
+                  <span className="text-[10px] text-slate-400">{showPlanTools ? 'إخفاء ▲' : 'تعديل ▼'}</span>
+                </button>
 
+                {showPlanTools && (
+                  <div className="p-4 pt-2 space-y-4 border-t border-slate-200/70 dark:border-slate-800">
+                    {/* Risk % per trade */}
+                    {analytics && (
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
+                        <span>المخاطرة المسموحة: {riskPct}% ≈ {formatEGP(analytics.riskAmountAllowed)}</span>
+                        {isEditingRisk ? (
+                          <span className="flex items-center gap-1">
+                            <input type="number" step="0.1" value={riskInput} onChange={e => setRiskInput(e.target.value)} className="w-12 text-center px-1 py-0.5 rounded border bg-white dark:bg-slate-900 font-black" dir="ltr" autoFocus />
+                            <button onClick={handleSaveRisk} className="bg-blue-600 text-white px-2 py-0.5 rounded font-bold text-[10px]">حفظ</button>
+                            <button onClick={() => setIsEditingRisk(false)} className="bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded font-bold text-[10px]">إلغاء</button>
+                          </span>
+                        ) : (
+                          <button onClick={() => { setRiskInput(String(riskPct)); setIsEditingRisk(true); }} className="underline text-blue-600 dark:text-blue-400">تعديل %</button>
+                        )}
+                      </div>
+                    )}
 
+                    {/* Targets & Supports */}
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black text-slate-700 dark:text-slate-200">المستهدفات والدعوم</span>
+                      <button onClick={handleAutoCalculate} className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-black border border-indigo-200 dark:border-indigo-800">
+                        <Zap className="w-3 h-3" /> حساب تلقائي
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-emerald-50/70 dark:bg-emerald-900/10 p-3 rounded-xl border border-emerald-100 dark:border-emerald-800/40">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-emerald-700 dark:text-emerald-400 font-black text-[11px]">الأهداف</span>
+                          {isEditingTargets ? (
+                            <div className="flex gap-1">
+                              <button onClick={handleUpdateTargets} className="text-[10px] font-black bg-emerald-600 text-white px-1.5 py-0.5 rounded">حفظ</button>
+                              <button onClick={() => setIsEditingTargets(false)} className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded">إلغاء</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setIsEditingTargets(true)} className="text-[10px] font-bold text-emerald-600 hover:underline">تعديل</button>
+                          )}
+                        </div>
+                        <div className="space-y-1.5">
+                          {[1, 2, 3].map((i) => (
+                            <div key={`t${i}`} className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-slate-500">T{i}</span>
+                              {isEditingTargets ? (
+                                <input type="number" step="any" value={i === 1 ? t1Input : i === 2 ? t2Input : t3Input} onChange={(e) => i === 1 ? setT1Input(e.target.value) : i === 2 ? setT2Input(e.target.value) : setT3Input(e.target.value)} className="w-16 bg-white dark:bg-slate-900 border text-center font-black rounded px-1 py-0.5" dir="ltr" />
+                              ) : (
+                                <span className="font-black text-emerald-700 dark:text-emerald-300 font-mono-num">{(i === 1 ? position!.plan?.target : i === 2 ? position!.plan?.targets?.[0] : position!.plan?.targets?.[1]) || '—'}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
 
-          {/* TABS HEADER */}
-          <div className="flex overflow-x-auto items-center gap-4 mt-0 mb-4 border-b border-slate-200 dark:border-slate-800 w-full [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-            <button onClick={() => setLeftTab('advisor')} className={`pb-3 px-2 md:px-4 font-black text-xs md:text-sm whitespace-nowrap border-b-2 transition-colors ${leftTab === 'advisor' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
-              <Sparkles className="w-4 h-4 inline-block ml-1" /> المستشار الذكي
-            </button>
-                        <button onClick={() => setLeftTab('risk')} className={`pb-3 px-2 md:px-4 font-black text-xs md:text-sm whitespace-nowrap border-b-2 transition-colors ${leftTab === 'risk' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
-              <TrendingUp className="w-4 h-4 inline-block ml-1" /> المخاطرة والأداء
-            </button>
-<button onClick={() => setLeftTab('plan')} className={`pb-3 px-2 md:px-4 font-black text-xs md:text-sm whitespace-nowrap border-b-2 transition-colors ${leftTab === 'plan' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
-              <Target className="w-4 h-4 inline-block ml-1" /> إدارة الصفقة
-            </button>
-            <button onClick={() => setLeftTab('notes')} className={`pb-3 px-2 md:px-4 font-black text-xs md:text-sm whitespace-nowrap border-b-2 transition-colors ${leftTab === 'notes' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-2'}`}>
-              <Pencil className="w-4 h-4 inline-block ml-1" /> الملاحظات
-            </button>
-          </div>
+                      <div className="bg-blue-50/70 dark:bg-blue-900/10 p-3 rounded-xl border border-blue-100 dark:border-blue-800/40">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-blue-700 dark:text-blue-400 font-black text-[11px]">الدعوم</span>
+                          {isEditingSupports ? (
+                            <div className="flex gap-1">
+                              <button onClick={handleUpdateSupports} className="text-[10px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded">حفظ</button>
+                              <button onClick={() => setIsEditingSupports(false)} className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded">إلغاء</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setIsEditingSupports(true)} className="text-[10px] font-bold text-blue-600 hover:underline">تعديل</button>
+                          )}
+                        </div>
+                        <div className="space-y-1.5">
+                          {[1, 2, 3].map((i) => (
+                            <div key={`s${i}`} className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-slate-500">S{i}</span>
+                              {isEditingSupports ? (
+                                <input type="number" step="any" value={i === 1 ? s1Input : i === 2 ? s2Input : s3Input} onChange={(e) => i === 1 ? setS1Input(e.target.value) : i === 2 ? setS2Input(e.target.value) : setS3Input(e.target.value)} className="w-16 bg-white dark:bg-slate-900 border text-center font-black rounded px-1 py-0.5" dir="ltr" />
+                              ) : (
+                                <span className="font-black text-blue-700 dark:text-blue-300 font-mono-num">{(position!.plan?.supports?.[i - 1]) || '—'}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
 
-          {/* ADVISOR TAB */}
-          {leftTab === 'advisor' && (
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-              {insights.length === 0 && (
-                <div className="text-center py-10 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
-                  <Sparkles className="w-8 h-8 text-slate-400 mx-auto mb-3" />
-                  <p className="font-bold text-slate-500 text-sm">لا توجد توصيات حالياً من المستشار الذكي.</p>
+                    {/* Smart Chandelier Stop */}
+                    {metrics!.isOpen && analytics && (
+                      <div className="bg-orange-50/60 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/40 rounded-xl p-3 space-y-2">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <span className="text-xs font-black text-slate-700 dark:text-slate-200">الوقف المتحرك (Chandelier)</span>
+                          <div className="flex items-center gap-1">
+                            {[1.5, 2, 2.5, 3].map(m => (
+                              <button key={m} onClick={() => handleSetMultiplier(m)} className={`text-[10px] font-black px-2 py-0.5 rounded-md border transition-colors ${analytics.atrMultiplier === m ? 'bg-orange-500 text-white border-orange-500' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}>
+                                {m}×
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-white dark:bg-slate-800/70 rounded-lg border border-slate-200 dark:border-slate-700 p-2 text-center">
+                            <div className="text-[10px] font-bold text-slate-500">وقف القمة − {analytics.atrMultiplier}×ATR</div>
+                            <div className="text-sm font-black text-orange-600 dark:text-orange-400 font-mono-num" dir="ltr">{analytics.chandelierStop !== null ? analytics.chandelierStop.toFixed(2) : '—'}</div>
+                            <button
+                              disabled={analytics.chandelierStop === null || analytics.chandelierStop <= metrics!.currentStop || analytics.chandelierStop >= metrics!.currentPrice}
+                              onClick={() => analytics.chandelierStop !== null && handleApplyStop(analytics.chandelierStop, 'وقف Chandelier')}
+                              className="mt-1 text-[10px] font-black bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white px-2.5 py-0.5 rounded-md"
+                            >
+                              تطبيق
+                            </button>
+                          </div>
+                          <div className="bg-white dark:bg-slate-800/70 rounded-lg border border-slate-200 dark:border-slate-700 p-2 text-center">
+                            <div className="text-[10px] font-bold text-slate-500">وقف التعادل</div>
+                            <div className="text-sm font-black text-emerald-600 dark:text-emerald-400 font-mono-num" dir="ltr">{analytics.breakevenStop.toFixed(2)}</div>
+                            <button
+                              disabled={analytics.breakevenStop <= metrics!.currentStop || analytics.breakevenStop >= metrics!.currentPrice}
+                              onClick={() => handleApplyStop(analytics.breakevenStop, 'وقف التعادل')}
+                              className="mt-1 text-[10px] font-black bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white px-2.5 py-0.5 rounded-md"
+                            >
+                              تطبيق
+                            </button>
+                          </div>
+                        </div>
+                        {stopError && <p className="text-[10px] font-black text-rose-600 dark:text-rose-400">{stopError}</p>}
+                        {stopNote && <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-300">{stopNote}</p>}
+                      </div>
+                    )}
+
+                    {/* Core / Satellite Split */}
+                    {metrics!.isOpen && (
+                      <div className="bg-white dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-black text-slate-700 dark:text-slate-200">توزيع الكور ({position?.coreShares || 0} / {metrics!.openShares})</span>
+                          {isEditingCoreShares ? (
+                            <div className="flex items-center gap-1">
+                              <input type="number" className="w-20 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md text-xs font-black px-2 py-0.5 text-center" value={coreSharesInput} onChange={e => setCoreSharesInput(e.target.value)} autoFocus dir="ltr" />
+                              <button onClick={handleSaveCoreShares} className="p-1 text-emerald-600 hover:bg-emerald-100 rounded"><CheckCircle className="w-3.5 h-3.5" /></button>
+                              <button onClick={() => setIsEditingCoreShares(false)} className="p-1 text-rose-600 hover:bg-rose-100 rounded"><X className="w-3.5 h-3.5" /></button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setIsEditingCoreShares(true)} className="text-[10px] font-bold text-blue-600 hover:underline">تعديل الكور</button>
+                          )}
+                        </div>
+                        <div className="w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full flex overflow-hidden">
+                          <div className="h-full bg-blue-500 transition-all" style={{ width: `${position?.coreShares ? (position.coreShares / metrics!.openShares) * 100 : 0}%` }} />
+                          <div className="h-full bg-amber-400 transition-all" style={{ width: `${100 - (position?.coreShares ? (position.coreShares / metrics!.openShares) * 100 : 0)}%` }} />
+                        </div>
+                        {coreError && <p className="text-[10px] font-black text-rose-600 mt-1">{coreError}</p>}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: SMART ALERTS & STOCK NOTES */}
+          {leftTab === 'notes' && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              {insights.length > 0 && (
+                <div className="space-y-2">
+                  {insights.map((insight, idx) => (
+                    <div key={idx} className={`flex items-start gap-2.5 p-3 rounded-xl text-xs font-bold leading-relaxed ${
+                      insight.type === 'warning' ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800/50' :
+                      insight.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/50' :
+                      'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                    }`}>
+                      <div className="flex-1">{insight.text}</div>
+                      {insight.action && (
+                        <button onClick={() => setTxModalType('sell')} className="text-[10px] font-black bg-white dark:bg-slate-800 text-slate-800 dark:text-white px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-600 shrink-0">
+                          {insight.action}
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
-             {/* Smart Insights Panel (AI Advisor) */}
-             {insights.length > 0 && (
-               <div className="bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-800/50 rounded-2xl p-5 mb-2 shadow-sm">
-                 <div className="flex items-center gap-2 mb-3">
-                   <Sparkles className="w-5 h-5 text-indigo-500" />
-                   <h3 className="font-black text-indigo-900 dark:text-indigo-300 text-sm">المستشار الذكي (AI) والتوصيات</h3>
-                 </div>
-                 <div className="grid gap-2">
-                   {insights.map((insight, idx) => (
-                     <div key={idx} className={`flex items-start gap-3 p-3 rounded-xl ${
-                       insight.type === 'warning' ? 'bg-rose-100/60 dark:bg-rose-900/30 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800/50' :
-                       insight.type === 'success' ? 'bg-emerald-100/60 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/50' :
-                       'bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                     }`}>
-                       <div className="flex-1 text-xs font-bold leading-relaxed">{insight.text}</div>
-                       {insight.action && (
-                         <button onClick={() => setTxModalType('sell')} className="text-[10px] font-black bg-white dark:bg-slate-800 text-slate-800 dark:text-white px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 dark:border-slate-600 hover:scale-105 transition-transform flex-shrink-0">
-                           {insight.action}
-                         </button>
-                       )}
-                     </div>
-                   ))}
-                 </div>
-               </div>
-             )}
 
-
-              {/* Targets and Supports */}
-                          <div className="flex justify-between items-center mb-3 mt-8 border-t border-slate-200 dark:border-slate-800 pt-6">
-                <h3 className="font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                  <Target className="w-5 h-5 text-indigo-500" />
-                  المستهدفات والدعوم
-                </h3>
-                <button onClick={handleAutoCalculate} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-black transition-colors border border-indigo-200 dark:border-indigo-800 shadow-sm" title="حساب ديناميكي بناءً على ATR وسعر الدخول">
-                  <Zap className="w-3.5 h-3.5" /> حساب تلقائي ⚡
-                </button>
-              </div>
-<div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-800/50">
-                <div className="flex items-center justify-between mb-3 border-b border-emerald-100 dark:border-emerald-800/50 pb-2">
-                  <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
-                    <Target className="w-4 h-4" />
-                    المستهدفات (Targets)
-                  </div>
-                  {isEditingTargets ? (
-                    <div className="flex items-center gap-1">
-                      <button onClick={handleUpdateTargets} className="text-[10px] font-black bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded">حفظ</button>
-                      <button onClick={() => setIsEditingTargets(false)} className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded">إلغاء</button>
-                    </div>
-                  ) : (
-                    <button onClick={() => setIsEditingTargets(true)} className="text-[10px] font-bold text-emerald-600 hover:underline">تعديل</button>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <div key={`t${i}`} className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-500">T{i}</span>
-                      {isEditingTargets ? (
-                        <input
-                          type="number" step="any"
-                          value={i === 1 ? t1Input : i === 2 ? t2Input : t3Input}
-                          onChange={(e) => i === 1 ? setT1Input(e.target.value) : i === 2 ? setT2Input(e.target.value) : setT3Input(e.target.value)}
-                          className="w-16 bg-white dark:bg-slate-900 border text-center font-black rounded px-1 py-0.5"
-                          dir="ltr"
-                        />
-                      ) : (
-                        <span className="font-black text-emerald-700 dark:text-emerald-300 font-mono-num">
-                          {(i === 1 ? position!.plan?.target : i === 2 ? position!.plan?.targets?.[0] : position!.plan?.targets?.[1]) || 'â€”'}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-2xl border border-blue-100 dark:border-blue-800/50">
-                <div className="flex items-center justify-between mb-3 border-b border-blue-100 dark:border-blue-800/50 pb-2">
-                  <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold text-xs">
-                    <ArrowDownToLine className="w-4 h-4" />
-                    الدعوم (Supports)
-                  </div>
-                  {isEditingSupports ? (
-                    <div className="flex items-center gap-1">
-                      <button onClick={handleUpdateSupports} className="text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded">حفظ</button>
-                      <button onClick={() => setIsEditingSupports(false)} className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 rounded">إلغاء</button>
-                    </div>
-                  ) : (
-                    <button onClick={() => setIsEditingSupports(true)} className="text-[10px] font-bold text-blue-600 hover:underline">تعديل</button>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <div key={`s${i}`} className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-500">S{i}</span>
-                      {isEditingSupports ? (
-                        <input
-                          type="number" step="any"
-                          value={i === 1 ? s1Input : i === 2 ? s2Input : s3Input}
-                          onChange={(e) => i === 1 ? setS1Input(e.target.value) : i === 2 ? setS2Input(e.target.value) : setS3Input(e.target.value)}
-                          className="w-16 bg-white dark:bg-slate-900 border text-center font-black rounded px-1 py-0.5"
-                          dir="ltr"
-                        />
-                      ) : (
-                        <span className="font-black text-blue-700 dark:text-blue-300 font-mono-num">
-                          {(position!.plan?.supports?.[i-1]) || 'â€”'}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            
-            </div>
-          )}
-
-                    {/* RISK TAB */}
-          {leftTab === 'risk' && (
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 mb-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <ShieldAlert className="w-5 h-5 text-indigo-500" />
-                  <h3 className="font-black text-slate-800 dark:text-slate-200 text-sm">مؤشرات المخاطرة والأداء المالي</h3>
-                </div>
-{/* Decision indicators strip */}
-            {analytics && metrics!.isOpen && (() => {
-              const R = analytics.rMultiple;
-              const tone = {
-                good: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-300',
-                bad: 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/50 text-rose-700 dark:text-rose-300',
-                warn: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50 text-amber-700 dark:text-amber-300',
-                neutral: 'bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200',
-              } as const;
-              const cards: { label: string; value: string; tone: keyof typeof tone; hint: string }[] = [
-                { label: 'R الحالي', value: R === null ? '—' : (R >= 0 ? '+' : '') + R.toFixed(2) + 'R', tone: R === null ? 'neutral' : R >= 1 ? 'good' : R < 0 ? 'bad' : 'neutral', hint: '(السوق − الدخول) ÷ مخاطرة الخطة' },
-                { label: 'ربح/مخاطرة (RR)', value: analytics.rr === null ? '—' : analytics.rr.toFixed(2), tone: analytics.rr === null ? 'neutral' : analytics.rr >= 2 ? 'good' : analytics.rr < 1.5 ? 'warn' : 'neutral', hint: '(الهدف − السوق) ÷ (السوق − الوقف)' },
-                analytics.lockedProfit > 0
-                  ? { label: 'ربح مؤمَّن 🔒', value: '+' + formatEGP(analytics.lockedProfit), tone: 'good', hint: 'الوقف أعلى من متوسط الدخول' }
-                  : { label: 'مخاطرة رأس المال', value: analytics.capitalAtRisk > 0 ? formatEGP(analytics.capitalAtRisk) + ' (' + analytics.capitalAtRiskPct.toFixed(1) + '%)' : (metrics!.currentStop > 0 ? '🔒 صفر' : '—'), tone: analytics.capitalAtRisk > analytics.riskAmountAllowed && analytics.riskAmountAllowed > 0 ? 'bad' : 'neutral', hint: 'الخسارة لو ضُرب الوقف مقابل الدخول' },
-                { label: 'مسافة الوقف', value: analytics.stopDistanceAtr !== null ? analytics.stopDistanceAtr.toFixed(1) + ' ATR' : analytics.stopDistancePct.toFixed(1) + '%', tone: analytics.stopDistanceAtr !== null && analytics.stopDistanceAtr < 1 ? 'warn' : 'neutral', hint: analytics.stopDistancePct.toFixed(1) + '% تحت السعر' },
-                { label: 'تراجع من القمة', value: analytics.drawdownFromPeak.toFixed(1) + '%', tone: analytics.drawdownFromPeak > 8 ? 'warn' : 'neutral', hint: 'القمة ' + analytics.peak.toFixed(2) },
-                { label: 'أيام الاحتفاظ', value: analytics.daysHeld === null ? '—' : String(analytics.daysHeld), tone: position!.plan?.timeStopDays && analytics.daysHeld !== null && analytics.daysHeld > position!.plan.timeStopDays ? 'warn' : 'neutral', hint: position!.plan?.timeStopDays ? 'المخطط ' + position!.plan.timeStopDays + ' يوم' : 'منذ أول شراء' },
-                { label: 'الحد الأقصى للحجم', value: analytics.maxSharesByRisk === null ? '—' : analytics.maxSharesByRisk.toLocaleString() + ' سهم', tone: analytics.isOversized ? 'bad' : 'neutral', hint: 'مخاطرة ' + riskPct + '% من رأس المال' },
-                { label: 'وزن المحفظة', value: analytics.weightPct === null ? '—' : analytics.weightPct.toFixed(1) + '%', tone: analytics.weightPct !== null && analytics.weightPct > 25 ? 'warn' : 'neutral', hint: 'قيمة المركز ÷ رأس المال' },
-              ];
-              return (
-                <div className="mt-6">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {cards.map(c => (
-                      <div key={c.label} className={`rounded-xl border px-3 py-2 text-center ${tone[c.tone]}`} title={c.hint}>
-                        <div className="text-[10px] font-bold opacity-70">{c.label}</div>
-                        <div className="text-sm font-black tracking-tight mt-0.5" dir="ltr">{c.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 mt-2 px-1">
-                    <span>المخاطرة المسموحة لكل صفقة: {riskPct}% ≈ {formatEGP(analytics.riskAmountAllowed)}</span>
-                    {isEditingRisk ? (
-                      <span className="flex items-center gap-1">
-                        <input type="number" step="0.1" value={riskInput} onChange={e => setRiskInput(e.target.value)} className="w-14 text-center px-1 py-0.5 rounded border bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-black" dir="ltr" autoFocus />
-                        <button onClick={handleSaveRisk} className="bg-blue-600 text-white px-2 py-0.5 rounded font-bold">حفظ</button>
-                        <button onClick={() => setIsEditingRisk(false)} className="bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded font-bold">إلغاء</button>
-                      </span>
-                    ) : (
-                      <button onClick={() => { setRiskInput(String(riskPct)); setIsEditingRisk(true); }} className="underline text-blue-600 dark:text-blue-400">تعديل النسبة</button>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Plan vs Reality Visual Chart */}
-            <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-10 rounded-3xl border border-slate-200 dark:border-slate-700/60 mb-2 relative mt-6 shadow-inner">
-              <div className={`absolute -top-4 left-4 z-10 px-3 py-1.5 rounded-xl text-sm font-black flex items-center gap-1.5 border shadow-sm ${
-                metrics!.netRealizedPnL > 0 
-                  ? 'bg-emerald-100 border-emerald-300 text-emerald-800 dark:bg-emerald-900/60 dark:border-emerald-700 dark:text-emerald-300' 
-                  : metrics!.netRealizedPnL < 0 
-                    ? 'bg-rose-100 border-rose-300 text-rose-800 dark:bg-rose-900/60 dark:border-rose-700 dark:text-rose-300' 
-                    : 'bg-white border-slate-200 text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
-              }`}>
-                صافي الأرباح المحققة: {metrics!.netRealizedPnL > 0 ? '+' : ''}{metrics!.netRealizedPnL.toFixed(2)} EGP
-              </div>
-              
-              <div className="relative h-16 w-full flex items-center" style={{ marginTop: gauge.mt, marginBottom: gauge.mb }}>
-                {/* Track */}
-                <div className="absolute w-full h-4 bg-slate-200 dark:bg-slate-700 rounded-full shadow-inner overflow-hidden">
-                  {position!.plan?.target && position!.plan?.stop ? (
-                    <div 
-                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-blue-400 to-rose-500 opacity-90"
-                      style={{ width: '100%' }}
-                    />
-                  ) : null}
-                </div>
-
-                {/* Markers */}
-                {gauge.valid ? (
-                  <>
-                    {gauge.top.map(m => (
-                      <div key={m.key} className="absolute flex flex-col items-center" style={{ right: `${m.pct}%`, transform: 'translateX(50%)', bottom: '100%', marginBottom: '14px' }}>
-                        <div className="flex flex-col items-center" style={{ transform: `translateY(-${m.level * 36}px)` }}>
-                          <span className={`text-[10px] font-black flex items-center gap-1 ${m.text}`}>
-                            {m.key === 'stop' && <ShieldAlert className="w-3 h-3" />}
-                            {m.key === 'target' && <Target className="w-3 h-3" />}
-                            {m.label}
-                          </span>
-                          <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{m.value.toFixed(2)}</span>
-                        </div>
-                        <div className={`w-0.5 absolute ${m.dot}`} style={{ height: 16 + m.level * 36, bottom: -16 }}></div>
-                        <div className={`w-3.5 h-3.5 rounded-full border-2 border-white dark:border-slate-900 absolute -bottom-5 ${m.dot}`}></div>
-                      </div>
-                    ))}
-                    {gauge.bottom.map(m => (
-                      <div key={m.key} className="absolute flex flex-col items-center" style={{ right: `${m.pct}%`, transform: 'translateX(50%)', top: '100%', marginTop: '14px' }}>
-                        <div className={`w-3.5 h-3.5 rounded-full border-2 border-white dark:border-slate-900 absolute -top-5 ${m.dot}`}></div>
-                        <div className={`w-0.5 absolute ${m.dot}`} style={{ height: 16 + m.level * 36, top: -16 }}></div>
-                        <div className="flex flex-col items-center" style={{ transform: `translateY(${m.level * 36}px)` }}>
-                          <span className={`text-[10px] font-black ${m.text}`}>{m.label}</span>
-                          <span className="text-sm font-mono-num font-black text-slate-800 dark:text-slate-200">{m.value.toFixed(2)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                ) : (
-                  <div className="text-center w-full text-[10px] text-slate-500 font-bold mt-8">الخطة غير مكتملة (يرجى إضافة هدف ووقف)</div>
-                )}
-
-              </div>
-            </div>
-
-          
-              </div>
-            
-            </div>
-          )}
-
-{/* NOTES TAB */}
-          {leftTab === 'notes' && (
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="bg-yellow-50/50 dark:bg-yellow-900/10 border border-yellow-200/50 dark:border-yellow-800/30 rounded-2xl p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-black text-yellow-900 dark:text-yellow-500 text-sm flex items-center gap-2">
-                    <Pencil className="w-4 h-4" />
-                    ملاحظات حول السهم
+              <div className="bg-yellow-50/50 dark:bg-yellow-900/10 border border-yellow-200/60 dark:border-yellow-800/30 rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-black text-yellow-900 dark:text-yellow-500 text-xs flex items-center gap-1.5">
+                    <Pencil className="w-3.5 h-3.5" />
+                    ملاحظات حول {position!.symbol}
                   </h3>
                   {isEditingNote ? (
-                    <div className="flex items-center gap-2">
-                      <button onClick={handleUpdateNote} className="px-3 py-1.5 bg-yellow-600 text-white rounded-lg text-xs font-black hover:bg-yellow-700 transition-colors shadow-sm">حفظ</button>
-                      <button onClick={() => { setIsEditingNote(false); setStockNote(position!.plan?.makerPlan || ''); }} className="px-3 py-1.5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 transition-colors">إلغاء</button>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={handleUpdateNote} className="px-2.5 py-1 bg-yellow-600 text-white rounded-lg text-[11px] font-black">حفظ</button>
+                      <button onClick={() => { setIsEditingNote(false); setStockNote(position!.plan?.makerPlan || ''); }} className="px-2.5 py-1 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-[11px] font-bold border border-slate-200 dark:border-slate-700">إلغاء</button>
                     </div>
                   ) : (
-                    <button onClick={() => setIsEditingNote(true)} className="px-3 py-1.5 bg-white dark:bg-slate-800 text-yellow-700 dark:text-yellow-500 border border-yellow-200 dark:border-yellow-800/50 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 rounded-lg text-xs font-black transition-colors shadow-sm">تعديل الملاحظات</button>
+                    <button onClick={() => setIsEditingNote(true)} className="px-2.5 py-1 bg-white dark:bg-slate-800 text-yellow-700 dark:text-yellow-500 border border-yellow-200 dark:border-yellow-800/50 rounded-lg text-[11px] font-black">تعديل</button>
                   )}
                 </div>
-                
                 {isEditingNote ? (
                   <textarea
                     value={stockNote}
                     onChange={(e) => setStockNote(e.target.value)}
-                    placeholder="اكتب أفكارك وملاحظاتك الفنية أو الأخبار الخاصة بهذا السهم هنا..."
-                    className="w-full bg-white dark:bg-slate-900 border border-yellow-200 dark:border-yellow-800/50 rounded-xl p-4 text-sm font-bold text-slate-700 dark:text-slate-300 min-h-[200px] focus:ring-2 focus:ring-yellow-500 outline-none leading-relaxed resize-none"
+                    placeholder="اكتب ملاحظاتك الفنية أو خطة السهم..."
+                    className="w-full bg-white dark:bg-slate-900 border border-yellow-200 dark:border-yellow-800/50 rounded-xl p-3 text-xs font-bold text-slate-700 dark:text-slate-300 min-h-[140px] focus:ring-2 focus:ring-yellow-500 outline-none leading-relaxed resize-none"
                   />
                 ) : (
-                  <div className="bg-white/60 dark:bg-slate-900/60 border border-white dark:border-slate-800 rounded-xl p-4 min-h-[200px]">
+                  <div className="bg-white/70 dark:bg-slate-900/60 border border-white dark:border-slate-800 rounded-xl p-3 min-h-[110px]">
                     {stockNote ? (
-                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{stockNote}</p>
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{stockNote}</p>
                     ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60 pt-10">
-                        <Pin className="w-8 h-8 mb-3" />
-                        <p className="text-xs font-bold">لا توجد ملاحظات مسجلة.</p>
+                      <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60 py-6">
+                        <Pin className="w-5 h-5 mb-1.5" />
+                        <p className="text-[11px] font-bold">لا توجد ملاحظات مسجلة.</p>
                       </div>
                     )}
                   </div>
@@ -1427,186 +1455,35 @@ if (!position || !metrics) return null;
             </div>
           )}
 
-          {/* PLAN TAB */}
-          {leftTab === 'plan' && (
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
-            {/* Smart Trailing Stop Tools */}
-            {metrics!.isOpen && analytics && (
-              <div className="bg-orange-50/60 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/40 rounded-2xl p-5 mb-6">
-                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-orange-500" />
-                    <span className="text-sm font-black text-slate-700 dark:text-slate-200">الوقف المتحرك الذكي (Chandelier)</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] font-bold text-slate-500">المضاعف × ATR</span>
-                    {[1.5, 2, 2.5, 3].map(m => (
-                      <button
-                        key={m}
-                        onClick={() => handleSetMultiplier(m)}
-                        className={`text-[11px] font-black px-2 py-1 rounded-lg border transition-colors ${analytics.atrMultiplier === m ? 'bg-orange-500 text-white border-orange-500' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-orange-300'}`}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="bg-white dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-center">
-                    <div className="text-[10px] font-bold text-slate-500 mb-0.5">وقف القمة − {analytics.atrMultiplier}×ATR</div>
-                    <div className="text-base font-black tracking-tight text-orange-600 dark:text-orange-400" dir="ltr">{analytics.chandelierStop !== null ? analytics.chandelierStop.toFixed(2) : 'â€”'}</div>
-                    <button
-                      disabled={analytics.chandelierStop === null || analytics.chandelierStop <= metrics!.currentStop || analytics.chandelierStop >= metrics!.currentPrice}
-                      onClick={() => analytics.chandelierStop !== null && handleApplyStop(analytics.chandelierStop, 'وقف Chandelier')}
-                      className="mt-2 text-[10px] font-black bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white px-3 py-1 rounded-lg"
-                    >
-                      تطبيق
-                    </button>
-                  </div>
-                  <div className="bg-white dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-center">
-                    <div className="text-[10px] font-bold text-slate-500 mb-0.5">وقف التعادل (شامل العمولة)</div>
-                    <div className="text-base font-black tracking-tight text-emerald-600 dark:text-emerald-400" dir="ltr">{analytics.breakevenStop.toFixed(2)}</div>
-                    <button
-                      disabled={analytics.breakevenStop <= metrics!.currentStop || analytics.breakevenStop >= metrics!.currentPrice}
-                      onClick={() => handleApplyStop(analytics.breakevenStop, 'وقف التعادل')}
-                      className="mt-2 text-[10px] font-black bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white px-3 py-1 rounded-lg"
-                    >
-                      تطبيق
-                    </button>
-                  </div>
-                </div>
-                {analytics.atr <= 0 && (
-                  <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 mb-2">أدخل قيمة ATR (الشريحة البنفسجية بالأعلى) لتفعيل الوقف الديناميكي.</p>
-                )}
-                {stopError && <p className="text-[11px] font-black text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2 mb-2">{stopError}</p>}
-                {stopNote && <p className="text-[11px] font-black text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg px-3 py-2 mb-2">{stopNote}</p>}
-                <p className="text-[10px] font-bold text-slate-500 leading-relaxed">يرتفع الوقف تلقائياً عند تحديث سعر السوق إلى قمة جديدة، ولا ينخفض أبداً إلا بتعديل يدوي منك.</p>
-              </div>
-            )}
-
-            {/* Core / Satellite Advanced Bar */}
-            <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 mb-6">
-              <div className="flex justify-between items-center mb-3">
-                <div className="flex items-center gap-2">
-                  <Target className="w-4 h-4 text-slate-500" />
-                  <span className="text-sm font-black text-slate-700 dark:text-slate-200">توزيع التمركز (Core vs Satellite)</span>
-                </div>
-                {isEditingCoreShares ? (
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      className="w-24 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-xs font-black px-2 py-1 outline-none text-center shadow-inner"
-                      value={coreSharesInput}
-                      onChange={e => setCoreSharesInput(e.target.value)}
-                      autoFocus
-                      dir="ltr"
-                    />
-                    <button onClick={handleSaveCoreShares} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors"><CheckCircle className="w-4 h-4"/></button>
-                    <button onClick={() => setIsEditingCoreShares(false)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors"><X className="w-4 h-4"/></button>
-                  </div>
-                ) : (
-                  <button 
-                    onClick={() => setIsEditingCoreShares(true)}
-                    className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-blue-600 transition-colors bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm"
-                  >
-                    <Pencil className="w-3 h-3" />
-                    تعديل الكور
-                  </button>
-                )}
-              </div>
-              
-              {/* Progress Bar Split */}
-              <div className="w-full h-4 bg-slate-200 dark:bg-slate-700 rounded-full flex overflow-hidden shadow-inner mt-4 mb-2 relative">
-                <div 
-                  className="h-full bg-blue-500 transition-all duration-500 flex items-center justify-center relative overflow-hidden"
-                  style={{ width: `${position?.coreShares ? (position.coreShares / metrics!.openShares) * 100 : 0}%` }}
-                  title="أسهم الكور (Core)"
-                >
-                  <div className="absolute inset-0 bg-white/20 w-full h-full" style={{ backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent)' }}></div>
-                </div>
-                <div 
-                  className="h-full bg-amber-400 transition-all duration-500"
-                  style={{ width: `${100 - (position?.coreShares ? (position.coreShares / metrics!.openShares) * 100 : 0)}%` }}
-                  title="أسهم الساتلايت (Satellite)"
-                />
-              </div>
-              
-              <div className="flex justify-between items-center text-xs font-black">
-                <div className="text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                  الكور: {position?.coreShares || 0} سهم 
-                  <span className="opacity-60">({((position?.coreShares || 0) / metrics!.openShares * 100).toFixed(0)}%)</span>
-                </div>
-                <div className="text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-                  الساتلايت: {metrics!.openShares - (position?.coreShares || 0)} سهم
-                  <span className="opacity-60">({(100 - ((position?.coreShares || 0) / metrics!.openShares * 100)).toFixed(0)}%)</span>
-                  <div className="w-2 h-2 rounded-full bg-amber-400"></div>
-                </div>
-              </div>
-
-              {coreError && <p className="text-[11px] font-black text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2 mt-3">{coreError}</p>}
-              {(() => {
-                if (!analytics) return null;
-                const strat = position!.plan?.strategy;
-                let pct = position!.portfolioType === 'investment' ? (strat === 'core' ? 70 : strat === 'satellite' ? 30 : 50) : 20;
-                const reasons: string[] = [strat === 'core' ? 'سهم أساسي' : strat === 'satellite' ? 'سهم ساتلايت' : position!.portfolioType === 'investment' ? 'استثمار' : 'مضاربة'];
-                if (analytics.weightPct !== null && analytics.weightPct > 25) { pct = Math.round(pct * 0.7); reasons.push('وزن المحفظة مرتفع'); }
-                if (analytics.status === 'broken') { pct = Math.min(pct, 20); reasons.push('الوقف مكسور'); }
-                const suggested = Math.round((metrics!.openShares * pct) / 100);
-                if (suggested === (position!.coreShares || 0)) return null;
-                return (
-                  <div className="mt-3 flex items-center justify-between gap-2 bg-white/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
-                    <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                      💡 الكور المقترح: <b className="font-mono-num text-blue-600 dark:text-blue-400">{suggested.toLocaleString()} سهم ({pct}%)</b> — {reasons.join(' · ')}
-                    </span>
-                    <button
-                      onClick={async () => { await updatePosition(position!.id, { coreShares: suggested }); setCoreError(null); }}
-                      className="shrink-0 text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg"
-                    >
-                      تطبيق
-                    </button>
-                  </div>
-                );
-              })()}
-
-            </div>
-
-            </div>
-          )}
-
-          
-          {/* Close Position & Reset / Delete Section */}
-          <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
+          {/* COMPACT SINGLE-ROW FOOTER ACTIONS */}
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center gap-2">
             {metrics!.isOpen && (
-              <button 
+              <button
                 onClick={() => setTxModalType('sellAll')}
-                className="w-full bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white font-black py-3 rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 text-xs"
+                className="flex-1 min-w-[120px] bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white font-black py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 text-[11px]"
               >
-                <CheckCircle className="w-4 h-4" />
-                إغلاق وتصفية كامل المركز المالي
+                <CheckCircle className="w-3.5 h-3.5" />
+                إغلاق المركز
               </button>
             )}
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setIsResetModalOpen(true)}
-                className="w-full py-2.5 px-3 rounded-xl border border-amber-300/80 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-black text-xs flex items-center justify-center gap-1.5 transition"
-                title="مسح المعاملات المتشابكة وبدء السهم من جديد"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>تصفير المعاملات</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsDeleteModalOpen(true)}
-                className="w-full py-2.5 px-3 rounded-xl border border-rose-300/80 dark:border-rose-800/50 bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 dark:hover:bg-rose-900/40 text-rose-700 dark:text-rose-400 font-black text-xs flex items-center justify-center gap-1.5 transition"
-                title="حذف السهم وسجله نهائياً من المحفظة"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>حذف السهم نهائياً</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsResetModalOpen(true)}
+              className="py-2 px-3 rounded-xl border border-amber-300/80 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 text-amber-800 dark:text-amber-300 font-black text-[11px] flex items-center justify-center gap-1 transition"
+              title="مسح المعاملات وبدء السهم من جديد"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>تصفير</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="py-2 px-3 rounded-xl border border-rose-300/80 dark:border-rose-800/50 bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 text-rose-700 dark:text-rose-400 font-black text-[11px] flex items-center justify-center gap-1 transition"
+              title="حذف السهم نهائياً"
+            >
+              <Trash2 className="w-3 h-3" />
+              <span>حذف</span>
+            </button>
           </div>
 
         </div>
